@@ -1,0 +1,23 @@
+# PlatformIO & Firmware
+.pio/
+.vscode/
+*.bin
+*.elf
+
+# Node.js / Backend / Portals
+node_modules/
+npm-debug.log
+.env
+.env.local
+
+# Python / AI Engine
+__pycache__/
+*.pyc
+venv/
+.env/
+*.onnx
+*.pt
+
+# OS files
+.DS_Store
+Thumbs.db
