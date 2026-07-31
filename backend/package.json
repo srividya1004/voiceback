@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test:models": "node scripts/testModels.js"
+    "test:models": "node scripts/testModels.js",
+    "test:routes": "node scripts/testRoutes.js"
   },
   "keywords": [
     "voiceback",

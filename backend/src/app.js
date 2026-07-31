@@ -8,6 +8,7 @@ const config = require('./config');
 const requestLogger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
 const healthRoutes = require('./routes/healthRoutes');
+const apiRoutes = require('./routes');
 const { sendSuccess, sendError } = require('./utils/responseFormatter');
 
 const app = express();
@@ -31,12 +32,14 @@ app.get('/', (req, res) => {
     name: 'VoiceBack Backend',
     version: '0.1.0',
     healthCheck: '/health',
+    apiRoot: '/api',
     documentation: 'Consult docs/DATABASE.md and PROJECT_CONTEXT.md'
   });
 });
 
 // Route Registration
 app.use('/health', healthRoutes);
+app.use('/api', apiRoutes);
 
 // 404 Route Handler
 app.use((req, res, next) => {
