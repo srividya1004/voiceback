@@ -81,10 +81,9 @@ voiceback/
 │       ├── ble_service.cpp # NimBLE advertising & JSON notify characteristic
 │       └── audio_driver.cpp# ESP32 I2S initialization & test tone generator
 │
-├── mobile/                 # [Planned] Cross-platform Mobile App (React Native)
-├── backend/                # [Planned] Node.js + Express API Backend
-├── ai_engine/              # [Planned] FastAPI Python EMG Speech Classification Engine
-└── web_portals/            # [Planned] Doctor & Caregiver Web Dashboards
+├── pwa/                    # [Planned] React Progressive Web App (PWA - Patient/Doctor/Caregiver)
+├── backend/                # [Planned] Node.js + Express JWT API Backend
+└── ai_engine/              # [Planned] FastAPI Python EMG Speech Classification Engine
 ```
 
 ---
@@ -104,10 +103,10 @@ The hardware baseline comprises accessible, high-performance prototype component
 ## 8. Software Overview
 
 - **Firmware (Implemented):** Developed using PlatformIO and Arduino framework. Integrates `ArduinoJson` (v6.21.3) and `NimBLE-Arduino` (v1.4.1). Includes a 50Hz fixed-interval sampling loop (20ms interval), Exponential Moving Average filtering ($\alpha = 0.15$), and I2S audio driver.
-- **Mobile Application `[Planned]`:** React Native cross-platform application for BLE telemetry reception, live sEMG signal graphing, and local Text-to-Speech (TTS) triggering.
-- **Backend API `[Planned]`:** Node.js + Express REST API & WebSocket relay.
+- **React Progressive Web App `[Planned]`:** React PWA with Web Bluetooth API for sEMG telemetry reception, live waveform graphing, Web Speech TTS synthesis, and JWT multi-role access (Patient, Doctor, Caregiver).
+- **Backend API `[Planned]`:** Node.js + Express REST API with JWT authentication & WebSocket relay.
 - **AI Classification Service `[Planned]`:** FastAPI Python service running machine learning models for speech intent categorization.
-- **Web Dashboards `[Planned]`:** Clinical portals for doctors and caregivers.
+- **Database `[Planned]`:** MongoDB Atlas (9 collection schemas).
 
 ---
 
@@ -144,17 +143,16 @@ Development alternates between multiple workstations (**Home PC** and **College 
 | **NimBLE BLE Server** | **Implemented** | Service & EMG Characteristic notify stream |
 | **MAX98357A I2S Audio Driver** | **Implemented** | ESP32 Hardware `I2S_NUM_0`, 16kHz PCM, 440Hz Chime |
 | **Neckband Enclosure** | **`[TODO]`** | 3D Printed Wearable Enclosure |
-| **Mobile Application** | **`[Planned]`** | React Native, BLE Client, Mobile TTS |
+| **React PWA Client** | **`[Planned]`** | React, Vite, Web Bluetooth API, PWA Manifest |
+| **Node.js Express Backend** | **`[Planned]`** | Node.js, Express, JWT Auth, Socket.io |
 | **FastAPI AI Engine** | **`[Planned]`** | Python, FastAPI, Scikit-Learn / PyTorch |
-| **Node.js Express Backend** | **`[Planned]`** | Node.js, Express, Socket.io |
 | **MongoDB Database** | **`[Planned]`** | MongoDB Atlas (9 collections schema) |
-| **Doctor & Caregiver Portals** | **`[Planned]`** | React Web Application |
 
 ---
 
 ## 12. Planned Future Work
 
 1. **Phase 1 (Immediate):** Validate sEMG electrode placement on anterior neck muscles using gel electrodes; capture baseline sEMG recordings for silent speech attempts.
-2. **Phase 2 (Short-Term):** Initialize React Native `mobile/` project; subscribe to NimBLE EMG characteristic payload (`raw`, `flt`, `vlt`); build real-time canvas waveform renderer.
+2. **Phase 2 (Short-Term):** Initialize Node.js Express backend in `backend/` with JWT authentication and MongoDB Atlas connection; initialize React PWA project in `pwa/` with Web Bluetooth telemetry subscriber.
 3. **Phase 3 (Medium-Term):** Build `ai_engine/` FastAPI service; implement sliding window feature extractor (MAV, RMS, ZCR, WL); train baseline classification model.
-4. **Phase 4 (Long-Term):** Deploy MongoDB Atlas database schemas; implement Node.js `backend/` API; build web portals for clinical speech pathologists.
+4. **Phase 4 (Long-Term):** Expand Patient, Doctor, and Caregiver multi-role dashboards in `pwa/` for clinical tracking.

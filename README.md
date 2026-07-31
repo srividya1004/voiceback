@@ -10,13 +10,13 @@
 
 **VoiceBack** is an embedded AI healthcare wearable prototype designed to assist aphasia patients (individuals suffering from speech impairment following stroke or brain injury).
 
-The system captures surface electromyography (**sEMG**) speech muscle activity from the neck using an **AD620 Instrumentation Amplifier Module**, recognizes speech attempts (silent, whispered, weak, or unclear), decodes intended text via an AI inference model, and outputs personalized speech locally via an onboard **MAX98357A I2S amplifier and neckband speaker** as well as through a mobile application.
+The system captures surface electromyography (**sEMG**) speech muscle activity from the neck using an **AD620 Instrumentation Amplifier Module**, recognizes speech attempts (silent, whispered, weak, or unclear), decodes intended text via an AI inference model, and outputs personalized speech locally via an onboard **MAX98357A I2S amplifier and neckband speaker** as well as through a Progressive Web App (PWA).
 
 ```
 +-----------------------------------------------------------------------------------+
 |                                 VOICEBACK ECOSYSTEM                               |
 |                                                                                   |
-|  [Neck Electrodes] -> [AD620 EMG] -> [ESP32 MCU] ----(BLE)----> [Mobile App]      |
+|  [Neck Electrodes] -> [AD620 EMG] -> [ESP32 MCU] ---(Web Bluetooth)---> [React PWA]
 |                                         |                            |            |
 |                                    (I2S Audio)                  (REST / WSS)      |
 |                                         v                            v            |
@@ -46,10 +46,9 @@ voiceback/
 │   ├── include/            # Pin definitions (config.h), EMG, BLE, & Audio headers
 │   └── src/                # ADC sampling, EMA filter, BLE streaming, I2S DAC driver
 │
-├── mobile/                 # [Planned] React Native / Cross-Platform Mobile App
-├── backend/                # [Planned] Node.js + Express API & 9 MongoDB Atlas Schemas
-├── ai_engine/              # [Planned] FastAPI Python EMG Speech Classification Engine
-└── web_portals/            # [Planned] Doctor & Caregiver Web Dashboards
+├── pwa/                    # [Planned] React Progressive Web App (PWA - Patient/Doctor/Caregiver)
+├── backend/                # [Planned] Node.js + Express JWT API & 9 MongoDB Atlas Schemas
+└── ai_engine/              # [Planned] FastAPI Python EMG Speech Classification Engine
 ```
 
 ---

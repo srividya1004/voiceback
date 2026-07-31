@@ -26,16 +26,16 @@ The following timeline details verified milestones completed in the VoiceBack pr
 [Phase 1: ESP32 Firmware & Hardware Integration]  <-- COMPLETED
                        │
                        ▼
-[Phase 2: Mobile App Development & BLE Client]    <-- PLANNED (NEXT)
+[Phase 2: React PWA & Express JWT Backend]       <-- PLANNED (NEXT)
                        │
                        ▼
 [Phase 3: AI Inference Engine & Feature Pipeline] <-- PLANNED
                        │
                        ▼
-[Phase 4: Backend API, Database & Web Portals]    <-- PLANNED
+[Phase 4: MongoDB Atlas Integration & Portals]    <-- PLANNED
 ```
 
-- **Active Phase:** Phase 1 complete; transitioning to Phase 2 (Mobile Application & Signal Visualization).
+- **Active Phase:** Phase 1 complete; transitioning to Phase 2 (React PWA & Express JWT Backend API).
 - **Verified Code Artifacts:**
   - `firmware/platformio.ini`
   - `firmware/include/config.h`

@@ -10,11 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- React Native mobile application for Android/iOS with BLE client subscriber interface (`mobile/`).
-- FastAPI Python AI classification engine for EMG feature extraction and model inference (`ai_engine/`).
-- Node.js Express REST API backend server with Socket.io real-time relay (`backend/`).
+- React Progressive Web App (PWA) in `pwa/` with Web Bluetooth API, HTML5 Canvas waveform plotting, Web Speech TTS, and installable app manifest.
+- Node.js Express REST API backend server with JWT Multi-Role Authentication (`Patient`, `Doctor`, `Caregiver`) and Socket.io real-time relay (`backend/`).
+- FastAPI Python AI classification engine for sEMG feature extraction and model inference (`ai_engine/`).
 - MongoDB Atlas database deployment with 9 clinical collection schemas (`backend/`).
-- Doctor and Caregiver web dashboards (`web_portals/`).
 
 ---
 

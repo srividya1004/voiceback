@@ -65,13 +65,13 @@ The following components are **fully implemented** inside `firmware/`:
 
 ## 3. Planned Features (AI Engine & Classification Pipeline)
 
-The following components are **`[Planned]`** for implementation in `ai_engine/` and `mobile/`:
+The following components are **`[Planned]`** for implementation in `ai_engine/` and `pwa/`:
 
 ```
 +-----------------------------------------------------------------------------------+
 |                            PLANNED AI INFERENCE ENGINE                            |
 |                                                                                   |
-|  [BLE Telemetry Stream]                                                           |
+|  [BLE Telemetry Stream over Web Bluetooth]                                        |
 |           │                                                                       |
 |           ▼                                                                       |
 |  [200ms Sliding Windowing (50ms overlap)]                                         |
@@ -92,7 +92,7 @@ The following components are **`[Planned]`** for implementation in `ai_engine/` 
 |           │                                                                       |
 |           ▼                                                                       |
 |  [Speech Generation Engine]                                                       |
-|   ├── Mobile Text-to-Speech (TTS) Engine Output                                   |
+|   ├── Web Speech API (Text-to-Speech) Output on PWA                               |
 |   └── Streamed 16kHz PCM back to MAX98357A Neckband Speaker                       |
 +-----------------------------------------------------------------------------------+
 ```
@@ -120,4 +120,4 @@ The following components are **`[Planned]`** for implementation in `ai_engine/` 
 | **Sliding Windowing (200ms)** | Buffer Manager | **`[Planned]`** | `ai_engine/` |
 | **Feature Extraction (MAV/RMS/ZCR/WL)** | Signal DSP Engine | **`[Planned]`** | `ai_engine/` |
 | **Speech Intent Classifier** | ML Model (Random Forest / CNN) | **`[Planned]`** | `ai_engine/` |
-| **Text-to-Speech Synthesis** | Mobile TTS / Server PCM Stream | **`[Planned]`** | `mobile/` |
+| **Text-to-Speech Synthesis** | Web Speech API TTS / Server PCM Stream | **`[Planned]`** | `pwa/` |

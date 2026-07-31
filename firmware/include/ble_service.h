@@ -2,7 +2,7 @@
  * VoiceBack Smart Neckband - BLE Telemetry Service Header
  * 
  * Manages Bluetooth Low Energy GATT Server, advertisement, connection state,
- * and streaming EMG data packets to the VoiceBack mobile application.
+ * and streaming EMG data packets to the VoiceBack React Progressive Web App (PWA) client.
  */
 
 #ifndef BLE_SERVICE_H

@@ -96,8 +96,7 @@ System entry point. Executes `setup()` (serial CDC initialization, ADC calibrati
 | Software Module | Directory | Technology | Implementation Status |
 | :--- | :--- | :--- | :--- |
 | **ESP32 Firmware** | `firmware/` | C++ / PlatformIO / Arduino | **Implemented (v0.1)** |
-| **Mobile Application** | `mobile/` | React Native / TypeScript | **`[Planned]`** |
+| **React Progressive Web App (PWA)** | `pwa/` | React / Vite / Web Bluetooth API / PWA Manifest | **`[Planned]`** |
+| **Node.js Express Backend** | `backend/` | Node.js / Express / JWT Auth / Socket.io | **`[Planned]`** |
 | **FastAPI AI Engine** | `ai_engine/` | Python 3.10 / FastAPI / Scikit-Learn | **`[Planned]`** |
-| **Node.js Express Backend** | `backend/` | Node.js / Express / Socket.io | **`[Planned]`** |
 | **MongoDB Atlas Database** | `backend/` | MongoDB Atlas (9 collections) | **`[Planned]`** |
-| **Doctor & Caregiver Web Portals** | `web_portals/` | React / CSS | **`[Planned]`** |

@@ -69,7 +69,7 @@ void BLEServiceManager::sendEMGData(int rawValue, float filteredValue, float vol
         return;
     }
 
-    // Format JSON payload for mobile app parsing
+    // Format JSON payload for PWA parsing
     StaticJsonDocument<128> doc;
     doc["raw"] = rawValue;
     doc["flt"] = round(filteredValue * 100.0f) / 100.0f;

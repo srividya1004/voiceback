@@ -14,7 +14,7 @@
 1. Detects neuromuscular speech attempts (silent, whispered, weak, unclear).
 2. Extracts signal features in real time.
 3. Decodes intended speech via an AI classifier engine.
-4. Generates synthesized audio locally through a neckband speaker and on an accompanying mobile application.
+4. Generates synthesized audio locally through a neckband speaker and on an accompanying Progressive Web App (PWA).
 
 ---
 
@@ -85,14 +85,15 @@ graph LR
         A4[I2S Audio Driver] <-- PCM Samples --> A3
     end
 
-    subgraph Mobile Layer [React Native App]
-        B1[BLE Client Manager] --> B2[EMG Visualizer Canvas]
-        B2 --> B3[Inference Trigger Service]
-        B3 --> B4[Text-to-Speech Engine]
+    subgraph Client Layer [React Progressive Web App]
+        B1[Web Bluetooth Client] --> B2[EMG Waveform Canvas]
+        B2 --> B3[AI Inference Trigger Service]
+        B3 --> B4[Web Speech TTS Engine]
+        B5[JWT Auth & Multi-Role UI]
     end
 
     subgraph Backend Services [Node.js & FastAPI]
-        C1[Node.js Express REST API] <--> C2[FastAPI AI Classifier]
+        C1[Node.js Express REST API] <--> C2[FastAPI AI Classifier Engine]
         C1 <--> C3[Socket.io Relay]
     end
 
@@ -100,9 +101,9 @@ graph LR
         D1[(MongoDB Atlas - 9 Collections)]
     end
 
-    A3 -- BLE Telemetry --> B1
+    A3 -- Web Bluetooth BLE Stream --> B1
     B3 -- Inference Request --> C2
-    B1 -- REST / WSS --> C1
+    B1 -- JWT REST / WSS --> C1
     C1 --> D1
 ```
 

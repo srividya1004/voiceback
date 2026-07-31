@@ -82,3 +82,24 @@ Adopt **PlatformIO IDE** (integrated with VS Code) with explicit library version
 ### Consequences
 - **Positive:** Eliminates machine-dependent compilation failures; enables strict multi-workstation sync parity.
 - **Negative:** Requires PlatformIO extension setup on developer workstations.
+
+---
+
+## ADR-005: Adoption of React Progressive Web App (PWA) Architecture & Web Bluetooth
+
+### Context & Problem
+The VoiceBack system previously planned a native React Native mobile application alongside separate React web portals for doctors and caregivers. Developing separate native mobile apps and web portals increases codebase complexity, deployment friction across app stores, and maintenance overhead for a student prototype. The application must run on Android, iPhone, tablets, and desktop browsers while remaining 100% free and open-source.
+
+### Decision
+Adopt a single, unified **React Progressive Web App (PWA)** in `pwa/` built with React and Vite, utilizing **Web Bluetooth API** for BLE neckband telemetry streaming and **JWT Authentication** for three distinct user roles (`Patient`, `Doctor`, `Caregiver`).
+
+### Rationale
+- **Cross-Platform Compatibility:** Runs seamlessly on Android, iOS/iPhone (where browser capabilities allow), tablets, and desktop browsers without native app store compilation.
+- **PWA App Installation:** Supports Web App Manifest (`manifest.json`) and Service Workers for home-screen installation and offline shell caching.
+- **Direct BLE Telemetry:** Web Bluetooth API allows direct wireless pairing and data reception from the ESP32 `VoiceBack-Neckband` GATT server in Chrome and Edge.
+- **Unified Multi-Role Portal:** Consolidates Patient, Doctor, and Caregiver user flows into one maintainable frontend codebase secured by JWT role-based access control.
+- **Zero Paid Dependencies:** Uses free, open-source web standards (Web Speech API, Web Bluetooth, HTML5 Canvas) suitable for a student prototype.
+
+### Consequences
+- **Positive:** Zero app store approval delays, instant cross-device access across Android, iPhone, tablets, and desktop browsers, single maintainable frontend repository, low friction for clinical demos.
+- **Graceful Fallback:** Bluetooth communication with the ESP32 wearable is active on supported browsers (Chrome, Edge, Android/Desktop browsers). On unsupported browsers (e.g. standard iOS Safari), the PWA gracefully displays connection status while providing full access to all other application features including JWT authentication, patient dashboards, doctor/caregiver clinical tracking, therapy progress logs, Web Speech API TTS, and appointment scheduling.
