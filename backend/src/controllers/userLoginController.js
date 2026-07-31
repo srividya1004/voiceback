@@ -1,10 +1,9 @@
 /**
  * UserLogin Controller
- * Handles CRUD operations for UserLogin authentication records
+ * Handles HTTP request/response orchestration for UserLogin authentication records using UserLogin Service.
  */
 
-const mongoose = require('mongoose');
-const { UserLogin } = require('../models');
+const userLoginService = require('../services/userLoginService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,17 +12,13 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createUserLogin = async (req, res) => {
   try {
-    const userLogin = await UserLogin.create(req.body);
-    // Omit sensitive passwordHash in response output if needed, or return object
-    const result = userLogin.toObject();
-    delete result.passwordHash;
-
+    const result = await userLoginService.create(req.body);
     return sendSuccess(res, 201, 'User login created successfully', result);
   } catch (error) {
     if (error.name === 'ValidationError') {
       return sendError(res, 400, 'Validation Error', error.errors);
     }
-    if (error.code === 11000) {
+    if (error.code === 11000 || error.message.includes('already exists')) {
       return sendError(res, 400, 'Email address already exists');
     }
     return sendError(res, 500, 'Failed to create user login', error.message);
@@ -36,7 +31,7 @@ const createUserLogin = async (req, res) => {
  */
 const getAllUserLogins = async (req, res) => {
   try {
-    const userLogins = await UserLogin.find().select('-passwordHash');
+    const userLogins = await userLoginService.getAll();
     return sendSuccess(res, 200, 'User logins retrieved successfully', userLogins);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve user logins', error.message);
@@ -50,19 +45,15 @@ const getAllUserLogins = async (req, res) => {
 const getUserLoginById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid UserLogin ObjectId format');
-    }
-
-    const userLogin = await UserLogin.findById(id).select('-passwordHash');
-
-    if (!userLogin) {
-      return sendError(res, 404, `UserLogin with ID ${id} not found`);
-    }
-
+    const userLogin = await userLoginService.getById(id);
     return sendSuccess(res, 200, 'User login retrieved successfully', userLogin);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve user login', error.message);
   }
 };
@@ -74,27 +65,17 @@ const getUserLoginById = async (req, res) => {
 const updateUserLogin = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid UserLogin ObjectId format');
-    }
-
-    const userLogin = await UserLogin.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    }).select('-passwordHash');
-
-    if (!userLogin) {
-      return sendError(res, 404, `UserLogin with ID ${id} not found`);
-    }
-
+    const userLogin = await userLoginService.update(id, req.body);
     return sendSuccess(res, 200, 'User login updated successfully', userLogin);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
     }
-    if (error.code === 11000) {
+    if (error.code === 11000 || error.message.includes('already exists')) {
       return sendError(res, 400, 'Email address already exists');
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update user login', error.message);
   }
@@ -107,19 +88,15 @@ const updateUserLogin = async (req, res) => {
 const deleteUserLogin = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid UserLogin ObjectId format');
-    }
-
-    const userLogin = await UserLogin.findByIdAndDelete(id).select('-passwordHash');
-
-    if (!userLogin) {
-      return sendError(res, 404, `UserLogin with ID ${id} not found`);
-    }
-
+    const userLogin = await userLoginService.delete(id);
     return sendSuccess(res, 200, 'User login deleted successfully', userLogin);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete user login', error.message);
   }
 };

@@ -1,10 +1,9 @@
 /**
  * Caregiver Controller
- * Handles CRUD operations for Caregiver relationship profiles
+ * Handles HTTP request/response orchestration for Caregiver relationship profiles using Caregiver Service.
  */
 
-const mongoose = require('mongoose');
-const { Caregiver } = require('../models');
+const caregiverService = require('../services/caregiverService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,7 +12,7 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createCaregiver = async (req, res) => {
   try {
-    const caregiver = await Caregiver.create(req.body);
+    const caregiver = await caregiverService.create(req.body);
     return sendSuccess(res, 201, 'Caregiver profile created successfully', caregiver);
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -29,9 +28,7 @@ const createCaregiver = async (req, res) => {
  */
 const getAllCaregivers = async (req, res) => {
   try {
-    const caregivers = await Caregiver.find()
-      .populate('userId', 'email role')
-      .populate('assignedPatients', 'fullName aphasiaType age');
+    const caregivers = await caregiverService.getAll();
     return sendSuccess(res, 200, 'Caregivers retrieved successfully', caregivers);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve caregivers', error.message);
@@ -45,21 +42,15 @@ const getAllCaregivers = async (req, res) => {
 const getCaregiverById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Caregiver ObjectId format');
-    }
-
-    const caregiver = await Caregiver.findById(id)
-      .populate('userId', 'email role')
-      .populate('assignedPatients', 'fullName aphasiaType age');
-
-    if (!caregiver) {
-      return sendError(res, 404, `Caregiver with ID ${id} not found`);
-    }
-
+    const caregiver = await caregiverService.getById(id);
     return sendSuccess(res, 200, 'Caregiver profile retrieved successfully', caregiver);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve caregiver profile', error.message);
   }
 };
@@ -71,24 +62,14 @@ const getCaregiverById = async (req, res) => {
 const updateCaregiver = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Caregiver ObjectId format');
-    }
-
-    const caregiver = await Caregiver.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
-    if (!caregiver) {
-      return sendError(res, 404, `Caregiver with ID ${id} not found`);
-    }
-
+    const caregiver = await caregiverService.update(id, req.body);
     return sendSuccess(res, 200, 'Caregiver profile updated successfully', caregiver);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update caregiver profile', error.message);
   }
@@ -101,19 +82,15 @@ const updateCaregiver = async (req, res) => {
 const deleteCaregiver = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Caregiver ObjectId format');
-    }
-
-    const caregiver = await Caregiver.findByIdAndDelete(id);
-
-    if (!caregiver) {
-      return sendError(res, 404, `Caregiver with ID ${id} not found`);
-    }
-
+    const caregiver = await caregiverService.delete(id);
     return sendSuccess(res, 200, 'Caregiver profile deleted successfully', caregiver);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete caregiver profile', error.message);
   }
 };

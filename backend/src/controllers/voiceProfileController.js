@@ -1,10 +1,9 @@
 /**
  * VoiceProfile Controller
- * Handles CRUD operations for Patient TTS audio synthesis profiles
+ * Handles HTTP request/response orchestration for Patient TTS audio synthesis profiles using VoiceProfile Service.
  */
 
-const mongoose = require('mongoose');
-const { VoiceProfile } = require('../models');
+const voiceProfileService = require('../services/voiceProfileService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,7 +12,7 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createVoiceProfile = async (req, res) => {
   try {
-    const voiceProfile = await VoiceProfile.create(req.body);
+    const voiceProfile = await voiceProfileService.create(req.body);
     return sendSuccess(res, 201, 'Voice profile created successfully', voiceProfile);
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -29,7 +28,7 @@ const createVoiceProfile = async (req, res) => {
  */
 const getAllVoiceProfiles = async (req, res) => {
   try {
-    const voiceProfiles = await VoiceProfile.find().populate('patientId', 'fullName aphasiaType age');
+    const voiceProfiles = await voiceProfileService.getAll();
     return sendSuccess(res, 200, 'Voice profiles retrieved successfully', voiceProfiles);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve voice profiles', error.message);
@@ -43,19 +42,15 @@ const getAllVoiceProfiles = async (req, res) => {
 const getVoiceProfileById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid VoiceProfile ObjectId format');
-    }
-
-    const voiceProfile = await VoiceProfile.findById(id).populate('patientId', 'fullName aphasiaType age');
-
-    if (!voiceProfile) {
-      return sendError(res, 404, `VoiceProfile with ID ${id} not found`);
-    }
-
+    const voiceProfile = await voiceProfileService.getById(id);
     return sendSuccess(res, 200, 'Voice profile retrieved successfully', voiceProfile);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve voice profile', error.message);
   }
 };
@@ -67,24 +62,14 @@ const getVoiceProfileById = async (req, res) => {
 const updateVoiceProfile = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid VoiceProfile ObjectId format');
-    }
-
-    const voiceProfile = await VoiceProfile.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
-    if (!voiceProfile) {
-      return sendError(res, 404, `VoiceProfile with ID ${id} not found`);
-    }
-
+    const voiceProfile = await voiceProfileService.update(id, req.body);
     return sendSuccess(res, 200, 'Voice profile updated successfully', voiceProfile);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update voice profile', error.message);
   }
@@ -97,19 +82,15 @@ const updateVoiceProfile = async (req, res) => {
 const deleteVoiceProfile = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid VoiceProfile ObjectId format');
-    }
-
-    const voiceProfile = await VoiceProfile.findByIdAndDelete(id);
-
-    if (!voiceProfile) {
-      return sendError(res, 404, `VoiceProfile with ID ${id} not found`);
-    }
-
+    const voiceProfile = await voiceProfileService.delete(id);
     return sendSuccess(res, 200, 'Voice profile deleted successfully', voiceProfile);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete voice profile', error.message);
   }
 };

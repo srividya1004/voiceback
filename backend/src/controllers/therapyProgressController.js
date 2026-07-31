@@ -1,10 +1,9 @@
 /**
  * TherapyProgress Controller
- * Handles CRUD operations for therapy session progress tracking
+ * Handles HTTP request/response orchestration for therapy session progress tracking using TherapyProgress Service.
  */
 
-const mongoose = require('mongoose');
-const { TherapyProgress } = require('../models');
+const therapyProgressService = require('../services/therapyProgressService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,7 +12,7 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createTherapyProgress = async (req, res) => {
   try {
-    const therapyProgress = await TherapyProgress.create(req.body);
+    const therapyProgress = await therapyProgressService.create(req.body);
     return sendSuccess(res, 201, 'Therapy progress record created successfully', therapyProgress);
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -29,7 +28,7 @@ const createTherapyProgress = async (req, res) => {
  */
 const getAllTherapyProgress = async (req, res) => {
   try {
-    const therapyProgressRecords = await TherapyProgress.find().populate('patientId', 'fullName aphasiaType age');
+    const therapyProgressRecords = await therapyProgressService.getAll();
     return sendSuccess(res, 200, 'Therapy progress records retrieved successfully', therapyProgressRecords);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve therapy progress records', error.message);
@@ -43,19 +42,15 @@ const getAllTherapyProgress = async (req, res) => {
 const getTherapyProgressById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid TherapyProgress ObjectId format');
-    }
-
-    const therapyProgress = await TherapyProgress.findById(id).populate('patientId', 'fullName aphasiaType age');
-
-    if (!therapyProgress) {
-      return sendError(res, 404, `TherapyProgress with ID ${id} not found`);
-    }
-
+    const therapyProgress = await therapyProgressService.getById(id);
     return sendSuccess(res, 200, 'Therapy progress record retrieved successfully', therapyProgress);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve therapy progress record', error.message);
   }
 };
@@ -67,24 +62,14 @@ const getTherapyProgressById = async (req, res) => {
 const updateTherapyProgress = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid TherapyProgress ObjectId format');
-    }
-
-    const therapyProgress = await TherapyProgress.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
-    if (!therapyProgress) {
-      return sendError(res, 404, `TherapyProgress with ID ${id} not found`);
-    }
-
+    const therapyProgress = await therapyProgressService.update(id, req.body);
     return sendSuccess(res, 200, 'Therapy progress record updated successfully', therapyProgress);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update therapy progress record', error.message);
   }
@@ -97,19 +82,15 @@ const updateTherapyProgress = async (req, res) => {
 const deleteTherapyProgress = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid TherapyProgress ObjectId format');
-    }
-
-    const therapyProgress = await TherapyProgress.findByIdAndDelete(id);
-
-    if (!therapyProgress) {
-      return sendError(res, 404, `TherapyProgress with ID ${id} not found`);
-    }
-
+    const therapyProgress = await therapyProgressService.delete(id);
     return sendSuccess(res, 200, 'Therapy progress record deleted successfully', therapyProgress);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete therapy progress record', error.message);
   }
 };

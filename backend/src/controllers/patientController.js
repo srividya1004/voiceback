@@ -1,10 +1,9 @@
 /**
  * Patient Controller
- * Handles CRUD operations for Patient clinical profiles
+ * Handles HTTP request/response orchestration for Patient clinical profiles using Patient Service.
  */
 
-const mongoose = require('mongoose');
-const { Patient } = require('../models');
+const patientService = require('../services/patientService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,7 +12,7 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createPatient = async (req, res) => {
   try {
-    const patient = await Patient.create(req.body);
+    const patient = await patientService.create(req.body);
     return sendSuccess(res, 201, 'Patient created successfully', patient);
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -29,10 +28,7 @@ const createPatient = async (req, res) => {
  */
 const getAllPatients = async (req, res) => {
   try {
-    const patients = await Patient.find()
-      .populate('userId', 'email role')
-      .populate('assignedDoctorId', 'fullName specialization licenseNumber')
-      .populate('assignedCaregiverId', 'fullName phone relationshipToPatient');
+    const patients = await patientService.getAll();
     return sendSuccess(res, 200, 'Patients retrieved successfully', patients);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve patients', error.message);
@@ -46,22 +42,15 @@ const getAllPatients = async (req, res) => {
 const getPatientById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Patient ObjectId format');
-    }
-
-    const patient = await Patient.findById(id)
-      .populate('userId', 'email role')
-      .populate('assignedDoctorId', 'fullName specialization licenseNumber')
-      .populate('assignedCaregiverId', 'fullName phone relationshipToPatient');
-
-    if (!patient) {
-      return sendError(res, 404, `Patient with ID ${id} not found`);
-    }
-
+    const patient = await patientService.getById(id);
     return sendSuccess(res, 200, 'Patient retrieved successfully', patient);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve patient', error.message);
   }
 };
@@ -73,24 +62,14 @@ const getPatientById = async (req, res) => {
 const updatePatient = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Patient ObjectId format');
-    }
-
-    const patient = await Patient.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
-    if (!patient) {
-      return sendError(res, 404, `Patient with ID ${id} not found`);
-    }
-
+    const patient = await patientService.update(id, req.body);
     return sendSuccess(res, 200, 'Patient updated successfully', patient);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update patient', error.message);
   }
@@ -103,19 +82,15 @@ const updatePatient = async (req, res) => {
 const deletePatient = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Patient ObjectId format');
-    }
-
-    const patient = await Patient.findByIdAndDelete(id);
-
-    if (!patient) {
-      return sendError(res, 404, `Patient with ID ${id} not found`);
-    }
-
+    const patient = await patientService.delete(id);
     return sendSuccess(res, 200, 'Patient deleted successfully', patient);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete patient', error.message);
   }
 };

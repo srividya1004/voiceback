@@ -1,10 +1,9 @@
 /**
  * Doctor Controller
- * Handles CRUD operations for Doctor medical practitioner profiles
+ * Handles HTTP request/response orchestration for Doctor medical practitioner profiles using Doctor Service.
  */
 
-const mongoose = require('mongoose');
-const { Doctor } = require('../models');
+const doctorService = require('../services/doctorService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,7 +12,7 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createDoctor = async (req, res) => {
   try {
-    const doctor = await Doctor.create(req.body);
+    const doctor = await doctorService.create(req.body);
     return sendSuccess(res, 201, 'Doctor profile created successfully', doctor);
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -29,7 +28,7 @@ const createDoctor = async (req, res) => {
  */
 const getAllDoctors = async (req, res) => {
   try {
-    const doctors = await Doctor.find().populate('userId', 'email role');
+    const doctors = await doctorService.getAll();
     return sendSuccess(res, 200, 'Doctors retrieved successfully', doctors);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve doctors', error.message);
@@ -43,19 +42,15 @@ const getAllDoctors = async (req, res) => {
 const getDoctorById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Doctor ObjectId format');
-    }
-
-    const doctor = await Doctor.findById(id).populate('userId', 'email role');
-
-    if (!doctor) {
-      return sendError(res, 404, `Doctor with ID ${id} not found`);
-    }
-
+    const doctor = await doctorService.getById(id);
     return sendSuccess(res, 200, 'Doctor profile retrieved successfully', doctor);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve doctor profile', error.message);
   }
 };
@@ -67,24 +62,14 @@ const getDoctorById = async (req, res) => {
 const updateDoctor = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Doctor ObjectId format');
-    }
-
-    const doctor = await Doctor.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
-    if (!doctor) {
-      return sendError(res, 404, `Doctor with ID ${id} not found`);
-    }
-
+    const doctor = await doctorService.update(id, req.body);
     return sendSuccess(res, 200, 'Doctor profile updated successfully', doctor);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update doctor profile', error.message);
   }
@@ -97,19 +82,15 @@ const updateDoctor = async (req, res) => {
 const deleteDoctor = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Doctor ObjectId format');
-    }
-
-    const doctor = await Doctor.findByIdAndDelete(id);
-
-    if (!doctor) {
-      return sendError(res, 404, `Doctor with ID ${id} not found`);
-    }
-
+    const doctor = await doctorService.delete(id);
     return sendSuccess(res, 200, 'Doctor profile deleted successfully', doctor);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete doctor profile', error.message);
   }
 };

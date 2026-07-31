@@ -1,10 +1,9 @@
 /**
  * CommunicationHistory Controller
- * Handles CRUD operations for real-time speech recognition event logs
+ * Handles HTTP request/response orchestration for speech recognition event logs using CommunicationHistory Service.
  */
 
-const mongoose = require('mongoose');
-const { CommunicationHistory } = require('../models');
+const communicationHistoryService = require('../services/communicationHistoryService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,7 +12,7 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createCommunicationHistory = async (req, res) => {
   try {
-    const historyRecord = await CommunicationHistory.create(req.body);
+    const historyRecord = await communicationHistoryService.create(req.body);
     return sendSuccess(res, 201, 'Communication history log created successfully', historyRecord);
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -29,9 +28,7 @@ const createCommunicationHistory = async (req, res) => {
  */
 const getAllCommunicationHistory = async (req, res) => {
   try {
-    const historyRecords = await CommunicationHistory.find()
-      .populate('patientId', 'fullName aphasiaType age')
-      .sort({ timestamp: -1 });
+    const historyRecords = await communicationHistoryService.getAll();
     return sendSuccess(res, 200, 'Communication history logs retrieved successfully', historyRecords);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve communication history logs', error.message);
@@ -45,19 +42,15 @@ const getAllCommunicationHistory = async (req, res) => {
 const getCommunicationHistoryById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid CommunicationHistory ObjectId format');
-    }
-
-    const historyRecord = await CommunicationHistory.findById(id).populate('patientId', 'fullName aphasiaType age');
-
-    if (!historyRecord) {
-      return sendError(res, 404, `Communication history record with ID ${id} not found`);
-    }
-
+    const historyRecord = await communicationHistoryService.getById(id);
     return sendSuccess(res, 200, 'Communication history record retrieved successfully', historyRecord);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve communication history record', error.message);
   }
 };
@@ -69,24 +62,14 @@ const getCommunicationHistoryById = async (req, res) => {
 const updateCommunicationHistory = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid CommunicationHistory ObjectId format');
-    }
-
-    const historyRecord = await CommunicationHistory.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
-    if (!historyRecord) {
-      return sendError(res, 404, `Communication history record with ID ${id} not found`);
-    }
-
+    const historyRecord = await communicationHistoryService.update(id, req.body);
     return sendSuccess(res, 200, 'Communication history record updated successfully', historyRecord);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update communication history record', error.message);
   }
@@ -99,19 +82,15 @@ const updateCommunicationHistory = async (req, res) => {
 const deleteCommunicationHistory = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid CommunicationHistory ObjectId format');
-    }
-
-    const historyRecord = await CommunicationHistory.findByIdAndDelete(id);
-
-    if (!historyRecord) {
-      return sendError(res, 404, `Communication history record with ID ${id} not found`);
-    }
-
+    const historyRecord = await communicationHistoryService.delete(id);
     return sendSuccess(res, 200, 'Communication history record deleted successfully', historyRecord);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete communication history record', error.message);
   }
 };

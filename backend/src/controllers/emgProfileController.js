@@ -1,10 +1,9 @@
 /**
  * EMGProfile Controller
- * Handles CRUD operations for calibrated sEMG threshold profiles
+ * Handles HTTP request/response orchestration for calibrated sEMG threshold profiles using EMGProfile Service.
  */
 
-const mongoose = require('mongoose');
-const { EMGProfile } = require('../models');
+const emgProfileService = require('../services/emgProfileService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,7 +12,7 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createEMGProfile = async (req, res) => {
   try {
-    const emgProfile = await EMGProfile.create(req.body);
+    const emgProfile = await emgProfileService.create(req.body);
     return sendSuccess(res, 201, 'EMG profile created successfully', emgProfile);
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -29,7 +28,7 @@ const createEMGProfile = async (req, res) => {
  */
 const getAllEMGProfiles = async (req, res) => {
   try {
-    const emgProfiles = await EMGProfile.find().populate('patientId', 'fullName aphasiaType age');
+    const emgProfiles = await emgProfileService.getAll();
     return sendSuccess(res, 200, 'EMG profiles retrieved successfully', emgProfiles);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve EMG profiles', error.message);
@@ -43,19 +42,15 @@ const getAllEMGProfiles = async (req, res) => {
 const getEMGProfileById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid EMGProfile ObjectId format');
-    }
-
-    const emgProfile = await EMGProfile.findById(id).populate('patientId', 'fullName aphasiaType age');
-
-    if (!emgProfile) {
-      return sendError(res, 404, `EMGProfile with ID ${id} not found`);
-    }
-
+    const emgProfile = await emgProfileService.getById(id);
     return sendSuccess(res, 200, 'EMG profile retrieved successfully', emgProfile);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve EMG profile', error.message);
   }
 };
@@ -67,24 +62,14 @@ const getEMGProfileById = async (req, res) => {
 const updateEMGProfile = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid EMGProfile ObjectId format');
-    }
-
-    const emgProfile = await EMGProfile.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
-    if (!emgProfile) {
-      return sendError(res, 404, `EMGProfile with ID ${id} not found`);
-    }
-
+    const emgProfile = await emgProfileService.update(id, req.body);
     return sendSuccess(res, 200, 'EMG profile updated successfully', emgProfile);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update EMG profile', error.message);
   }
@@ -97,19 +82,15 @@ const updateEMGProfile = async (req, res) => {
 const deleteEMGProfile = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid EMGProfile ObjectId format');
-    }
-
-    const emgProfile = await EMGProfile.findByIdAndDelete(id);
-
-    if (!emgProfile) {
-      return sendError(res, 404, `EMGProfile with ID ${id} not found`);
-    }
-
+    const emgProfile = await emgProfileService.delete(id);
     return sendSuccess(res, 200, 'EMG profile deleted successfully', emgProfile);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete EMG profile', error.message);
   }
 };

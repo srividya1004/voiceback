@@ -1,10 +1,9 @@
 /**
  * Appointment Controller
- * Handles CRUD operations for clinical session scheduling between patients and doctors
+ * Handles HTTP request/response orchestration for clinical session scheduling using Appointment Service.
  */
 
-const mongoose = require('mongoose');
-const { Appointment } = require('../models');
+const appointmentService = require('../services/appointmentService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -13,7 +12,7 @@ const { sendSuccess, sendError } = require('../utils/responseFormatter');
  */
 const createAppointment = async (req, res) => {
   try {
-    const appointment = await Appointment.create(req.body);
+    const appointment = await appointmentService.create(req.body);
     return sendSuccess(res, 201, 'Appointment scheduled successfully', appointment);
   } catch (error) {
     if (error.name === 'ValidationError') {
@@ -29,9 +28,7 @@ const createAppointment = async (req, res) => {
  */
 const getAllAppointments = async (req, res) => {
   try {
-    const appointments = await Appointment.find()
-      .populate('patientId', 'fullName aphasiaType age')
-      .populate('doctorId', 'fullName specialization hospitalAffiliation licenseNumber');
+    const appointments = await appointmentService.getAll();
     return sendSuccess(res, 200, 'Appointments retrieved successfully', appointments);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve appointments', error.message);
@@ -45,21 +42,15 @@ const getAllAppointments = async (req, res) => {
 const getAppointmentById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Appointment ObjectId format');
-    }
-
-    const appointment = await Appointment.findById(id)
-      .populate('patientId', 'fullName aphasiaType age')
-      .populate('doctorId', 'fullName specialization hospitalAffiliation licenseNumber');
-
-    if (!appointment) {
-      return sendError(res, 404, `Appointment with ID ${id} not found`);
-    }
-
+    const appointment = await appointmentService.getById(id);
     return sendSuccess(res, 200, 'Appointment retrieved successfully', appointment);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to retrieve appointment', error.message);
   }
 };
@@ -71,24 +62,14 @@ const getAppointmentById = async (req, res) => {
 const updateAppointment = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Appointment ObjectId format');
-    }
-
-    const appointment = await Appointment.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true
-    });
-
-    if (!appointment) {
-      return sendError(res, 404, `Appointment with ID ${id} not found`);
-    }
-
+    const appointment = await appointmentService.update(id, req.body);
     return sendSuccess(res, 200, 'Appointment updated successfully', appointment);
   } catch (error) {
-    if (error.name === 'ValidationError') {
-      return sendError(res, 400, 'Validation Error', error.errors);
+    if (error.name === 'ValidationError' || error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message, error.errors);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
     }
     return sendError(res, 500, 'Failed to update appointment', error.message);
   }
@@ -101,19 +82,15 @@ const updateAppointment = async (req, res) => {
 const deleteAppointment = async (req, res) => {
   try {
     const { id } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return sendError(res, 400, 'Invalid Appointment ObjectId format');
-    }
-
-    const appointment = await Appointment.findByIdAndDelete(id);
-
-    if (!appointment) {
-      return sendError(res, 404, `Appointment with ID ${id} not found`);
-    }
-
+    const appointment = await appointmentService.delete(id);
     return sendSuccess(res, 200, 'Appointment deleted successfully', appointment);
   } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
     return sendError(res, 500, 'Failed to delete appointment', error.message);
   }
 };
