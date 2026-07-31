@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test:models": "node scripts/testModels.js",
-    "test:routes": "node scripts/testRoutes.js"
+    "test:routes": "node scripts/testRoutes.js",
+    "test:services": "node scripts/testServices.js"
   },
   "keywords": [
     "voiceback",
