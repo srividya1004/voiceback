@@ -101,15 +101,38 @@ const deleteUserLogin = async (req, res) => {
   }
 };
 
+/**
+ * User login
+ * @route POST /api/user-logins/login
+ */
+const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return sendError(res, 400, 'Email and password are required');
+    }
+    const result = await userLoginService.loginUser(email, password);
+    return sendSuccess(res, 200, 'Login successful', result);
+  } catch (error) {
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 401, error.message);
+    }
+    return sendError(res, 500, 'Failed to login', error.message);
+  }
+};
+
 module.exports = {
   create: createUserLogin,
   getAll: getAllUserLogins,
   getById: getUserLoginById,
   update: updateUserLogin,
   delete: deleteUserLogin,
+  login,
+  loginUser: login,
   createUserLogin,
   getAllUserLogins,
   getUserLoginById,
   updateUserLogin,
   deleteUserLogin
 };
+

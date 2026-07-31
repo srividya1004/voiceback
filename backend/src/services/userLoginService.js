@@ -5,6 +5,8 @@
 
 const { UserLogin } = require('../models');
 const { validateObjectId } = require('../utils/validationHelper');
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 /**
  * Create a new UserLogin record
@@ -12,10 +14,17 @@ const { validateObjectId } = require('../utils/validationHelper');
  * @returns {Promise<Object>} Created UserLogin document (without passwordHash)
  */
 const createUserLogin = async (userData) => {
-  const userLogin = await UserLogin.create(userData);
-  const result = userLogin.toObject();
-  delete result.passwordHash;
-  return result;
+    // Hash the password before saving
+    const hashedPassword = await bcrypt.hash(userData.passwordHash, 10);
+
+    userData.passwordHash = hashedPassword;
+
+    const userLogin = await UserLogin.create(userData);
+
+    const result = userLogin.toObject();
+    delete result.passwordHash;
+
+    return result;
 };
 
 /**
@@ -85,6 +94,49 @@ const deleteUserLogin = async (id) => {
   return userLogin;
 };
 
+/**
+ * Login User
+ */
+const loginUser = async (email, password) => {
+
+  // Find user by email
+  const user = await UserLogin.findOne({ email });
+
+  if (!user) {
+    throw new Error("Invalid email or password");
+  }
+
+  // Compare password
+  const isMatch = await bcrypt.compare(password, user.passwordHash);
+
+  if (!isMatch) {
+    throw new Error("Invalid email or password");
+  }
+
+  // Generate JWT Token
+  const token = jwt.sign(
+    {
+      id: user._id,
+      email: user.email,
+      role: user.role
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "7d"
+    }
+  );
+
+  return {
+    token,
+    user: {
+      id: user._id,
+      email: user.email,
+      role: user.role
+    }
+  };
+};
+
+
 module.exports = {
   create: createUserLogin,
   getAll: getAllUserLogins,
@@ -95,5 +147,7 @@ module.exports = {
   getAllUserLogins,
   getUserLoginById,
   updateUserLogin,
-  deleteUserLogin
+  deleteUserLogin,
+  loginUser
 };
+
