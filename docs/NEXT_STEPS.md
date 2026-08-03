@@ -16,15 +16,17 @@
 
 ---
 
-## 2. Short-Term Tasks (Phase 2 React Progressive Web App & Backend)
+## 2. Completed & Active Software Tasks (Phase 2 React PWA & Backend)
 
 | Priority | Task Description | Target Module | Status |
 | :---: | :--- | :--- | :---: |
-| **P0** | **Node.js Express Backend & JWT Authentication:** Initialize Express server in `backend/`, configure JWT auth for Patient, Doctor, and Caregiver roles, and connect MongoDB Atlas. | `backend/` | **`[Planned]`** |
-| **P0** | **Initialize React PWA:** Create React project structure using Vite & TypeScript in `pwa/` with Web App Manifest and Service Worker install capability. | `pwa/` | **`[Planned]`** |
-| **P0** | **Web Bluetooth BLE Client:** Implement Web Bluetooth API manager to scan, pair, and subscribe to `VoiceBack-Neckband` GATT notifications directly from Chrome/Edge browsers. | `pwa/` | **`[Planned]`** |
-| **P1** | **Real-Time Signal Plotter:** Build HTML5 Canvas / SVG real-time sEMG waveform graph component rendering filtered sEMG telemetry. | `pwa/` | **`[Planned]`** |
-| **P1** | **Web Speech Output:** Integrate Web Speech API (Text-to-Speech synthesis) to speak recognized text commands locally on client devices. | `pwa/` | **`[Planned]`** |
+| **P0** | **Node.js Express Backend & JWT Authentication:** Initialize Express server in `backend/`, configure bcrypt hashing, JWT auth, and connect MongoDB Atlas with 9 Mongoose collection schemas. | `backend/` | **Completed** |
+| **P0** | **MongoDB Atlas Schema Integration & REST Endpoints:** Build 9 resource services, controllers, routes, `.env` config, and standalone Postman verification suite. | `backend/` | **Completed** |
+| **P0** | **Initialize React PWA Architecture (Sprint 1):** Create Vite + React project structure in `pwa/` with Vanilla CSS design tokens, routing, theme, auth flows, splash screen, welcome experience, role selection, and accessibility foundation. | `pwa/` | **Completed (v0.3)** |
+| **P0** | **Patient Persistent Login & Per-Session Auth:** Implement single-setup persistent device session for Patients and secure per-session auth for Doctors & Caregivers. | `pwa/` | **Completed (v0.3)** |
+| **P0** | **Web Bluetooth BLE Client (Sprint 2):** Implement Web Bluetooth API manager to scan, pair, and subscribe to `VoiceBack-Neckband` GATT notifications directly from Chrome/Edge browsers. | `pwa/` | **`[Planned - Sprint 2]`** |
+| **P1** | **Real-Time Signal Plotter (Sprint 2):** Build HTML5 Canvas / SVG real-time sEMG waveform graph component rendering filtered sEMG telemetry. | `pwa/` | **`[Planned - Sprint 2]`** |
+| **P1** | **Web Speech Output (Sprint 2):** Integrate Web Speech API (Text-to-Speech synthesis) to speak recognized text commands locally on client devices. | `pwa/` | **`[Planned - Sprint 2]`** |
 
 ---
 
@@ -39,10 +41,10 @@
 
 ---
 
-## 4. Long-Term Goals (Phase 4 Database & Clinical Evaluation)
+## 4. Long-Term Goals (Phase 4 Hardware Enclosure & Clinical Evaluation)
 
 | Priority | Task Description | Target Module | Status |
 | :---: | :--- | :--- | :---: |
-| **P0** | **MongoDB Atlas Schema Integration:** Connect all 9 collections (`UserLogin`, `Patient`, `Doctor`, `Caregiver`, `VoiceProfile`, `EMGProfile`, `TherapyProgress`, `CommunicationHistory`, `Appointment`). | `backend/` | **`[Planned]`** |
 | **P2** | **Ergonomic Neckband Enclosure:** 3D print dynamic neckband enclosure housing ESP32, TP4056 PMIC, battery, amplifier, and speaker. | `hardware/` | **`[TODO]`** |
 | **P2** | **Clinical Pilot Testing:** Conduct trial evaluation with speech pathologists and aphasia patients for usability feedback. | Clinical | **`[Planned]`** |
+

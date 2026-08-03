@@ -40,10 +40,11 @@
 
 ## 5. Current Project Status
 
-- **Overall Phase:** Prototype / Proof of Concept (Firmware v0.1 Implemented).
+- **Overall Phase:** Prototype / Proof of Concept (Firmware v0.1 Implemented | Backend API v0.2 Implemented).
 - **Firmware Subsystem:** Complete C++/Arduino implementation for ESP32 with 12-bit ADC acquisition, Exponential Moving Average (EMA) filtering, NimBLE GATT JSON telemetry streaming, and MAX98357A I2S DAC driver.
+- **Backend Subsystem:** Complete Node.js Express REST API server connected to MongoDB Atlas with 9 Mongoose schemas, full CRUD services & controllers, bcrypt password hashing (10 rounds), JWT-based login auth service (`POST /api/user-logins/login`), `.env` configuration, and standalone Postman API test suite.
 - **Hardware Subsystem:** Benchtop prototype wiring matrix validated (ESP32 Dev Board + AD620 EMG + MAX98357A Amp + 4Ω 3W Speaker). Ergonomic 3D neckband chassis physical fabrication is **`[TODO]`**.
-- **Software Subsystem:** Mobile App, Backend REST API, FastAPI AI Engine, and Web Dashboards are **`[Planned]`**.
+- **Client & AI Subsystem:** React PWA and FastAPI AI Engine are **`[Planned]`**.
 
 ---
 
@@ -61,28 +62,24 @@ voiceback/
 │   ├── CHANGELOG.md        # Versioned release notes (Keep-a-Changelog format)
 │   ├── NEXT_STEPS.md       # Prioritized task roadmap & development checklist
 │   ├── HARDWARE.md         # Hardware components, pin assignments & wiring table
-│   ├── SOFTWARE.md         # Firmware architecture & planned software modules
+│   ├── SOFTWARE.md         # Firmware & Node.js Express backend documentation
 │   ├── AI_PIPELINE.md      # Signal processing, feature extraction & ML pipeline
-│   ├── DATABASE.md         # Planned MongoDB Atlas schema architecture
+│   ├── DATABASE.md         # MongoDB Atlas schema specifications & verification
 │   ├── DECISIONS.md        # Architecture Decision Records (ADRs)
 │   └── MEETING_NOTES.md    # Confirmed meeting notes and milestone logs
 │
-├── firmware/               # ESP32 C++ PlatformIO Firmware Project
+├── firmware/               # [COMPLETED v0.1] ESP32 C++ PlatformIO Firmware Project
 │   ├── platformio.ini      # Build configuration & library dependencies
-│   ├── README.md           # Firmware build instructions & serial plotting guide
-│   ├── include/            # C++ Header files
-│   │   ├── config.h        # Pin assignments, BLE UUIDs, sampling rate, EMA alpha
-│   │   ├── emg_sensor.h    # AD620 EMG acquisition & EMA filter header
-│   │   ├── ble_service.h   # NimBLE GATT server header
-│   │   └── audio_driver.h  # MAX98357A I2S DAC driver header
-│   └── src/                # C++ Implementation source files
-│       ├── main.cpp        # System setup & 50Hz telemetry loop
-│       ├── emg_sensor.cpp  # ADC sampling, EMA filter, baseline calibration
-│       ├── ble_service.cpp # NimBLE advertising & JSON notify characteristic
-│       └── audio_driver.cpp# ESP32 I2S initialization & test tone generator
+│   ├── include/            # C++ Header files (config.h, emg_sensor.h, ble_service.h, audio_driver.h)
+│   └── src/                # C++ Source files (main.cpp, emg_sensor.cpp, ble_service.cpp, audio_driver.cpp)
+│
+├── backend/                # [COMPLETED v0.2] Node.js Express REST API & MongoDB Atlas
+│   ├── package.json        # Dependencies (Express, Mongoose, bcrypt, jsonwebtoken, dotenv, cors)
+│   ├── .env                # Active environment variables (PORT, MONGODB_URI, JWT_SECRET)
+│   ├── scripts/            # Test scripts (testModels.js, testRoutes.js, testServices.js)
+│   └── src/                # Models, Controllers, Services, Routes, Utils, Middleware
 │
 ├── pwa/                    # [Planned] React Progressive Web App (PWA - Patient/Doctor/Caregiver)
-├── backend/                # [Planned] Node.js + Express JWT API Backend
 └── ai_engine/              # [Planned] FastAPI Python EMG Speech Classification Engine
 ```
 
@@ -102,11 +99,10 @@ The hardware baseline comprises accessible, high-performance prototype component
 
 ## 8. Software Overview
 
-- **Firmware (Implemented):** Developed using PlatformIO and Arduino framework. Integrates `ArduinoJson` (v6.21.3) and `NimBLE-Arduino` (v1.4.1). Includes a 50Hz fixed-interval sampling loop (20ms interval), Exponential Moving Average filtering ($\alpha = 0.15$), and I2S audio driver.
+- **Firmware (Implemented v0.1):** Developed using PlatformIO and Arduino framework. Integrates `ArduinoJson` (v6.21.3) and `NimBLE-Arduino` (v1.4.1). Includes a 50Hz fixed-interval sampling loop (20ms interval), Exponential Moving Average filtering ($\alpha = 0.15$), and I2S audio driver.
+- **Backend API & Database (Implemented v0.2):** Node.js + Express REST API server with 9 Mongoose schemas connected to MongoDB Atlas, full CRUD controllers/services, bcrypt password hashing, and JWT login authentication (`POST /api/user-logins/login`).
 - **React Progressive Web App `[Planned]`:** React PWA with Web Bluetooth API for sEMG telemetry reception, live waveform graphing, Web Speech TTS synthesis, and JWT multi-role access (Patient, Doctor, Caregiver).
-- **Backend API `[Planned]`:** Node.js + Express REST API with JWT authentication & WebSocket relay.
 - **AI Classification Service `[Planned]`:** FastAPI Python service running machine learning models for speech intent categorization.
-- **Database `[Planned]`:** MongoDB Atlas (9 collection schemas).
 
 ---
 
@@ -129,7 +125,7 @@ $$\text{EMG Signal} \longrightarrow \text{Signal Processing} \longrightarrow \te
 Development alternates between multiple workstations (**Home PC** and **College PC**). To prevent state loss:
 1. **Permanent File Parity:** Code, configuration, and documentation in git repository serve as the sole source of truth.
 2. **Pre-Session Pull:** Always execute `git pull` prior to making edits.
-3. **Post-Session Commit:** Commit all modified files and update log files (`DEVELOPER_HANDOVER.md`, `CHANGELOG.md`, `PROJECT_HISTORY.md`) before pushing to GitHub.
+3. **Post-Session Commit:** Commit all modified files and update log files before pushing to GitHub.
 
 ---
 
@@ -142,11 +138,13 @@ Development alternates between multiple workstations (**Home PC** and **College 
 | **EMA Signal Filter** | **Implemented** | $\alpha = 0.15$, 50Hz / 20ms sampling loop |
 | **NimBLE BLE Server** | **Implemented** | Service & EMG Characteristic notify stream |
 | **MAX98357A I2S Audio Driver** | **Implemented** | ESP32 Hardware `I2S_NUM_0`, 16kHz PCM, 440Hz Chime |
+| **Node.js Express Backend** | **Implemented (v0.2)** | Node.js, Express, JWT Auth, bcrypt |
+| **MongoDB Atlas Database** | **Implemented (v0.2)** | MongoDB Atlas (9 Mongoose schemas) |
+| **Postman API Test Suite** | **Implemented (v0.2)** | Standalone test scripts & Postman collections |
 | **Neckband Enclosure** | **`[TODO]`** | 3D Printed Wearable Enclosure |
 | **React PWA Client** | **`[Planned]`** | React, Vite, Web Bluetooth API, PWA Manifest |
-| **Node.js Express Backend** | **`[Planned]`** | Node.js, Express, JWT Auth, Socket.io |
 | **FastAPI AI Engine** | **`[Planned]`** | Python, FastAPI, Scikit-Learn / PyTorch |
-| **MongoDB Database** | **`[Planned]`** | MongoDB Atlas (9 collections schema) |
+
 
 ---
 

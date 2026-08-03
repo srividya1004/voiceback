@@ -103,3 +103,25 @@ Adopt a single, unified **React Progressive Web App (PWA)** in `pwa/` built with
 ### Consequences
 - **Positive:** Zero app store approval delays, instant cross-device access across Android, iPhone, tablets, and desktop browsers, single maintainable frontend repository, low friction for clinical demos.
 - **Graceful Fallback:** Bluetooth communication with the ESP32 wearable is active on supported browsers (Chrome, Edge, Android/Desktop browsers). On unsupported browsers (e.g. standard iOS Safari), the PWA gracefully displays connection status while providing full access to all other application features including JWT authentication, patient dashboards, doctor/caregiver clinical tracking, therapy progress logs, Web Speech API TTS, and appointment scheduling.
+
+---
+
+## ADR-006: Selection of Node.js, Express, Mongoose, bcrypt, and JWT for Backend & Database Tier
+
+### Context & Problem
+The VoiceBack system requires a secure, clinical-grade backend REST API to manage 9 resource domains (`UserLogin`, `Patient`, `Doctor`, `Caregiver`, `VoiceProfile`, `EMGProfile`, `TherapyProgress`, `CommunicationHistory`, `Appointment`), handle user authentication, hash passwords securely, and interface with cloud NoSQL database storage (MongoDB Atlas).
+
+### Decision
+Implement the backend in `backend/` using **Node.js (v18+)**, **Express.js (v4.18)**, **Mongoose ODM (v9.9)**, **MongoDB Atlas**, **bcrypt (v6.0)** for password hashing, and **jsonwebtoken (v9.0)** for JWT-based login authentication.
+
+### Rationale
+- **Non-blocking Event-Driven I/O:** Node.js Express handles concurrent REST requests efficiently with low latency.
+- **MongoDB Atlas Integration:** Cloud-hosted MongoDB Atlas NoSQL collection architecture handles flexible schema evolution for EMG arrays, clinical progress notes, and communication logs.
+- **Mongoose Schema Security:** Mongoose ORM provides strict schema validation, type safety, and automatic password projection stripping (`.select('-passwordHash')`).
+- **Cryptographic Security:** `bcrypt` with 10 salt rounds provides resistant password hashing against rainbow table attacks.
+- **Stateless JWT Authentication:** JSON Web Tokens with 7-day validity allow stateless authentication across React PWA web sessions without server session state.
+
+### Consequences
+- **Positive:** Modular Layered Architecture (Routes -> Controllers -> Services -> Models), secure password handling, 100% testable via standalone Node scripts and Postman.
+- **Negative:** Requires secret key management via `.env` (`MONGODB_URI`, `JWT_SECRET`).
+

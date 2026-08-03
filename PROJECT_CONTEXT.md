@@ -1,7 +1,7 @@
 # VoiceBack – Comprehensive Project Context & Specifications
 
 > **Document Status:** Permanent Source of Truth  
-> **Last Updated:** 2026-07-30  
+> **Last Updated:** 2026-07-31  
 > **Target Audience:** Developers, Hardware Engineers, AI Researchers, Speech Pathologists  
 
 ---
@@ -59,9 +59,9 @@ graph TD
 
 ---
 
-## 3. Firmware Architecture (ESP32 C++)
+## 3. Firmware Architecture (ESP32 C++ - Implemented v0.1)
 
-Located in [firmware/](file:///c:/Users/DELL/Desktop/voiceback/firmware), the firmware is modularized into discrete drivers:
+Located in [firmware/](firmware), the firmware is modularized into discrete drivers:
 
 - **Config Module (`include/config.h`)**: Defines hardware pins, ADC 12-bit parameters, sample rate (50Hz / 20ms interval), EMA smoothing coefficient ($\alpha = 0.15$), and NimBLE GATT UUIDs.
 - **EMG Subsystem (`include/emg_sensor.h`, `src/emg_sensor.cpp`)**: Reads raw ADC values from GPIO34 ($0-4095$), applies Exponential Moving Average (EMA) filtering:
@@ -75,29 +75,29 @@ Located in [firmware/](file:///c:/Users/DELL/Desktop/voiceback/firmware), the fi
 
 ---
 
-## 4. Software Architecture & Ecosystem
+## 4. Software Architecture & Ecosystem (Backend Implemented v0.2)
 
 ```mermaid
 graph LR
-    subgraph Firmware Layer [ESP32 Dev Board]
+    subgraph Firmware Layer [ESP32 Dev Board - Implemented]
         A1[AD620 Analog Input] --> A2[EMA Filter Engine]
         A2 --> A3[NimBLE Telemetry Service]
         A4[I2S Audio Driver] <-- PCM Samples --> A3
     end
 
-    subgraph Client Layer [React Progressive Web App]
+    subgraph Client Layer [React Progressive Web App - Planned]
         B1[Web Bluetooth Client] --> B2[EMG Waveform Canvas]
         B2 --> B3[AI Inference Trigger Service]
         B3 --> B4[Web Speech TTS Engine]
         B5[JWT Auth & Multi-Role UI]
     end
 
-    subgraph Backend Services [Node.js & FastAPI]
+    subgraph Backend Services [Node.js Implemented / FastAPI Planned]
         C1[Node.js Express REST API] <--> C2[FastAPI AI Classifier Engine]
         C1 <--> C3[Socket.io Relay]
     end
 
-    subgraph Database
+    subgraph Database [Implemented]
         D1[(MongoDB Atlas - 9 Collections)]
     end
 
@@ -107,17 +107,25 @@ graph LR
     C1 --> D1
 ```
 
+### Backend REST API & Authentication Architecture (`backend/src/`)
+- **Express App Setup (`app.js`)**: CORS middleware configured via `CLIENT_ORIGIN`, JSON body parsing, HTTP logging (`logger.js`), and centralized error handling (`errorHandler.js`).
+- **User Authentication (`userLoginService.js`, `userLoginController.js`)**:
+  - Passwords hashed using `bcrypt` with 10 salt rounds upon creation.
+  - Password hashes automatically excluded from queries (`.select('-passwordHash')`).
+  - JWT Authentication endpoint `POST /api/user-logins/login` validates credentials and issues a signed JWT token valid for 7 days (`expiresIn: "7d"`).
+- **Environment Configuration (`.env`)**: Manages `PORT=5000`, `NODE_ENV`, `MONGODB_URI` (MongoDB Atlas), `JWT_SECRET`, and `CLIENT_ORIGIN`.
+
 ---
 
 ## 5. AI Module & Signal Processing Pipeline
 
-1. **EMG Acquisition & Filtering**:
+1. **EMG Acquisition & Filtering (Implemented)**:
    - Sampling rate: 50 Hz (20ms interval).
    - Smoothing: Exponential Moving Average (EMA, $\alpha = 0.15$).
-2. **Windowing & Feature Extraction**:
+2. **Windowing & Feature Extraction (Planned)**:
    - Window size: 200 ms sliding window with 50 ms overlap.
    - Feature vector: Mean Absolute Value (MAV), Root Mean Square (RMS), Zero Crossing Rate (ZCR), and Waveform Length (WL).
-3. **Speech Attempt Classification**:
+3. **Speech Attempt Classification (Planned)**:
    - Model: Lightweight Random Forest / CNN classifier running inside `ai_engine/` (FastAPI).
    - Categorization: Silent Speech, Whispered Speech, Weak Speech, Unclear Speech.
 4. **Speech Output Generation**:
@@ -125,7 +133,7 @@ graph LR
 
 ---
 
-## 6. Database Schema Architecture (MongoDB Atlas)
+## 6. Database Schema Architecture (MongoDB Atlas - Implemented)
 
 The system utilizes **9 MongoDB Collections** designed for clinical and assistive tracking:
 
@@ -145,16 +153,25 @@ erDiagram
     Caregiver ||--o{ Patient : "monitors"
 ```
 
-### Collection Specifications:
+### Collection Specifications & REST Endpoints:
 1. `UserLogin`: Credentials, role (`Patient` | `Doctor` | `Caregiver`), password hash, last login.
+   - Endpoints: `GET /api/user-logins`, `GET /api/user-logins/:id`, `POST /api/user-logins`, `POST /api/user-logins/login`, `PUT /api/user-logins/:id`, `DELETE /api/user-logins/:id`
 2. `Patient`: Clinical profile, age, aphasia type classification, assigned doctor ID, assigned caregiver ID.
+   - Endpoints: `GET /api/patients`, `GET /api/patients/:id`, `POST /api/patients`, `PUT /api/patients/:id`, `DELETE /api/patients/:id`
 3. `Doctor`: Medical credentials, specialization, hospital affiliation.
+   - Endpoints: `GET /api/doctors`, `GET /api/doctors/:id`, `POST /api/doctors`, `PUT /api/doctors/:id`, `DELETE /api/doctors/:id`
 4. `Caregiver`: Contact details, relationship to patient, assigned patient list.
+   - Endpoints: `GET /api/caregivers`, `GET /api/caregivers/:id`, `POST /api/caregivers`, `PUT /api/caregivers/:id`, `DELETE /api/caregivers/:id`
 5. `VoiceProfile`: Pitch preference, speed rate, custom synthesized voice asset URL.
+   - Endpoints: `GET /api/voice-profiles`, `GET /api/voice-profiles/:id`, `POST /api/voice-profiles`, `PUT /api/voice-profiles/:id`, `DELETE /api/voice-profiles/:id`
 6. `EMGProfile`: Baseline sEMG thresholds, Max Voluntary Contraction (MVC) values, calibrated signature vectors.
+   - Endpoints: `GET /api/emg-profiles`, `GET /api/emg-profiles/:id`, `POST /api/emg-profiles`, `PUT /api/emg-profiles/:id`, `DELETE /api/emg-profiles/:id`
 7. `TherapyProgress`: Session logs, completed exercise counts, accuracy scores over time.
+   - Endpoints: `GET /api/therapy-progress`, `GET /api/therapy-progress/:id`, `POST /api/therapy-progress`, `PUT /api/therapy-progress/:id`, `DELETE /api/therapy-progress/:id`
 8. `CommunicationHistory`: Real-time speech recognition log (timestamp, attempt type, recognized text, confidence score).
+   - Endpoints: `GET /api/communication-history`, `GET /api/communication-history/:id`, `POST /api/communication-history`, `PUT /api/communication-history/:id`, `DELETE /api/communication-history/:id`
 9. `Appointment`: Scheduling system (patient ID, doctor ID, date, status, clinical notes).
+   - Endpoints: `GET /api/appointments`, `GET /api/appointments/:id`, `POST /api/appointments`, `PUT /api/appointments/:id`, `DELETE /api/appointments/:id`
 
 ---
 
@@ -164,3 +181,4 @@ Because development alternates between a **College PC** and a **Home PC**:
 - **No Invisible State**: Decisions made in chat or memory must be immediately persisted to repository files.
 - **Git Parity**: Every session starts with `git pull` and ends with committed, pushed changes accompanied by updated documentation.
 - **Standardized Environments**: Both machines run VS Code, PlatformIO IDE, Node.js 18+, Python 3.10, and Git.
+

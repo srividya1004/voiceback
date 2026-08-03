@@ -1,0 +1,91 @@
+/* VoiceBack Experience Design v1.0 - Official Brand Theme System */
+
+:root {
+  /* Brand Colors */
+  --color-blue: #005EB8;             /* Primary Blue */
+  --color-blue-hover: #00468B;
+  --color-blue-light: #e6f0fa;
+
+  --color-green: #1ABC9C;            /* Recovery Green */
+  --color-green-hover: #16a085;
+  --color-green-light: #e8f8f5;
+
+  --color-danger: #e74c3c;           /* Emergency Red */
+
+  /* Light Theme (High Contrast & High Readability) */
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-card-solid: #ffffff;
+  --bg-hover: #f1f5f9;
+
+  --text-main: #0f172a;              /* High-contrast dark slate */
+  --text-muted: #475569;             /* Crisp readable slate */
+  --text-inverse: #ffffff;
+
+  --border-subtle: #cbd5e1;
+  --border-active: #1ABC9C;
+  --border-error: #e74c3c;
+
+  /* Shadows & Glass */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
+  --glass-backdrop: blur(16px);
+
+  /* Border Radii */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-full: 9999px;
+
+  /* Typography Scale */
+  --font-family-base: "Outfit", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-size-multiplier: 1;
+
+  --font-size-xs: calc(0.75rem * var(--font-size-multiplier));
+  --font-size-sm: calc(0.875rem * var(--font-size-multiplier));
+  --font-size-md: calc(1rem * var(--font-size-multiplier));
+  --font-size-lg: calc(1.25rem * var(--font-size-multiplier));
+  --font-size-xl: calc(1.5rem * var(--font-size-multiplier));
+  --font-size-2xl: calc(2rem * var(--font-size-multiplier));
+  --font-size-3xl: calc(2.6rem * var(--font-size-multiplier));
+
+  --focus-ring: 0 0 0 3px rgba(26, 188, 156, 0.35);
+  --touch-target-min: 48px;
+  --transition-fast: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-smooth: 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Dark Theme Overrides */
+[data-theme="dark"] {
+  --color-blue: #38bdf8;
+  --color-blue-hover: #0284c7;
+  --color-blue-light: rgba(56, 189, 248, 0.15);
+
+  --color-green: #2dd4bf;
+  --color-green-hover: #14b8a6;
+  --color-green-light: rgba(45, 212, 191, 0.15);
+
+  --bg-app: #0f172a;
+  --bg-card: #1e293b;
+  --bg-card-solid: #1e293b;
+  --bg-hover: #334155;
+
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-inverse: #0f172a;
+
+  --border-subtle: #334155;
+  --border-active: #2dd4bf;
+  --border-error: #f87171;
+
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.7);
+}
+
+/* Large Text Mode Scaler */
+[data-large-text="true"] {
+  --font-size-multiplier: 1.25;
+  --touch-target-min: 58px;
+}

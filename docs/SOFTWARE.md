@@ -91,12 +91,95 @@ System entry point. Executes `setup()` (serial CDC initialization, ADC calibrati
 
 ---
 
-## 5. Software Ecosystem Modules (Status Summary)
+## 5. Node.js Express Backend Architecture (`backend/`)
+
+The VoiceBack backend is a modular Node.js Express REST API server connected to MongoDB Atlas.
+
+```
+backend/
+├── package.json          # Node.js dependencies (express, mongoose, bcrypt, jsonwebtoken, dotenv, cors)
+├── .env                  # Environment configuration (PORT, MONGODB_URI, JWT_SECRET, CLIENT_ORIGIN)
+├── .env.example          # Environment configuration template
+├── README.md             # Backend setup & API reference documentation
+│
+├── scripts/              # Automated verification test scripts
+│   ├── testModels.js     # Validates Mongoose schema definitions
+│   ├── testServices.js   # Validates database CRUD services & bcrypt hashing
+│   └── testRoutes.js     # Validates Express route handlers
+│
+└── src/                  # Application source code
+    ├── server.js         # HTTP server entry point & graceful shutdown listeners
+    ├── app.js            # Express app, CORS, body parsers, route registration, 404 & error handlers
+    │
+    ├── config/           # Centralized configuration & MongoDB connection loader
+    │   ├── index.js      # Central environment config
+    │   └── db.js         # Mongoose connection manager
+    │
+    ├── models/           # 9 Mongoose collection schemas
+    │   ├── UserLogin.js, Patient.js, Doctor.js, Caregiver.js
+    │   ├── VoiceProfile.js, EMGProfile.js, TherapyProgress.js
+    │   ├── CommunicationHistory.js, Appointment.js, index.js
+    │
+    ├── services/         # Business logic layer
+    │   ├── userLoginService.js (Auth, bcrypt hashing & JWT token generation)
+    │   ├── patientService.js, doctorService.js, caregiverService.js
+    │   ├── voiceProfileService.js, emgProfileService.js, therapyProgressService.js
+    │   ├── communicationHistoryService.js, appointmentService.js, index.js
+    │
+    ├── controllers/      # Request/Response orchestration layer
+    │   ├── userLoginController.js, patientController.js, doctorController.js, caregiverController.js
+    │   ├── voiceProfileController.js, emgProfileController.js, therapyProgressController.js
+    │   ├── communicationHistoryController.js, appointmentController.js, healthController.js
+    │
+    ├── routes/           # REST API Route definitions
+    │   ├── userLoginRoutes.js, patientRoutes.js, doctorRoutes.js, caregiverRoutes.js
+    │   ├── voiceProfileRoutes.js, emgProfileRoutes.js, therapyProgressRoutes.js
+    │   ├── communicationHistoryRoutes.js, appointmentRoutes.js, healthRoutes.js, index.js
+    │
+    ├── middleware/       # Custom middleware modules
+    │   ├── logger.js     # HTTP request logging middleware
+    │   └── errorHandler.js# Centralized error handler middleware
+    │
+    └── utils/            # Helper utilities
+        ├── validationHelper.js  # ObjectId validation helper
+        └── responseFormatter.js # Standardized JSON success/error response formatters
+```
+
+---
+
+## 6. Authentication & API Endpoint Reference
+
+### User Authentication (`POST /api/user-logins/login`)
+- **Password Hashing:** Passwords hashed using `bcrypt` with 10 salt rounds upon creation (`userLoginService.create`).
+- **Query Exclusion:** `passwordHash` field automatically stripped from database queries via `.select('-passwordHash')`.
+- **JWT Generation:** Validates user credentials and issues a signed JSON Web Token valid for 7 days (`expiresIn: "7d"`).
+
+### REST API Endpoints Overview
+
+| Resource | Base Endpoint | Supported HTTP Methods | Description |
+| :--- | :--- | :--- | :--- |
+| **Health Check** | `/health` | `GET` | Server health and operational stats |
+| **User Login** | `/api/user-logins` | `GET`, `POST`, `PUT`, `DELETE` | User credential & role CRUD |
+| **Auth Login** | `/api/user-logins/login` | `POST` | Authenticate user & issue JWT token |
+| **Patients** | `/api/patients` | `GET`, `POST`, `PUT`, `DELETE` | Patient clinical profile CRUD |
+| **Doctors** | `/api/doctors` | `GET`, `POST`, `PUT`, `DELETE` | Doctor practitioner record CRUD |
+| **Caregivers** | `/api/caregivers` | `GET`, `POST`, `PUT`, `DELETE` | Caregiver contact record CRUD |
+| **Voice Profiles** | `/api/voice-profiles` | `GET`, `POST`, `PUT`, `DELETE` | TTS audio preference CRUD |
+| **EMG Profiles** | `/api/emg-profiles` | `GET`, `POST`, `PUT`, `DELETE` | sEMG baseline calibration CRUD |
+| **Therapy Progress** | `/api/therapy-progress` | `GET`, `POST`, `PUT`, `DELETE` | Session exercise & score logs CRUD |
+| **Comm History** | `/api/communication-history`| `GET`, `POST`, `PUT`, `DELETE` | Real-time speech attempt log CRUD |
+| **Appointments** | `/api/appointments` | `GET`, `POST`, `PUT`, `DELETE` | Clinical appointment scheduling CRUD |
+
+---
+
+## 7. Software Ecosystem Modules (Status Summary)
 
 | Software Module | Directory | Technology | Implementation Status |
 | :--- | :--- | :--- | :--- |
-| **ESP32 Firmware** | `firmware/` | C++ / PlatformIO / Arduino | **Implemented (v0.1)** |
+| **ESP32 Firmware** | `firmware/` | C++ / PlatformIO / NimBLE | **Implemented (v0.1)** |
+| **Node.js Express Backend** | `backend/` | Node.js / Express / JWT Auth / bcrypt | **Implemented (v0.2)** |
+| **MongoDB Atlas Database** | `backend/` | MongoDB Atlas (9 collections via Mongoose) | **Implemented (v0.2)** |
+| **Postman API Test Suite** | `backend/scripts/` | JavaScript / Postman HTTP | **Implemented (v0.2)** |
 | **React Progressive Web App (PWA)** | `pwa/` | React / Vite / Web Bluetooth API / PWA Manifest | **`[Planned]`** |
-| **Node.js Express Backend** | `backend/` | Node.js / Express / JWT Auth / Socket.io | **`[Planned]`** |
 | **FastAPI AI Engine** | `ai_engine/` | Python 3.10 / FastAPI / Scikit-Learn | **`[Planned]`** |
-| **MongoDB Atlas Database** | `backend/` | MongoDB Atlas (9 collections) | **`[Planned]`** |
+

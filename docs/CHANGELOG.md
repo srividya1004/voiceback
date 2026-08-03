@@ -10,12 +10,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- React Progressive Web App (PWA) in `pwa/` with Web Bluetooth API, HTML5 Canvas waveform plotting, Web Speech TTS, and installable app manifest.
-- Node.js Express REST API backend server with JWT Multi-Role Authentication (`Patient`, `Doctor`, `Caregiver`) and Socket.io real-time relay (`backend/`).
+- Sprint 2 UI Portals (Patient Dashboard, Doctor Dashboard, Caregiver Dashboard, Web Bluetooth sEMG streaming, Speech Therapy).
 - FastAPI Python AI classification engine for sEMG feature extraction and model inference (`ai_engine/`).
-- MongoDB Atlas database deployment with 9 clinical collection schemas (`backend/`).
 
 ---
+
+## [0.3.0] - 2026-08-01
+
+### Added & Corrected
+- **Exact Official Logo Image Rendering (`VoiceBackLogo.jsx`, `pwa/public/voiceback-logo.jpg`):**
+  - Replaced all SVG/placeholder representations with the exact uploaded official VoiceBack logo image file (`voiceback-logo.jpg`), rendered consistently across Splash, Welcome, Role Selection, Patient Auth, Doctor Auth, and Caregiver Auth views.
+- **Completely Silent Application Opening (`SplashPage.jsx`, `WelcomePage.jsx`):**
+  - Removed all automatic speech synthesis and voice narration on application launch. The application now opens completely silently. Audio Guidance operates strictly when enabled via Accessibility Settings.
+- **4-Step Splash & Navigation Flow (`AppRoutes.jsx`, `SplashPage.jsx`, `WelcomePage.jsx`):**
+  - Enforced exact sequence: Splash Screen (2.5s) $\rightarrow$ Professional Animated Introduction with Avatar & Encouraging Message (no voice) $\rightarrow$ Role Selection $\rightarrow$ Login / Registration.
+- **Exact Authentication Error Handling (`authService.js`, `translations.js`):**
+  - Backend unavailable: *"Unable to connect to the server. Please try again later."*
+  - Email already exists: *"This email is already registered."*
+  - Password incorrect: *"Incorrect password."*
+  - Field-level red outlines (`.field-error`) with inline error helper text and form value retention.
+
+---
+
+## [0.2.0] - 2026-07-31
+
+### Added
+- **Node.js Express REST API Core (`backend/src/app.js`, `backend/src/server.js`):** Built HTTP server with CORS support, JSON body parsers, HTTP request logging (`logger.js`), and centralized error handling middleware (`errorHandler.js`).
+- **MongoDB Atlas Database Integration (`backend/src/config/`):** Integrated Mongoose (v9.9.0) database connection lifecycle targeting MongoDB Atlas via `.env` configuration.
+- **9 Mongoose Collection Schemas (`backend/src/models/`):** Implemented schema models for `UserLogin`, `Patient`, `Doctor`, `Caregiver`, `VoiceProfile`, `EMGProfile`, `TherapyProgress`, `CommunicationHistory`, and `Appointment`.
+- **Full CRUD Business Services (`backend/src/services/`):** Implemented service layer with Mongoose queries, input validation, and automatic password hash projection stripping (`.select('-passwordHash')`).
+- **REST Controller Layer (`backend/src/controllers/`):** Built controllers handling HTTP status formatting (`sendSuccess`, `sendError`), validation errors (400), not found (404), and internal errors (500).
+- **REST Router Modules (`backend/src/routes/`):** Registered Express routers under `/api` for all 9 data resources.
+- **User Authentication Stack (`userLoginService.js`, `userLoginController.js`):**
+  - Integrated `bcrypt` password hashing (10 salt rounds) on user creation.
+  - Implemented JWT authentication endpoint `POST /api/user-logins/login` generating signed JSON Web Tokens valid for 7 days (`expiresIn: "7d"`).
+- **Environment Configuration (`backend/.env`, `backend/.env.example`):** Parameterized `PORT`, `NODE_ENV`, `MONGODB_URI`, `JWT_SECRET`, and `CLIENT_ORIGIN`.
+- **Automated Verification & Testing (`backend/scripts/`):** Created standalone test scripts (`testModels.js`, `testRoutes.js`, `testServices.js`) and Postman HTTP testing suite.
+
+---
+
 
 ## [0.1.0] - 2026-07-30
 
