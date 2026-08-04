@@ -39,6 +39,7 @@ import appointmentService from '../services/appointmentService';
 import communicationService from '../services/communicationService';
 import therapyService from '../services/therapyService';
 import voiceService from '../services/voiceService';
+import deviceService from '../services/deviceService';
 
 export const PatientDashboardScreen = ({ onLogout }) => {
   const { t, voiceAssistant, speak } = useSettings();
@@ -64,6 +65,14 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const [communicationHistory, setCommunicationHistory] = useState([]);
   const [therapyProgress, setTherapyProgress] = useState([]);
   const [voiceProfiles, setVoiceProfiles] = useState([]);
+  const [deviceStatus, setDeviceStatus] = useState(() => deviceService.getDeviceStatus());
+
+  useEffect(() => {
+    const unsubscribe = deviceService.subscribe((status) => {
+      setDeviceStatus(status);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Avatar Image Data URL
   const [avatarDataUrl, setAvatarDataUrl] = useState(() => {
@@ -588,42 +597,64 @@ export const PatientDashboardScreen = ({ onLogout }) => {
               <p className="welcome-subtitle">Welcome back to VoiceBack.</p>
             </section>
 
-            {/* 2. WEARABLE DEVICE STATUS CARD ("Waiting for Device" - NO FAKE DATA) */}
+            {/* 2. WEARABLE DEVICE STATUS CARD */}
             <section className="device-status-card">
               <div className="device-status-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                   <Radio size={18} color="var(--color-brand-tagline)" />
                   <h3 className="device-status-title">Wearable Device</h3>
                 </div>
-                <span className="device-name-badge disconnected">Waiting for Device</span>
+                <span className={`device-name-badge ${deviceStatus.status === 'Connected' ? 'connected' : 'disconnected'}`}>
+                  {deviceStatus.status}
+                </span>
               </div>
 
               <div className="device-metrics-grid">
                 <div className="metric-box">
                   <span className="metric-label">Connection Status</span>
-                  <span className="metric-value status-offline">Waiting for Device</span>
+                  <span className={`metric-value ${deviceStatus.status === 'Connected' ? 'status-online' : 'status-offline'}`}>
+                    {deviceStatus.status}
+                  </span>
                 </div>
 
                 <div className="metric-box">
-                  <span className="metric-label">EMG Sensor</span>
-                  <span className="metric-value status-offline">Waiting for Device</span>
+                  <span className="metric-label">Device Name</span>
+                  <span className="metric-value status-offline">{deviceStatus.deviceName}</span>
                 </div>
 
                 <div className="metric-box">
-                  <span className="metric-label">Battery</span>
-                  <span className="metric-value status-offline">Waiting for Device</span>
+                  <span className="metric-label">Firmware Version</span>
+                  <span className="metric-value status-offline">{deviceStatus.firmwareVersion}</span>
                 </div>
 
                 <div className="metric-box">
-                  <span className="metric-label">Bluetooth</span>
-                  <span className="metric-value status-offline">Waiting for Device</span>
+                  <span className="metric-label">Battery Level</span>
+                  <span className="metric-value status-offline">{deviceStatus.batteryLevel}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">Signal Strength</span>
+                  <span className="metric-value status-offline">{deviceStatus.signalStrength}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">EMG Status</span>
+                  <span className="metric-value status-offline">{deviceStatus.emgStatus}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">Signal Quality</span>
+                  <span className="metric-value status-offline">{deviceStatus.signalQuality}</span>
                 </div>
               </div>
 
               <button
                 type="button"
                 className="btn-connect-device"
-                onClick={() => handleOpenModule('Connect Device')}
+                onClick={() => {
+                  deviceService.startConnectionSequence();
+                  handleOpenModule('Connect Device');
+                }}
               >
                 <Wifi size={18} />
                 <span>Connect Device</span>

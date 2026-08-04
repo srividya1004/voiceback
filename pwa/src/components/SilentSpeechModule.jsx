@@ -23,6 +23,7 @@ import {
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import deviceService from '../services/deviceService';
 
 export const SilentSpeechModule = ({
   initialStep = 'silent-speech-home',
@@ -34,7 +35,15 @@ export const SilentSpeechModule = ({
   const [step, setStep] = useState(initialStep);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [deviceStatus, setDeviceStatus] = useState(() => deviceService.getDeviceStatus());
   const lastSpokenStepRef = useRef(null);
+
+  useEffect(() => {
+    const unsubscribe = deviceService.subscribe((status) => {
+      setDeviceStatus(status);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Sync profile data & avatar from localStorage
   const [profileData] = useState(() => {

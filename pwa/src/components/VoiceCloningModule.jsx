@@ -13,29 +13,35 @@ import {
   Home,
   User,
   LogOut,
-  Radio,
   Sliders,
   Volume2,
   Lock,
-  Heart
+  Heart,
+  FileAudio,
+  Trash2,
+  Sparkles,
+  CheckCircle,
+  HelpCircle,
+  Cpu
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import voiceService from '../services/voiceService';
+import authService from '../services/authService';
 
 export const VoiceCloningModule = ({
-  initialProfile,
   onBackToDashboard,
   onOpenProfile,
   onLogout
 }) => {
   const { t, voiceAssistant, speak } = useSettings();
-  const [currentStep, setCurrentStep] = useState('home'); // 'home' | 'about' | 'collection' | 'status' | 'settings'
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const lastSpokenRef = useRef(null);
+  const [activeNoticeModal, setActiveNoticeModal] = useState(null); // null | 'record' | 'upload' | 'remove'
+  const hasSpokenRef = useRef(false);
 
-  // Sync profile data & avatar from localStorage
+  // Patient Profile state
   const [patientData] = useState(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
@@ -43,7 +49,7 @@ export const VoiceCloningModule = ({
     } catch (e) {
       // ignore
     }
-    return { fullName: 'Srividya Raman' };
+    return { fullName: 'Patient' };
   });
 
   const [avatarDataUrl] = useState(() => {
@@ -54,77 +60,60 @@ export const VoiceCloningModule = ({
     }
   });
 
-  const firstLetter = patientData.fullName ? patientData.fullName.trim().charAt(0).toUpperCase() : 'S';
+  const firstLetter = patientData.fullName && patientData.fullName !== 'Patient'
+    ? patientData.fullName.trim().charAt(0).toUpperCase()
+    : 'P';
 
-  // Dynamic state ready for GET /api/voice-profiles REST API payload
-  const [voiceModelProfile] = useState(initialProfile || {
+  // Backend Voice Profile Data state
+  const [voiceProfile, setVoiceProfile] = useState({
     status: 'Not Created',
-    preferredVoice: "Patient's Own Voice",
-    voiceSpeed: 'Default',
-    voiceVolume: 'Default',
     samplesCount: 0,
+    trainingStatus: 'Not Started',
+    preferredVoice: 'Not Available',
+    lastUpdated: 'Not Available',
   });
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Voice Assistant: Speak once per screen step
+  // Load Voice Profile from Express REST API
   useEffect(() => {
-    if (!voiceAssistant || !speak) return;
+    let isMounted = true;
+    const fetchVoiceProfile = async () => {
+      setIsLoading(true);
+      try {
+        const profiles = await voiceService.getVoiceProfiles();
+        if (isMounted && Array.isArray(profiles) && profiles.length > 0) {
+          const mainProfile = profiles[0];
+          setVoiceProfile({
+            status: mainProfile.customVoiceAssetUrl ? 'Created' : 'Not Created',
+            samplesCount: mainProfile.samplesCount || 0,
+            trainingStatus: mainProfile.trainingStatus || 'Not Started',
+            preferredVoice: mainProfile.voiceGender ? `${mainProfile.voiceGender} Voice` : 'Not Available',
+            lastUpdated: mainProfile.updatedAt ? new Date(mainProfile.updatedAt).toLocaleDateString() : 'Not Available',
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to load voice profile from backend:', e.message);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
 
-    if (currentStep === 'home' && lastSpokenRef.current !== 'home') {
-      lastSpokenRef.current = 'home';
-      speak('Welcome to Voice Cloning.');
-    } else if (currentStep === 'about' && lastSpokenRef.current !== 'about') {
-      lastSpokenRef.current = 'about';
-      speak('Learn how VoiceBack creates your personalized voice model.');
-    } else if (currentStep === 'collection' && lastSpokenRef.current !== 'collection') {
-      lastSpokenRef.current = 'collection';
-      speak('Voice samples will help create your personalized voice.');
-    } else if (currentStep === 'status' && lastSpokenRef.current !== 'status') {
-      lastSpokenRef.current = 'status';
-      speak('Your voice model status is currently Not Created.');
-    } else if (currentStep === 'settings' && lastSpokenRef.current !== 'settings') {
-      lastSpokenRef.current = 'settings';
-      speak('Manage your voice preferences.');
+    fetchVoiceProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Voice Assistant greeting
+  useEffect(() => {
+    if (voiceAssistant && speak && !hasSpokenRef.current) {
+      hasSpokenRef.current = true;
+      speak('Voice Model Management. View voice profile status and dataset options.');
     }
-  }, [currentStep, voiceAssistant, speak]);
+  }, [voiceAssistant, speak]);
 
-  const handleStepChange = (nextStep) => {
-    setCurrentStep(nextStep);
-    setIsDrawerOpen(false);
-  };
-
-  // Main Action Cards
-  const cards = [
-    {
-      id: 'about',
-      title: 'About Voice Cloning',
-      desc: 'Learn how VoiceBack creates your personalized voice.',
-      icon: Info,
-      step: 'about',
-    },
-    {
-      id: 'collection',
-      title: 'Voice Sample Collection',
-      desc: 'Record or upload voice samples.',
-      icon: Mic,
-      step: 'collection',
-    },
-    {
-      id: 'status',
-      title: 'Voice Model Status',
-      desc: 'Check whether your voice model has been created.',
-      icon: Brain,
-      step: 'status',
-    },
-    {
-      id: 'settings',
-      title: 'Voice Settings',
-      desc: 'Manage voice preferences.',
-      icon: Settings,
-      step: 'settings',
-    },
-  ];
-
-  // Drawer items
+  // Drawer menu items
   const drawerItems = [
     {
       id: 'dashboard',
@@ -134,11 +123,11 @@ export const VoiceCloningModule = ({
       isActive: false,
     },
     {
-      id: 'voice-cloning-home',
+      id: 'voice-cloning',
       label: 'Voice Cloning',
       icon: UserCheck,
-      action: () => handleStepChange('home'),
-      isActive: currentStep === 'home',
+      action: () => setIsDrawerOpen(false),
+      isActive: true,
     },
     {
       id: 'profile',
@@ -163,6 +152,37 @@ export const VoiceCloningModule = ({
     <div className="app-viewport">
       <div className="mobile-container voice-cloning-container">
         
+        {/* HEADER BAR */}
+        <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <button
+              type="button"
+              className="settings-btn"
+              aria-label="Return to Dashboard"
+              title="Return to Dashboard"
+              onClick={onBackToDashboard}
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <h1 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+              Voice Model Management
+            </h1>
+          </div>
+
+          <button
+            type="button"
+            className="header-profile-avatar-btn"
+            aria-label={`Patient Profile for ${patientData.fullName}`}
+            onClick={onOpenProfile}
+          >
+            {avatarDataUrl ? (
+              <img src={avatarDataUrl} alt={patientData.fullName} className="header-avatar-img" />
+            ) : (
+              <span className="header-avatar-initial">{firstLetter}</span>
+            )}
+          </button>
+        </header>
+
         {/* LEFT SLIDE NAVIGATION DRAWER */}
         <div className={`drawer-overlay ${isDrawerOpen ? 'open' : ''}`} onClick={() => setIsDrawerOpen(false)} />
         <aside className={`drawer-panel ${isDrawerOpen ? 'open' : ''}`} aria-label="Navigation Drawer">
@@ -225,318 +245,278 @@ export const VoiceCloningModule = ({
           </div>
         </aside>
 
-        {/* STEP 1: VOICE CLONING HOME */}
-        {currentStep === 'home' && (
-          <>
-            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <button
-                  type="button"
-                  className="settings-btn"
-                  aria-label="Return to Dashboard"
-                  title="Return to Dashboard"
-                  onClick={onBackToDashboard}
-                >
-                  <ArrowLeft size={22} />
-                </button>
-                <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                  Voice Cloning
-                </h1>
+        {/* MAIN MODULE CONTENT */}
+        <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+          
+          {/* TITLE SUBTITLE */}
+          <section className="welcome-compact-section" style={{ marginTop: '0.1rem' }}>
+            <p className="welcome-subtitle" style={{ fontSize: '0.925rem', color: 'var(--color-brand-tagline)', fontWeight: 500, lineHeight: 1.45 }}>
+              Prepare your personalized AI voice model for natural speech synthesis.
+            </p>
+          </section>
+
+          {/* CARD 1: VOICE PROFILE OVERVIEW */}
+          <section className="profile-section-card">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <UserCheck size={18} color="var(--color-blue-primary)" />
+                <h3 className="profile-section-title" style={{ margin: 0 }}>Voice Profile Overview</h3>
               </div>
+              <span className="device-name-badge disconnected" style={{ fontSize: '0.775rem' }}>
+                {voiceProfile.status}
+              </span>
+            </div>
+
+            <div className="profile-info-grid">
+              <div className="profile-field-group">
+                <span className="profile-field-label">Voice Model Status</span>
+                <span className="profile-field-value">{voiceProfile.status}</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Number of Uploaded Samples</span>
+                <span className="profile-field-value">{voiceProfile.samplesCount} Uploaded</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Training Status</span>
+                <span className="profile-field-value">{voiceProfile.trainingStatus}</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Preferred Voice</span>
+                <span className="profile-field-value">{voiceProfile.preferredVoice}</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Last Updated</span>
+                <span className="profile-field-value">{voiceProfile.lastUpdated}</span>
+              </div>
+            </div>
+          </section>
+
+          {/* CARD 2: VOICE SAMPLE MANAGEMENT */}
+          <section className="profile-section-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <FileAudio size={18} color="var(--color-blue-primary)" />
+              <h3 className="profile-section-title" style={{ margin: 0 }}>Voice Samples</h3>
+            </div>
+
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.04)', border: '1px solid var(--border-color)', marginBottom: '0.85rem' }}>
+              <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                No samples uploaded.
+              </p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', marginTop: '0.25rem', lineHeight: 1.4 }}>
+                Audio recordings will be stored here once voice dataset collection starts.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              <button
+                type="button"
+                className="btn-continue"
+                onClick={() => setActiveNoticeModal('record')}
+                style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+              >
+                <Mic size={18} />
+                <span>Record Voice</span>
+              </button>
 
               <button
                 type="button"
-                className="header-profile-avatar-btn"
-                aria-label={`Patient Profile for ${patientData.fullName}`}
-                onClick={onOpenProfile}
+                className="btn-secondary-auth"
+                onClick={() => setActiveNoticeModal('upload')}
+                style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
               >
-                {avatarDataUrl ? (
-                  <img src={avatarDataUrl} alt={patientData.fullName} className="header-avatar-img" />
-                ) : (
-                  <span className="header-avatar-initial">{firstLetter}</span>
-                )}
+                <Upload size={18} />
+                <span>Upload Audio</span>
               </button>
-            </header>
 
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', width: '100%' }}>
-              <section className="welcome-compact-section">
-                <p className="welcome-subtitle" style={{ fontSize: '0.95rem', color: 'var(--color-brand-tagline)', fontWeight: 600, lineHeight: 1.45 }}>
-                  Create a personalized voice model that can help reproduce your natural voice during communication.
-                </p>
-              </section>
-
-              {/* 4 CARDS */}
-              <section style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
-                {cards.map((card) => {
-                  const CardIcon = card.icon;
-                  return (
-                    <div
-                      key={card.id}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={card.title}
-                      className="action-card"
-                      onClick={() => handleStepChange(card.step)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleStepChange(card.step);
-                        }
-                      }}
-                      style={{ minHeight: 'auto', padding: '1.15rem' }}
-                    >
-                      <div className="action-card-header">
-                        <div className="action-icon-box">
-                          <CardIcon size={22} />
-                        </div>
-                        <ArrowRight size={18} className="action-arrow-icon" />
-                      </div>
-
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <h3 className="action-card-title" style={{ fontSize: '1.1rem' }}>{card.title}</h3>
-                        <p className="action-card-desc">{card.desc}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </section>
-            </main>
-          </>
-        )}
-
-        {/* STEP 2: ABOUT VOICE CLONING */}
-        {currentStep === 'about' && (
-          <>
-            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <button
                 type="button"
-                className="settings-btn"
-                aria-label="Back to Voice Cloning Home"
-                onClick={() => handleStepChange('home')}
+                className="btn-secondary-auth"
+                onClick={() => setActiveNoticeModal('remove')}
+                style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--color-red-primary)' }}
               >
-                <ArrowLeft size={20} />
+                <Trash2 size={18} />
+                <span>Remove Sample</span>
               </button>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                About Voice Cloning
-              </h1>
-              <div style={{ width: 42 }} />
-            </header>
+            </div>
+          </section>
 
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              <div className="profile-section-card" style={{ width: '100%', gap: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 14, background: 'rgba(2, 132, 199, 0.12)', color: 'var(--color-blue-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Heart size={24} />
-                  </div>
-                  <div>
-                    <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                      What is Voice Cloning?
-                    </h2>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--color-blue-primary)', fontWeight: 700 }}>
-                      Personalized Voice Identity
-                    </span>
-                  </div>
-                </div>
+          {/* CARD 3: VOICE DATASET */}
+          <section className="profile-section-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <Brain size={18} color="var(--color-blue-primary)" />
+              <h3 className="profile-section-title" style={{ margin: 0 }}>Voice Dataset</h3>
+            </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.925rem', color: 'var(--color-brand-tagline)', lineHeight: 1.55 }}>
-                  <p>
-                    VoiceBack uses AI to learn the unique characteristics and cadence of your natural voice.
-                  </p>
-                  <p>
-                    When your voice model is available, it will be used during daily communication to convert decoded sEMG speech attempts into your distinct vocal sound.
-                  </p>
-                  <p style={{ fontWeight: 600, color: 'var(--color-brand-title)' }}>
-                    This feature helps preserve your unique identity and personal connection with family and healthcare providers.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-continue"
-                  onClick={() => handleStepChange('home')}
-                  style={{ width: '100%', marginTop: '0.5rem' }}
-                >
-                  <span>Return to Voice Cloning</span>
-                </button>
+            <div className="profile-info-grid">
+              <div className="profile-field-group">
+                <span className="profile-field-label">Dataset Status</span>
+                <span className="profile-field-value">Empty</span>
               </div>
-            </main>
-          </>
-        )}
 
-        {/* STEP 3: VOICE SAMPLE COLLECTION */}
-        {currentStep === 'collection' && (
-          <>
-            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="settings-btn"
-                aria-label="Back to Voice Cloning Home"
-                onClick={() => handleStepChange('home')}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                Voice Sample Collection
-              </h1>
-              <div style={{ width: 42 }} />
-            </header>
-
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              <div className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
-                <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                  Collect Voice Samples
-                </h2>
-                <p style={{ fontSize: '0.925rem', color: 'var(--color-brand-tagline)', lineHeight: 1.45 }}>
-                  To create your personalized voice model, voice samples will be required.
-                </p>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem', width: '100%' }}>
-                  <button
-                    type="button"
-                    className="btn-continue"
-                    disabled
-                    style={{ opacity: 0.6, cursor: 'not-allowed', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  >
-                    <Mic size={18} />
-                    <span>Record Voice (Pending AI Integration)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-secondary-auth"
-                    disabled
-                    style={{ opacity: 0.6, cursor: 'not-allowed', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  >
-                    <Upload size={18} />
-                    <span>Upload Audio (Pending Backend Integration)</span>
-                  </button>
-                </div>
-
-                <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px dashed var(--border-color)', textAlign: 'center', marginTop: '0.5rem' }}>
-                  <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', fontWeight: 500, lineHeight: 1.45 }}>
-                    • Voice recording will be available after AI integration.<br />
-                    • Audio upload will be available after backend integration.
-                  </p>
-                </div>
+              <div className="profile-field-group">
+                <span className="profile-field-label">Samples Uploaded</span>
+                <span className="profile-field-value">0</span>
               </div>
-            </main>
-          </>
-        )}
 
-        {/* STEP 4: VOICE MODEL STATUS */}
-        {currentStep === 'status' && (
-          <>
-            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="settings-btn"
-                aria-label="Back to Voice Cloning Home"
-                onClick={() => handleStepChange('home')}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                Voice Model Status
-              </h1>
-              <div style={{ width: 42 }} />
-            </header>
-
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              <div className="profile-section-card" style={{ width: '100%', gap: '1.15rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                    Voice Model
-                  </h2>
-                  <span className="device-name-badge disconnected" style={{ fontSize: '0.85rem', padding: '0.35rem 0.85rem' }}>
-                    {voiceModelProfile.status}
-                  </span>
-                </div>
-
-                <div style={{ padding: '1rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.04)', border: '1px solid var(--border-color)' }}>
-                  <span className="profile-field-label">Status Overview</span>
-                  <p style={{ fontSize: '0.925rem', fontWeight: 600, color: 'var(--color-brand-title)', marginTop: '0.25rem', lineHeight: 1.45 }}>
-                    Your personalized voice model has not been created yet.
-                  </p>
-                  <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', marginTop: '0.5rem', lineHeight: 1.45 }}>
-                    After sufficient voice samples are collected, AI will generate your voice model.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-continue"
-                  onClick={() => handleStepChange('home')}
-                  style={{ width: '100%' }}
-                >
-                  <span>Back to Voice Cloning</span>
-                </button>
+              <div className="profile-field-group">
+                <span className="profile-field-label">Recommended Samples</span>
+                <span className="profile-field-value">50–100</span>
               </div>
-            </main>
-          </>
-        )}
 
-        {/* STEP 5: VOICE SETTINGS */}
-        {currentStep === 'settings' && (
-          <>
-            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="settings-btn"
-                aria-label="Back to Voice Cloning Home"
-                onClick={() => handleStepChange('home')}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                Voice Settings
-              </h1>
-              <div style={{ width: 42 }} />
-            </header>
-
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              <div className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
-                <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                  Voice Preferences
-                </h2>
-
-                <div className="device-status-grid">
-                  <div className="device-status-item">
-                    <span className="device-label">Preferred Voice</span>
-                    <span className="device-val">{voiceModelProfile.preferredVoice}</span>
-                  </div>
-
-                  <div className="device-status-item">
-                    <span className="device-label">Voice Speed</span>
-                    <span className="device-val">{voiceModelProfile.voiceSpeed}</span>
-                  </div>
-
-                  <div className="device-status-item">
-                    <span className="device-label">Voice Volume</span>
-                    <span className="device-val">{voiceModelProfile.voiceVolume}</span>
-                  </div>
-                </div>
-
-                <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px dashed var(--border-color)', textAlign: 'center' }}>
-                  <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', fontWeight: 500 }}>
-                    These settings are placeholders and will be configured after AI integration.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-continue"
-                  onClick={() => handleStepChange('home')}
-                  style={{ width: '100%', marginTop: '0.5rem' }}
-                >
-                  <span>Back to Voice Cloning</span>
-                </button>
+              <div className="profile-field-group">
+                <span className="profile-field-label">Recommended Recording Time</span>
+                <span className="profile-field-value">10–20 minutes</span>
               </div>
-            </main>
-          </>
-        )}
+            </div>
+          </section>
 
+          {/* CARD 4: VOICE TRAINING */}
+          <section className="profile-section-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <Sparkles size={18} color="var(--color-blue-primary)" />
+              <h3 className="profile-section-title" style={{ margin: 0 }}>Voice Training</h3>
+            </div>
+
+            <div className="profile-info-grid">
+              <div className="profile-field-group">
+                <span className="profile-field-label">Training Status</span>
+                <span className="profile-field-value">Not Started</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Model Version</span>
+                <span className="profile-field-value">Not Available</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Estimated Time</span>
+                <span className="profile-field-value">Not Available</span>
+              </div>
+            </div>
+          </section>
+
+          {/* CARD 5: RECORDING GUIDELINES */}
+          <section className="profile-section-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <HelpCircle size={18} color="var(--color-blue-primary)" />
+              <h3 className="profile-section-title" style={{ margin: 0 }}>Recording Guidelines</h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', fontSize: '0.875rem', color: 'var(--color-brand-tagline)', lineHeight: 1.5 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <CheckCircle size={16} color="var(--color-green-primary)" style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+                <span><strong>Quiet environment</strong>: Record in a silent room without background noise or echoes.</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <CheckCircle size={16} color="var(--color-green-primary)" style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+                <span><strong>Natural speaking</strong>: Speak clearly using your normal tone and vocal posture.</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <CheckCircle size={16} color="var(--color-green-primary)" style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+                <span><strong>Complete sentences</strong>: Read full sentences rather than isolated words.</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <CheckCircle size={16} color="var(--color-green-primary)" style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+                <span><strong>Preferred language</strong>: Record samples in your primary preferred language.</span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                <CheckCircle size={16} color="var(--color-green-primary)" style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+                <span><strong>Normal speaking speed</strong>: Maintain a steady, comfortable conversational pace.</span>
+              </div>
+            </div>
+          </section>
+
+          {/* CARD 6: AI PLACEHOLDERS */}
+          <section className="profile-section-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <Cpu size={18} color="var(--color-blue-primary)" />
+              <h3 className="profile-section-title" style={{ margin: 0 }}>AI System Specification</h3>
+            </div>
+
+            <div className="profile-info-grid">
+              <div className="profile-field-group">
+                <span className="profile-field-label">Voice Model ID</span>
+                <span className="profile-field-value">Not Available</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Training Job ID</span>
+                <span className="profile-field-value">Not Available</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Dataset Version</span>
+                <span className="profile-field-value">Not Available</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">AI Status</span>
+                <span className="profile-field-value">Not Available</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Inference Status</span>
+                <span className="profile-field-value">Not Available</span>
+              </div>
+            </div>
+          </section>
+
+        </main>
       </div>
 
+      {/* WORKFLOW NOTICE MODAL */}
+      {activeNoticeModal && (
+        <div className="settings-overlay" onClick={() => setActiveNoticeModal(null)}>
+          <div className="settings-sheet" onClick={(e) => e.stopPropagation()} style={{ gap: '1rem' }}>
+            <div className="settings-sheet-header">
+              <h2 className="settings-sheet-title">
+                {activeNoticeModal === 'record' && 'Record Voice Workflow'}
+                {activeNoticeModal === 'upload' && 'Upload Audio Workflow'}
+                {activeNoticeModal === 'remove' && 'Remove Voice Sample'}
+              </h2>
+              <button
+                type="button"
+                className="btn-close-sheet"
+                onClick={() => setActiveNoticeModal(null)}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', lineHeight: 1.5 }}>
+              <div style={{ padding: '1rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.06)', border: '1px solid var(--border-color)' }}>
+                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                  Workflow Prepared for AI & Backend Integration
+                </p>
+                <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', marginTop: '0.4rem' }}>
+                  {activeNoticeModal === 'record' && 'The voice recording workflow interface is ready. Direct WebAudio microphone recording will activate when the AI TTS synthesis model is integrated.'}
+                  {activeNoticeModal === 'upload' && 'The audio upload workflow interface is ready. Upload API endpoint (POST /api/voice-profiles/upload-sample) is currently missing from the backend.'}
+                  {activeNoticeModal === 'remove' && 'No voice samples currently exist to remove.'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="btn-continue"
+                onClick={() => setActiveNoticeModal(null)}
+                style={{ width: '100%', marginTop: '0.5rem' }}
+              >
+                <span>Understand & Close</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS BOTTOM SHEET */}
       <SettingsBottomSheet
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
