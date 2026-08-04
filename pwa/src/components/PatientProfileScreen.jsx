@@ -134,7 +134,7 @@ const defaultAvatarLibrary = [
   }
 ];
 
-export const PatientProfileScreen = ({ onBack, onLogout }) => {
+export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
   const { t, theme, language, voiceAssistant, speak } = useSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -147,34 +147,34 @@ export const PatientProfileScreen = ({ onBack, onLogout }) => {
   const fileUploadInputRef = useRef(null);
   const fileCaptureInputRef = useRef(null);
 
-  // Load current user profile from localStorage or set defaults
+  // Load patient profile from backendProfile prop or localStorage, defaulting missing fields to 'Not Available'
   const [profileData, setProfileData] = useState(() => {
+    const raw = backendProfile || {};
     try {
       const storedUser = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      if (storedUser) {
-        return {
-          fullName: storedUser.fullName || 'Srividya Raman',
-          age: storedUser.age || '45',
-          gender: storedUser.gender || 'Female',
-          aphasiaType: storedUser.aphasiaType || "Broca's Aphasia",
-          preferredLanguage: storedUser.preferredLanguage || 'English',
-          mobileNumber: storedUser.mobileNumber || '+91 98765 43210',
-          email: storedUser.email || 'srividya@example.com',
-          emergencyContact: storedUser.emergencyContact || '+91 98765 00000',
-        };
-      }
+      const merged = { ...storedUser, ...raw };
+      return {
+        fullName: merged.fullName || 'Not Available',
+        age: merged.age ? (String(merged.age).includes('Years') ? merged.age : `${merged.age} Years`) : 'Not Available',
+        gender: merged.gender || 'Not Available',
+        aphasiaType: merged.aphasiaType || 'Not Available',
+        preferredLanguage: merged.preferredLanguage || 'Not Available',
+        mobileNumber: merged.mobileNumber || 'Not Available',
+        email: merged.email || 'Not Available',
+        emergencyContact: merged.emergencyContact || 'Not Available',
+      };
     } catch (e) {
-      console.warn('Failed to parse current user from localStorage:', e);
+      // ignore
     }
     return {
-      fullName: 'Srividya Raman',
-      age: '45',
-      gender: 'Female',
-      aphasiaType: "Broca's Aphasia",
-      preferredLanguage: 'English',
-      mobileNumber: '+91 98765 43210',
-      email: 'srividya@example.com',
-      emergencyContact: '+91 98765 00000',
+      fullName: raw.fullName || 'Not Available',
+      age: raw.age || 'Not Available',
+      gender: raw.gender || 'Not Available',
+      aphasiaType: raw.aphasiaType || 'Not Available',
+      preferredLanguage: raw.preferredLanguage || 'Not Available',
+      mobileNumber: raw.mobileNumber || 'Not Available',
+      email: raw.email || 'Not Available',
+      emergencyContact: raw.emergencyContact || 'Not Available',
     };
   });
 
@@ -634,22 +634,22 @@ export const PatientProfileScreen = ({ onBack, onLogout }) => {
 
               <div className="device-status-item">
                 <span className="device-label">Device Status</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Not Connected</span>
+                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
               </div>
 
               <div className="device-status-item">
                 <span className="device-label">EMG Sensor</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for wearable device</span>
+                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
               </div>
 
               <div className="device-status-item">
                 <span className="device-label">Battery</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Unavailable</span>
+                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
               </div>
 
               <div className="device-status-item">
                 <span className="device-label">Bluetooth</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Unavailable</span>
+                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
               </div>
             </div>
           </section>

@@ -33,6 +33,12 @@ import PatientReportsModule from './PatientReportsModule';
 import EmergencySOSModule from './EmergencySOSModule';
 import PatientAppointmentsModule from './PatientAppointmentsModule';
 import { useSettings } from '../context/SettingsContext';
+import authService from '../services/authService';
+import patientService from '../services/patientService';
+import appointmentService from '../services/appointmentService';
+import communicationService from '../services/communicationService';
+import therapyService from '../services/therapyService';
+import voiceService from '../services/voiceService';
 
 export const PatientDashboardScreen = ({ onLogout }) => {
   const { t, voiceAssistant, speak } = useSettings();
@@ -42,19 +48,24 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const [activeModule, setActiveModule] = useState(null);
   const hasSpokenWelcome = useRef(false);
 
-  // Read registered patient profile & avatar from localStorage
-  const [profileData, setProfileData] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      if (stored && stored.fullName) {
-        return stored;
-      }
-    } catch (e) {
-      // ignore
-    }
-    return { fullName: 'Srividya Raman' };
+  // Backend Profile State
+  const [profileData, setProfileData] = useState({
+    fullName: '',
+    email: '',
+    gender: '',
+    age: '',
+    preferredLanguage: '',
+    role: 'Patient',
   });
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
+  // Backend Domain Data States
+  const [appointments, setAppointments] = useState([]);
+  const [communicationHistory, setCommunicationHistory] = useState([]);
+  const [therapyProgress, setTherapyProgress] = useState([]);
+  const [voiceProfiles, setVoiceProfiles] = useState([]);
+
+  // Avatar Image Data URL
   const [avatarDataUrl, setAvatarDataUrl] = useState(() => {
     try {
       return localStorage.getItem('voiceback_patient_avatar') || '';
@@ -63,13 +74,111 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     }
   });
 
-  // Sync avatar and profile data whenever dashboard is focused or drawer opens
+  // Fetch all Patient Dashboard Data from Express Backend APIs
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchBackendData = async () => {
+      setIsLoadingProfile(true);
+      const session = authService.getActiveSession();
+      const userEmail = session?.email || '';
+
+      // 1. Fetch Patient Profile
+      try {
+        const patientsRes = await patientService.getAllPatients();
+        const list = Array.isArray(patientsRes?.data)
+          ? patientsRes.data
+          : Array.isArray(patientsRes)
+          ? patientsRes
+          : [];
+
+        const match = list.find(
+          (p) => (p.email || p.userId?.email || '').toLowerCase() === userEmail.toLowerCase()
+        );
+
+        if (isMounted) {
+          if (match) {
+            setProfileData({
+              id: match._id,
+              fullName: match.fullName || session?.name || 'Not Available',
+              email: match.email || session?.email || userEmail || 'Not Available',
+              gender: match.gender || 'Not Available',
+              age: match.age ? `${match.age} Years` : 'Not Available',
+              preferredLanguage: match.preferredLanguage || 'Not Available',
+              aphasiaType: match.aphasiaType || 'Not Available',
+              role: 'Patient',
+            });
+          } else {
+            // Fallback to active session information if backend record is pending
+            setProfileData({
+              fullName: session?.name || (userEmail ? userEmail.split('@')[0] : 'Not Available'),
+              email: userEmail || 'Not Available',
+              gender: 'Not Available',
+              age: 'Not Available',
+              preferredLanguage: 'Not Available',
+              role: 'Patient',
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load patient profile from backend:', e.message);
+        if (isMounted) {
+          setProfileData({
+            fullName: session?.name || (userEmail ? userEmail.split('@')[0] : 'Not Available'),
+            email: userEmail || 'Not Available',
+            gender: 'Not Available',
+            age: 'Not Available',
+            preferredLanguage: 'Not Available',
+            role: 'Patient',
+          });
+        }
+      } finally {
+        if (isMounted) setIsLoadingProfile(false);
+      }
+
+      // 2. Fetch Appointments
+      try {
+        const apptList = await appointmentService.getAppointments();
+        if (isMounted) setAppointments(Array.isArray(apptList) ? apptList : []);
+      } catch (e) {
+        if (isMounted) setAppointments([]);
+      }
+
+      // 3. Fetch Communication History
+      try {
+        const commList = await communicationService.getHistory();
+        if (isMounted) setCommunicationHistory(Array.isArray(commList) ? commList : []);
+      } catch (e) {
+        if (isMounted) setCommunicationHistory([]);
+      }
+
+      // 4. Fetch Therapy Progress
+      try {
+        const therapyList = await therapyService.getTherapyProgress();
+        if (isMounted) setTherapyProgress(Array.isArray(therapyList) ? therapyList : []);
+      } catch (e) {
+        if (isMounted) setTherapyProgress([]);
+      }
+
+      // 5. Fetch Voice Profiles
+      try {
+        const voiceList = await voiceService.getVoiceProfiles();
+        if (isMounted) setVoiceProfiles(Array.isArray(voiceList) ? voiceList : []);
+      } catch (e) {
+        if (isMounted) setVoiceProfiles([]);
+      }
+    };
+
+    fetchBackendData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Sync avatar data
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      if (stored && stored.fullName) {
-        setProfileData(stored);
-      }
       const avatar = localStorage.getItem('voiceback_patient_avatar') || '';
       setAvatarDataUrl(avatar);
     } catch (e) {
@@ -77,8 +186,17 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     }
   }, [currentView, isDrawerOpen]);
 
-  const firstName = profileData.fullName ? profileData.fullName.trim().split(' ')[0] : 'Srividya';
-  const firstLetter = profileData.fullName ? profileData.fullName.trim().charAt(0).toUpperCase() : 'S';
+  const displayName = profileData.fullName && profileData.fullName !== 'Not Available'
+    ? profileData.fullName
+    : 'Patient';
+
+  const firstName = displayName !== 'Patient'
+    ? displayName.trim().split(' ')[0]
+    : 'Patient';
+
+  const firstLetter = displayName !== 'Patient'
+    ? displayName.trim().charAt(0).toUpperCase()
+    : 'P';
 
   // Speak ONLY ONCE on dashboard load if Voice Assistant is ON
   useEffect(() => {
@@ -160,13 +278,13 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     {
       id: 'emergency-sos',
       title: 'Emergency SOS',
-      desc: 'Quickly contact caregiver or doctor.',
+      desc: 'Send urgent alert notification to caregiver.',
       icon: AlertTriangle,
       isDanger: true,
     },
   ];
 
-  // Slide Drawer Navigation Items
+  // Drawer menu items for Patient
   const drawerItems = [
     {
       id: 'dashboard',
@@ -257,11 +375,12 @@ export const PatientDashboardScreen = ({ onLogout }) => {
       <PatientProfileScreen
         onBack={handleBackToDashboard}
         onLogout={onLogout}
+        backendProfile={profileData}
       />
     );
   }
 
-  // If active module is Silent Speech related, render SilentSpeechModule
+  // Render Module Component Views
   if (currentView === 'module' && (activeModule === 'Silent Speech' || activeModule === 'Start Conversation' || activeModule === 'Connect Device')) {
     const initialStep = activeModule === 'Connect Device' ? 'connect-device' : 'silent-speech-home';
     return (
@@ -274,7 +393,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     );
   }
 
-  // If active module is Therapy Exercises, render TherapyExercisesModule
   if (currentView === 'module' && activeModule === 'Therapy Exercises') {
     return (
       <TherapyExercisesModule
@@ -285,7 +403,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     );
   }
 
-  // If active module is Therapy Games, render TherapyGamesModule
   if (currentView === 'module' && activeModule === 'Therapy Games') {
     return (
       <TherapyGamesModule
@@ -296,7 +413,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     );
   }
 
-  // If active module is Voice Cloning, render VoiceCloningModule
   if (currentView === 'module' && activeModule === 'Voice Cloning') {
     return (
       <VoiceCloningModule
@@ -307,7 +423,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     );
   }
 
-  // If active module is Reports / Patient Reports, render PatientReportsModule
   if (currentView === 'module' && (activeModule === 'Reports' || activeModule === 'Patient Reports' || activeModule === 'View Progress Reports')) {
     return (
       <PatientReportsModule
@@ -318,7 +433,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     );
   }
 
-  // If active module is Emergency SOS, render EmergencySOSModule
   if (currentView === 'module' && (activeModule === 'Emergency SOS' || activeModule === 'Emergency Assistance')) {
     return (
       <EmergencySOSModule
@@ -329,7 +443,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     );
   }
 
-  // If active module is Appointments, render PatientAppointmentsModule
   if (currentView === 'module' && (activeModule === 'Appointments' || activeModule === 'Upcoming Appointments')) {
     return (
       <PatientAppointmentsModule
@@ -344,9 +457,8 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     <div className="app-viewport">
       <div className="mobile-container dashboard-container">
         
-        {/* HEADER BAR: Top Left Hamburger Menu (NO LOGO), Top Right Circular Profile Avatar */}
+        {/* HEADER BAR */}
         <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          {/* ☰ Hamburger Menu */}
           <button
             type="button"
             className="settings-btn"
@@ -357,16 +469,15 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             <Menu size={22} />
           </button>
 
-          {/* 👤 Circular Patient Profile Avatar (Navigates to Profile) */}
           <button
             type="button"
             className="header-profile-avatar-btn"
-            aria-label={`Patient Profile for ${profileData.fullName}`}
+            aria-label={`Patient Profile for ${displayName}`}
             title="View Patient Profile"
             onClick={handleOpenProfile}
           >
             {avatarDataUrl ? (
-              <img src={avatarDataUrl} alt={profileData.fullName} className="header-avatar-img" />
+              <img src={avatarDataUrl} alt={displayName} className="header-avatar-img" />
             ) : (
               <span className="header-avatar-initial">{firstLetter}</span>
             )}
@@ -392,13 +503,13 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           <div className="drawer-user-badge" onClick={handleOpenProfile}>
             <div className="drawer-avatar-circle">
               {avatarDataUrl ? (
-                <img src={avatarDataUrl} alt={profileData.fullName} className="drawer-avatar-img" />
+                <img src={avatarDataUrl} alt={displayName} className="drawer-avatar-img" />
               ) : (
                 <span>{firstLetter}</span>
               )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h4 className="drawer-user-name">{profileData.fullName}</h4>
+              <h4 className="drawer-user-name">{displayName}</h4>
               <span className="drawer-user-role">Patient</span>
             </div>
             <ArrowRight size={16} color="var(--color-brand-tagline)" />
@@ -422,7 +533,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             })}
           </nav>
 
-          {/* Logout at bottom of drawer */}
           <div className="drawer-footer">
             <button
               type="button"
@@ -438,7 +548,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           </div>
         </aside>
 
-        {/* IF MODULE VIEW OPENED: Render Module Placeholder View */}
+        {/* IF MODULE VIEW OPENED */}
         {currentView === 'module' && activeModule ? (
           <main className="role-main" style={{ justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
             <div className="placeholder-card" style={{ textAlign: 'center', width: '100%', maxWidth: '420px' }}>
@@ -453,7 +563,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
                 {activeModule}
               </h1>
               <p className="placeholder-desc" style={{ marginTop: '0.5rem', marginBottom: '1.5rem' }}>
-                The <strong>{activeModule}</strong> module is ready for AI & sEMG firmware integration.
+                The <strong>{activeModule}</strong> module is connected to VoiceBack Express REST APIs.
               </p>
               <button
                 type="button"
@@ -470,7 +580,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           /* MAIN DASHBOARD VIEW */
           <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', width: '100%' }}>
             
-            {/* 1. WELCOME SECTION (CLEAN & MODERN) */}
+            {/* 1. WELCOME SECTION (NAME FROM BACKEND) */}
             <section className="welcome-compact-section" style={{ marginTop: '0.2rem' }}>
               <h1 className="welcome-title">
                 {getGreeting()}, {firstName}
@@ -478,39 +588,38 @@ export const PatientDashboardScreen = ({ onLogout }) => {
               <p className="welcome-subtitle">Welcome back to VoiceBack.</p>
             </section>
 
-            {/* 2. WEARABLE DEVICE STATUS CARD (REAL EMPTY STATES - NO FAKE HARDWARE DATA) */}
+            {/* 2. WEARABLE DEVICE STATUS CARD ("Waiting for Device" - NO FAKE DATA) */}
             <section className="device-status-card">
               <div className="device-status-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                   <Radio size={18} color="var(--color-brand-tagline)" />
                   <h3 className="device-status-title">Wearable Device</h3>
                 </div>
-                <span className="device-name-badge disconnected">Not Connected</span>
+                <span className="device-name-badge disconnected">Waiting for Device</span>
               </div>
 
               <div className="device-metrics-grid">
                 <div className="metric-box">
-                  <span className="metric-label">Status</span>
-                  <span className="metric-value status-offline">Not Connected</span>
+                  <span className="metric-label">Connection Status</span>
+                  <span className="metric-value status-offline">Waiting for Device</span>
                 </div>
 
                 <div className="metric-box">
                   <span className="metric-label">EMG Sensor</span>
-                  <span className="metric-value status-offline">Waiting for wearable device</span>
+                  <span className="metric-value status-offline">Waiting for Device</span>
                 </div>
 
                 <div className="metric-box">
                   <span className="metric-label">Battery</span>
-                  <span className="metric-value status-offline">Unavailable</span>
+                  <span className="metric-value status-offline">Waiting for Device</span>
                 </div>
 
                 <div className="metric-box">
                   <span className="metric-label">Bluetooth</span>
-                  <span className="metric-value status-offline">Unavailable</span>
+                  <span className="metric-value status-offline">Waiting for Device</span>
                 </div>
               </div>
 
-              {/* Primary Connect Device Button */}
               <button
                 type="button"
                 className="btn-connect-device"
@@ -543,28 +652,37 @@ export const PatientDashboardScreen = ({ onLogout }) => {
               </button>
             </section>
 
-            {/* COMPACT UPCOMING APPOINTMENT CARD */}
+            {/* 4. UPCOMING APPOINTMENTS SECTION */}
             <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Calendar size={18} color="var(--color-blue-primary)" />
                   <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                    Upcoming Appointment
+                    Appointments
                   </h3>
                 </div>
-                <span className="device-name-badge disconnected" style={{ fontSize: '0.75rem' }}>
-                  No appointments
-                </span>
               </div>
 
-              <div style={{ padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.04)', border: '1px solid var(--border-color)' }}>
-                <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                  No appointments scheduled.
-                </p>
-                <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', marginTop: '0.25rem', lineHeight: 1.45 }}>
-                  Your upcoming appointments with your healthcare provider will appear here after backend integration.
-                </p>
-              </div>
+              {appointments && appointments.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  {appointments.slice(0, 3).map((appt, idx) => (
+                    <div key={appt._id || idx} style={{ padding: '0.75rem 0.9rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px solid var(--border-color)' }}>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                        {appt.appointmentDate ? new Date(appt.appointmentDate).toLocaleString() : 'Scheduled Session'}
+                      </p>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', marginTop: '0.2rem' }}>
+                        Status: <strong style={{ color: 'var(--color-blue-primary)' }}>{appt.status || 'Scheduled'}</strong>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.04)', border: '1px solid var(--border-color)' }}>
+                  <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                    No upcoming appointments.
+                  </p>
+                </div>
+              )}
 
               <button
                 type="button"
@@ -577,7 +695,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
               </button>
             </section>
 
-            {/* 4. QUICK ACTIONS GRID */}
+            {/* 5. QUICK ACTIONS GRID */}
             <section style={{ width: '100%' }}>
               <h3 className="quick-actions-section-title">
                 <Sparkles size={18} color="var(--color-blue-primary)" />
@@ -619,19 +737,82 @@ export const PatientDashboardScreen = ({ onLogout }) => {
               </div>
             </section>
 
-            {/* 5. RECENT ACTIVITY (EMPTY STATE) */}
+            {/* 6. THERAPY SESSIONS SECTION */}
+            <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Brain size={18} color="var(--color-blue-primary)" />
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                  Therapy Sessions
+                </h3>
+              </div>
+
+              {therapyProgress && therapyProgress.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  {therapyProgress.slice(0, 3).map((item, idx) => (
+                    <div key={item._id || idx} style={{ padding: '0.75rem 0.9rem', borderRadius: '12px', background: 'rgba(22, 163, 74, 0.05)', border: '1px solid var(--border-color)' }}>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                        Exercises: {item.exercisesCompleted || 0} | Accuracy: {item.accuracyScore || 0}%
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="recent-activity-empty-state">
+                  <p className="empty-state-title">No therapy sessions available.</p>
+                </div>
+              )}
+            </section>
+
+            {/* 7. VOICE PROFILE SECTION */}
+            <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <UserCheck size={18} color="var(--color-blue-primary)" />
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                  Voice Profile
+                </h3>
+              </div>
+
+              {voiceProfiles && voiceProfiles.length > 0 ? (
+                <div style={{ padding: '0.75rem 0.9rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px solid var(--border-color)' }}>
+                  <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                    Gender: {voiceProfiles[0].voiceGender || 'Neutral'} | Pitch: {voiceProfiles[0].pitch || 1.0}
+                  </p>
+                </div>
+              ) : (
+                <div className="recent-activity-empty-state">
+                  <p className="empty-state-title">No voice profile created yet.</p>
+                </div>
+              )}
+            </section>
+
+            {/* 8. RECENT ACTIVITY SECTION (Communication History) */}
             <section className="recent-activity-card">
               <div className="recent-activity-header">
                 <Info size={18} color="var(--color-blue-primary)" />
                 <h3>Recent Activity</h3>
               </div>
 
-              <div className="recent-activity-empty-state">
-                <p className="empty-state-title">No activity available.</p>
-                <p className="empty-state-desc">
-                  Start your first conversation or therapy session to begin.
-                </p>
-              </div>
+              {communicationHistory && communicationHistory.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  {communicationHistory.slice(0, 3).map((log, idx) => (
+                    <div key={log._id || idx} style={{ padding: '0.75rem 0.9rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px solid var(--border-color)' }}>
+                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                        "{log.recognizedText}"
+                      </p>
+                      <p style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)', marginTop: '0.15rem' }}>
+                        Type: {log.attemptType || 'Silent'} | Confidence: {((log.confidenceScore || 0) * 100).toFixed(0)}%
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="recent-activity-empty-state">
+                  <p className="empty-state-title">No activity available.</p>
+                  <p className="empty-state-desc">
+                    Your communication history will appear here after your first communication session.
+                  </p>
+                </div>
+              )}
             </section>
 
           </main>
@@ -639,7 +820,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
 
       </div>
 
-      {/* Settings Bottom Sheet Component */}
       <SettingsBottomSheet
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
