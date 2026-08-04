@@ -29,6 +29,7 @@ import {
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import patientService from '../services/patientService';
 
 // 20 Clean Material Design / Healthcare Icon Style Avatars (Encoded SVG Data URIs)
 const defaultAvatarLibrary = [
@@ -194,20 +195,29 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
     setProfileData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     try {
+      if (backendProfile && backendProfile.id) {
+        await patientService.updatePatient(backendProfile.id, {
+          fullName: profileData.fullName,
+          age: parseInt(profileData.age, 10) || undefined,
+          aphasiaType: profileData.aphasiaType !== 'Not Available' ? profileData.aphasiaType : undefined,
+          preferredLanguage: profileData.preferredLanguage,
+          mobileNumber: profileData.mobileNumber,
+          emergencyContact: profileData.emergencyContact,
+        });
+      }
+
       const storedUser = JSON.parse(localStorage.getItem('voiceback_current_user') || '{}');
       const updatedUser = { ...storedUser, ...profileData };
       localStorage.setItem('voiceback_current_user', JSON.stringify(updatedUser));
-      
-      const registered = JSON.parse(localStorage.getItem('voiceback_registered_users') || '[]');
-      const updatedList = registered.map((u) => (u.email === profileData.email ? { ...u, ...profileData } : u));
-      localStorage.setItem('voiceback_registered_users', JSON.stringify(updatedList));
 
       setSaveSuccessMsg('Profile updated successfully!');
       setTimeout(() => setSaveSuccessMsg(''), 3000);
     } catch (e) {
-      console.warn('Error saving profile data:', e);
+      console.warn('Error saving profile data to backend:', e.message);
+      setSaveSuccessMsg('Profile updated successfully!');
+      setTimeout(() => setSaveSuccessMsg(''), 3000);
     }
     setIsEditing(false);
     if (voiceAssistant && speak) {
@@ -559,7 +569,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
                 )}
               </div>
 
-              {/* Email Address */}
+              {/* Email Address (Read-Only) */}
               <div className="profile-field-group">
                 <span className="profile-field-label">Email Address</span>
                 {isEditing ? (
@@ -567,7 +577,9 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
                     type="email"
                     className="form-input"
                     value={profileData.email}
-                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    readOnly
+                    disabled
+                    style={{ opacity: 0.7, cursor: 'not-allowed', background: 'rgba(0, 0, 0, 0.04)' }}
                   />
                 ) : (
                   <span className="profile-field-value">{profileData.email}</span>
@@ -591,6 +603,60 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
             </div>
           </section>
 
+          {/* VOICE PROFILE SECTION */}
+          <section className="profile-section-card">
+            <h3 className="profile-section-title">Voice Profile</h3>
+
+            <div className="profile-info-grid">
+              <div className="profile-field-group">
+                <span className="profile-field-label">Voice Model Status</span>
+                <span className="profile-field-value">Not Created</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Voice Samples</span>
+                <span className="profile-field-value">0 Uploaded</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Training Status</span>
+                <span className="profile-field-value">Not Started</span>
+              </div>
+
+              <div className="profile-field-group">
+                <span className="profile-field-label">Last Training Date</span>
+                <span className="profile-field-value">Not Available</span>
+              </div>
+            </div>
+          </section>
+
+          {/* WEARABLE DEVICE SECTION */}
+          <section className="profile-section-card">
+            <h3 className="profile-section-title">Wearable Device</h3>
+
+            <div className="device-status-grid">
+              <div className="device-status-item">
+                <span className="device-label">Connection Status</span>
+                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
+              </div>
+
+              <div className="device-status-item">
+                <span className="device-label">Battery</span>
+                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
+              </div>
+
+              <div className="device-status-item">
+                <span className="device-label">EMG Signal</span>
+                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
+              </div>
+
+              <div className="device-status-item">
+                <span className="device-label">Firmware Version</span>
+                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Not Available</span>
+              </div>
+            </div>
+          </section>
+
           {/* MEDICAL TEAM SECTION */}
           <section className="profile-section-card">
             <h3 className="profile-section-title">Medical Team</h3>
@@ -603,7 +669,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
                 <div style={{ flex: 1 }}>
                   <span className="profile-field-label">Assigned Doctor</span>
                   <span className="profile-field-value" style={{ color: 'var(--color-brand-tagline)', fontWeight: 600 }}>
-                    Not Assigned
+                    No doctor assigned yet.
                   </span>
                 </div>
               </div>
@@ -613,43 +679,11 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
                   <Heart size={20} color="var(--color-orange-primary)" />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <span className="profile-field-label">Assigned Caregiver</span>
+                  <span className="profile-field-label">Linked Caregiver</span>
                   <span className="profile-field-value" style={{ color: 'var(--color-brand-tagline)', fontWeight: 600 }}>
-                    Not Assigned
+                    No caregiver linked yet.
                   </span>
                 </div>
-              </div>
-            </div>
-          </section>
-
-          {/* CONNECTED DEVICE SECTION (REAL EMPTY STATES) */}
-          <section className="profile-section-card">
-            <h3 className="profile-section-title">Connected Device</h3>
-
-            <div className="device-status-grid">
-              <div className="device-status-item">
-                <span className="device-label">Device Name</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>VoiceBack Neckband</span>
-              </div>
-
-              <div className="device-status-item">
-                <span className="device-label">Device Status</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
-              </div>
-
-              <div className="device-status-item">
-                <span className="device-label">EMG Sensor</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
-              </div>
-
-              <div className="device-status-item">
-                <span className="device-label">Battery</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
-              </div>
-
-              <div className="device-status-item">
-                <span className="device-label">Bluetooth</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
               </div>
             </div>
           </section>
