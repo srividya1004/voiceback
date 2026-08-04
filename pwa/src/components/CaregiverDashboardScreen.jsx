@@ -127,7 +127,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
     },
   ];
 
-  // Drawer Menu Items
+  // Drawer Menu Items (RBAC compliant)
   const drawerItems = [
     {
       id: 'dashboard',
@@ -137,11 +137,11 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
       isActive: currentView === 'dashboard',
     },
     {
-      id: 'patient-profile',
-      label: 'Patient Profile',
+      id: 'linked-patient',
+      label: 'Linked Patient',
       icon: User,
-      action: () => handleOpenModule('Patient Profile'),
-      isActive: currentView === 'placeholder-module' && activeModule === 'Patient Profile',
+      action: () => handleOpenModule('Linked Patient'),
+      isActive: currentView === 'placeholder-module' && activeModule === 'Linked Patient',
     },
     {
       id: 'appointments',
@@ -151,13 +151,6 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
       isActive: currentView === 'placeholder-module' && activeModule === 'Appointments',
     },
     {
-      id: 'therapy-progress',
-      label: 'Therapy Progress',
-      icon: Brain,
-      action: () => handleOpenModule('Therapy Progress'),
-      isActive: currentView === 'placeholder-module' && activeModule === 'Therapy Progress',
-    },
-    {
       id: 'reports',
       label: 'Reports',
       icon: BarChart3,
@@ -165,15 +158,15 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
       isActive: currentView === 'placeholder-module' && activeModule === 'Reports',
     },
     {
-      id: 'emergency-alerts',
-      label: 'Emergency Alerts',
+      id: 'emergency',
+      label: 'Emergency',
       icon: AlertTriangle,
-      action: () => handleOpenModule('Emergency Alerts'),
-      isActive: currentView === 'placeholder-module' && activeModule === 'Emergency Alerts',
+      action: () => handleOpenModule('Emergency'),
+      isActive: currentView === 'placeholder-module' && activeModule === 'Emergency',
     },
     {
       id: 'profile',
-      label: 'Caregiver Profile',
+      label: 'Profile',
       icon: Heart,
       action: () => handleOpenProfile(),
       isActive: currentView === 'profile',

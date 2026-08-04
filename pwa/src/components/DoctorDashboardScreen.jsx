@@ -65,11 +65,11 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
     speak(`Welcome to Doctor Clinical Portal, ${doctorProfile.fullName}.`);
   }, [voiceAssistant, speak, doctorProfile.fullName]);
 
-  // Drawer menu items for Doctor
+  // Drawer menu items for Doctor (RBAC compliant)
   const drawerItems = [
     {
       id: 'overview',
-      label: 'Clinical Dashboard',
+      label: 'Dashboard',
       icon: Home,
       action: () => {
         setActiveTab('overview');
@@ -79,7 +79,7 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
     },
     {
       id: 'patients',
-      label: 'Patient Roster',
+      label: 'Patients',
       icon: Users,
       action: () => {
         setActiveTab('patients');
@@ -88,8 +88,18 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
       isActive: activeTab === 'patients',
     },
     {
+      id: 'therapy-monitoring',
+      label: 'Therapy Monitoring',
+      icon: Activity,
+      action: () => {
+        setActiveTab('reports');
+        setIsDrawerOpen(false);
+      },
+      isActive: false,
+    },
+    {
       id: 'reports',
-      label: 'Clinical Reports',
+      label: 'Reports',
       icon: FileText,
       action: () => {
         setActiveTab('reports');
@@ -108,18 +118,18 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
       isActive: activeTab === 'appointments',
     },
     {
-      id: 'alerts',
-      label: 'Emergency SOS Alerts',
-      icon: AlertTriangle,
+      id: 'profile',
+      label: 'Profile',
+      icon: User,
       action: () => {
-        setActiveTab('alerts');
+        setActiveTab('overview');
         setIsDrawerOpen(false);
       },
-      isActive: activeTab === 'alerts',
+      isActive: false,
     },
     {
       id: 'settings',
-      label: 'Portal Settings',
+      label: 'Settings',
       icon: Settings,
       action: () => {
         setIsDrawerOpen(false);

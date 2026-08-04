@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Settings, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
+import PasswordInput from './PasswordInput';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 
@@ -400,27 +401,15 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
                 <label className="form-label" htmlFor="reg-password">
                   Password *
                 </label>
-                <div className="password-input-wrapper">
-                  <input
-                    id="reg-password"
-                    type={showPassword ? 'text' : 'password'}
-                    className="form-input password-input"
-                    placeholder="Min 8 characters"
-                    value={formData.password}
-                    onChange={handlePasswordChange}
-                    onBlur={() => markTouched('password')}
-                    onFocus={() => handleFieldSpeak('password')}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle-btn"
-                    onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
+                <PasswordInput
+                  id="reg-password"
+                  value={formData.password}
+                  onChange={handlePasswordChange}
+                  onBlur={() => markTouched('password')}
+                  onFocus={() => handleFieldSpeak('password')}
+                  placeholder="Min 8 characters"
+                  required
+                />
                 {getFieldError('password') && (
                   <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, marginTop: '0.15rem' }}>
                     {getFieldError('password')}
@@ -433,27 +422,15 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
                 <label className="form-label" htmlFor="reg-confirmpassword">
                   Confirm Password *
                 </label>
-                <div className="password-input-wrapper">
-                  <input
-                    id="reg-confirmpassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    className="form-input password-input"
-                    placeholder="Confirm password"
-                    value={formData.confirmPassword}
-                    onChange={handleConfirmPasswordChange}
-                    onBlur={() => markTouched('confirmPassword')}
-                    onFocus={() => handleFieldSpeak('confirmPassword')}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle-btn"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-                  >
-                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
+                <PasswordInput
+                  id="reg-confirmpassword"
+                  value={formData.confirmPassword}
+                  onChange={handleConfirmPasswordChange}
+                  onBlur={() => markTouched('confirmPassword')}
+                  onFocus={() => handleFieldSpeak('confirmPassword')}
+                  placeholder="Confirm password"
+                  required
+                />
                 {getFieldError('confirmPassword') && (
                   <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, marginTop: '0.15rem' }}>
                     {getFieldError('confirmPassword')}

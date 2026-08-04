@@ -18,25 +18,69 @@ function App() {
   const [currentScreen, setCurrentScreen] = useState('splash');
   const [roleNotice, setRoleNotice] = useState('');
 
-  // Protected Route Enforcement Guard
+  // Role-Based Access Control (RBAC) & Protected Route Guard
   useEffect(() => {
-    if (currentScreen === 'patient-dashboard' && !authService.isAuthenticated('patient')) {
-      setCurrentScreen('patient-login');
-    } else if (currentScreen === 'doctor-dashboard' && !authService.isAuthenticated('doctor')) {
-      setCurrentScreen('doctor-login');
-    } else if (currentScreen === 'caregiver-dashboard' && !authService.isAuthenticated('caregiver')) {
-      setCurrentScreen('caregiver-login');
+    if (currentScreen === 'splash') return;
+
+    const session = authService.getActiveSession();
+    const activeRole = session?.role;
+
+    if (activeRole) {
+      // Authenticated User: Restrict access strictly to own role's dashboard
+      if (activeRole === 'patient' && currentScreen !== 'patient-dashboard') {
+        setCurrentScreen('patient-dashboard');
+      } else if (activeRole === 'doctor' && currentScreen !== 'doctor-dashboard') {
+        setCurrentScreen('doctor-dashboard');
+      } else if (activeRole === 'caregiver' && currentScreen !== 'caregiver-dashboard') {
+        setCurrentScreen('caregiver-dashboard');
+      }
+    } else {
+      // Unauthenticated User: Prevent access to any protected dashboard
+      if (currentScreen === 'patient-dashboard') {
+        setCurrentScreen('patient-login');
+      } else if (currentScreen === 'doctor-dashboard') {
+        setCurrentScreen('doctor-login');
+      } else if (currentScreen === 'caregiver-dashboard') {
+        setCurrentScreen('caregiver-login');
+      }
     }
   }, [currentScreen]);
 
   const handleSplashComplete = useCallback(() => {
+    const session = authService.getActiveSession();
+    if (session && session.role) {
+      if (session.role === 'patient') {
+        setCurrentScreen('patient-dashboard');
+        return;
+      } else if (session.role === 'doctor') {
+        setCurrentScreen('doctor-dashboard');
+        return;
+      } else if (session.role === 'caregiver') {
+        setCurrentScreen('caregiver-dashboard');
+        return;
+      }
+    }
     setCurrentScreen('role-selection');
   }, []);
 
   const handleRoleSelect = (roleId) => {
     setRoleNotice('');
+    const session = authService.getActiveSession();
+    if (session && session.role) {
+      if (session.role === 'patient') setCurrentScreen('patient-dashboard');
+      else if (session.role === 'doctor') setCurrentScreen('doctor-dashboard');
+      else if (session.role === 'caregiver') setCurrentScreen('caregiver-dashboard');
+      return;
+    }
+
     if (roleId === 'patient') {
-      setCurrentScreen('patient-intro');
+      if (authService.isPatientRegistered()) {
+        setCurrentScreen('patient-login');
+      } else if (authService.isPatientIntroCompleted()) {
+        setCurrentScreen('patient-register');
+      } else {
+        setCurrentScreen('patient-intro');
+      }
     } else if (roleId === 'doctor') {
       setCurrentScreen('doctor-login');
     } else if (roleId === 'caregiver') {
@@ -45,10 +89,12 @@ function App() {
   };
 
   const handleIntroComplete = () => {
+    authService.setPatientIntroCompleted();
     setCurrentScreen('patient-register');
   };
 
   const handleRegistrationSuccess = () => {
+    authService.setPatientRegistered();
     setCurrentScreen('patient-login');
   };
 
@@ -92,16 +138,16 @@ function App() {
         />
       )}
 
-      {/* PATIENT FLOW */}
+      {/* PATIENT FLOW (RBAC Gated) */}
       {/* Screen 3: Patient Introduction */}
-      {currentScreen === 'patient-intro' && (
+      {currentScreen === 'patient-intro' && !authService.getActiveSession() && (
         <PatientIntroScreen
           onComplete={handleIntroComplete}
         />
       )}
 
       {/* Screen 4: Patient Registration Screen */}
-      {currentScreen === 'patient-register' && (
+      {currentScreen === 'patient-register' && !authService.getActiveSession() && (
         <PatientRegistrationScreen
           onBack={() => setCurrentScreen('role-selection')}
           onSuccess={handleRegistrationSuccess}
@@ -110,7 +156,7 @@ function App() {
       )}
 
       {/* Screen 5: Patient Login Screen */}
-      {currentScreen === 'patient-login' && (
+      {currentScreen === 'patient-login' && !authService.getActiveSession() && (
         <PatientLoginScreen
           onBack={() => setCurrentScreen('role-selection')}
           onCreateAccountClick={() => setCurrentScreen('patient-register')}
@@ -118,16 +164,16 @@ function App() {
         />
       )}
 
-      {/* Screen 6: Patient Dashboard Screen (PROTECTED) */}
+      {/* Screen 6: Patient Dashboard Screen (PROTECTED RBAC) */}
       {currentScreen === 'patient-dashboard' && authService.isAuthenticated('patient') && (
         <PatientDashboardScreen
           onLogout={handleLogout}
         />
       )}
 
-      {/* DOCTOR FLOW */}
+      {/* DOCTOR FLOW (RBAC Gated) */}
       {/* Screen 7: Doctor Login Screen */}
-      {currentScreen === 'doctor-login' && (
+      {currentScreen === 'doctor-login' && !authService.getActiveSession() && (
         <DoctorLoginScreen
           onBack={() => setCurrentScreen('role-selection')}
           onCreateAccountClick={() => setCurrentScreen('doctor-register')}
@@ -136,7 +182,7 @@ function App() {
       )}
 
       {/* Screen 8: Doctor Registration Screen */}
-      {currentScreen === 'doctor-register' && (
+      {currentScreen === 'doctor-register' && !authService.getActiveSession() && (
         <DoctorRegistrationScreen
           onBack={() => setCurrentScreen('doctor-login')}
           onSuccess={handleDoctorRegistrationSuccess}
@@ -144,16 +190,16 @@ function App() {
         />
       )}
 
-      {/* Screen 9: Doctor Dashboard Screen (PROTECTED) */}
+      {/* Screen 9: Doctor Dashboard Screen (PROTECTED RBAC) */}
       {currentScreen === 'doctor-dashboard' && authService.isAuthenticated('doctor') && (
         <DoctorDashboardScreen
           onLogout={handleLogout}
         />
       )}
 
-      {/* CAREGIVER FLOW */}
+      {/* CAREGIVER FLOW (RBAC Gated) */}
       {/* Screen 10: Caregiver Login Screen */}
-      {currentScreen === 'caregiver-login' && (
+      {currentScreen === 'caregiver-login' && !authService.getActiveSession() && (
         <CaregiverLoginScreen
           onBack={() => setCurrentScreen('role-selection')}
           onCreateAccountClick={() => setCurrentScreen('caregiver-register')}
@@ -162,7 +208,7 @@ function App() {
       )}
 
       {/* Screen 11: Caregiver Registration Screen */}
-      {currentScreen === 'caregiver-register' && (
+      {currentScreen === 'caregiver-register' && !authService.getActiveSession() && (
         <CaregiverRegistrationScreen
           onBack={() => setCurrentScreen('caregiver-login')}
           onSuccess={handleCaregiverRegistrationSuccess}
@@ -170,7 +216,7 @@ function App() {
         />
       )}
 
-      {/* Screen 12: Caregiver Dashboard Screen (PROTECTED) */}
+      {/* Screen 12: Caregiver Dashboard Screen (PROTECTED RBAC) */}
       {currentScreen === 'caregiver-dashboard' && authService.isAuthenticated('caregiver') && (
         <CaregiverDashboardScreen
           onLogout={handleLogout}

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Settings, Eye, EyeOff, Mail, Lock, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Mail, Lock, AlertCircle } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
+import PasswordInput from './PasswordInput';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 
@@ -9,17 +10,16 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
   const { t, voiceAssistant, speak } = useSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Form State: NEVER pre-filled
+  // Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   
   // Feedback Messages
   const [errorMessage, setErrorMessage] = useState('');
   const [forgotPasswordMsg, setForgotPasswordMsg] = useState('');
 
-  // Clear inputs when page loads
+  // Clear inputs on mount
   useEffect(() => {
     setEmail('');
     setPassword('');
@@ -27,7 +27,6 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
     setForgotPasswordMsg('');
   }, []);
 
-  // Validation Rules
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const isPasswordValid = password.length > 0;
   const isFormValid = isEmailValid && isPasswordValid;
@@ -42,12 +41,7 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
     e.preventDefault();
 
     if (!email.trim()) {
-      setErrorMessage('Email Address is required.');
-      return;
-    }
-
-    if (!isEmailValid) {
-      setErrorMessage('Please enter a valid email address format.');
+      setErrorMessage('Please enter a valid email address.');
       return;
     }
 
@@ -56,7 +50,7 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
       return;
     }
 
-    // Authenticate Patient via authService
+    // Authenticate Patient via authService (handles role-specific keys & step validation)
     const result = authService.loginPatient(email, password);
     if (!result.success) {
       setErrorMessage(result.error);
@@ -176,36 +170,23 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
               />
             </div>
 
-            {/* Password * */}
+            {/* Password * (Reusable PasswordInput) */}
             <div className="form-group">
               <label className="form-label" htmlFor="login-password">
                 <Lock size={16} />
                 <span>Password *</span>
               </label>
-              <div className="password-input-wrapper">
-                <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  className="form-input password-input"
-                  placeholder="Enter your password"
-                  value={password}
-                  autoComplete="off"
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (errorMessage) setErrorMessage('');
-                  }}
-                  onFocus={() => handleFieldSpeak('password')}
-                  required
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
+              <PasswordInput
+                id="login-password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errorMessage) setErrorMessage('');
+                }}
+                onFocus={() => handleFieldSpeak('password')}
+                placeholder="Enter your password"
+                required
+              />
             </div>
 
             {/* Options: Remember Me & Forgot Password? */}
@@ -248,7 +229,6 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
 
             {/* Action Buttons */}
             <div className="form-actions" style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-              {/* Primary Button */}
               <button
                 type="submit"
                 className="btn-continue"
@@ -258,7 +238,6 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
                 <span>Login</span>
               </button>
 
-              {/* Secondary Button */}
               {onCreateAccountClick && (
                 <button
                   type="button"

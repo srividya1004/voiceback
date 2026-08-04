@@ -3,6 +3,7 @@ import { Settings, ArrowRight, FastForward } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import authService from '../services/authService';
 import avatarImg from '../assets/healthcare_avatar.png';
 
 export const PatientIntroScreen = ({ onComplete, noticeMessage }) => {
@@ -81,11 +82,7 @@ export const PatientIntroScreen = ({ onComplete, noticeMessage }) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
-    try {
-      localStorage.setItem('patientIntroductionSeen', 'true');
-    } catch (e) {
-      console.warn('Failed to set patientIntroductionSeen:', e);
-    }
+    authService.setPatientIntroCompleted();
     if (onComplete) {
       onComplete();
     }

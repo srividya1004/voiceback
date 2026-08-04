@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Stethoscope, ArrowLeft, Check, AlertCircle } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
+import PasswordInput from './PasswordInput';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 
@@ -252,9 +253,8 @@ export const DoctorRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) =
 
               <div className="profile-field-group">
                 <span className="profile-field-label">Password *</span>
-                <input
-                  type="password"
-                  className="form-input"
+                <PasswordInput
+                  id="doctor-reg-password"
                   value={formData.password}
                   onChange={(e) => handleChange('password', e.target.value)}
                   placeholder="••••••••"
@@ -264,9 +264,8 @@ export const DoctorRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) =
 
               <div className="profile-field-group">
                 <span className="profile-field-label">Confirm Password *</span>
-                <input
-                  type="password"
-                  className="form-input"
+                <PasswordInput
+                  id="doctor-reg-confirmpassword"
                   value={formData.confirmPassword}
                   onChange={(e) => handleChange('confirmPassword', e.target.value)}
                   placeholder="••••••••"

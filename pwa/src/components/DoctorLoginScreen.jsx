@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Stethoscope, ArrowLeft, Lock, Mail, UserPlus } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
+import PasswordInput from './PasswordInput';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 
 export const DoctorLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess }) => {
-  const { t, voiceAssistant, speak } = useSettings();
+  const { t } = useSettings();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [noticeMsg, setNoticeMsg] = useState('');
@@ -14,8 +15,12 @@ export const DoctorLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess
   const handleSubmit = (e) => {
     e.preventDefault();
     setErrorMsg('');
-    if (!email.trim() || !password.trim()) {
-      setErrorMsg('Please enter your email and password.');
+    if (!email.trim()) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+    if (!password) {
+      setErrorMsg('Password is required.');
       return;
     }
 
@@ -25,7 +30,9 @@ export const DoctorLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess
       return;
     }
 
-    onLoginSuccess();
+    if (onLoginSuccess) {
+      onLoginSuccess(result.user);
+    }
   };
 
   const handleForgotPassword = () => {
@@ -88,7 +95,10 @@ export const DoctorLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess
                     type="email"
                     className="form-input"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
                     placeholder="doctor@hospital.health"
                     required
                     style={{ paddingLeft: '2.5rem' }}
@@ -99,18 +109,17 @@ export const DoctorLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess
 
               <div className="profile-field-group">
                 <span className="profile-field-label">Password *</span>
-                <div style={{ position: 'relative', width: '100%' }}>
-                  <input
-                    type="password"
-                    className="form-input"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                    style={{ paddingLeft: '2.5rem' }}
-                  />
-                  <Lock size={18} color="var(--color-brand-tagline)" style={{ position: 'absolute', left: '0.85rem', top: '50%', transform: 'translateY(-50%)' }} />
-                </div>
+                <PasswordInput
+                  id="doctor-password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errorMsg) setErrorMsg('');
+                  }}
+                  leftIcon={<Lock size={18} />}
+                  placeholder="••••••••"
+                  required
+                />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-0.25rem' }}>
