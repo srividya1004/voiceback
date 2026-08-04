@@ -103,14 +103,14 @@ const loginUser = async (email, password) => {
   const user = await UserLogin.findOne({ email });
 
   if (!user) {
-    throw new Error("Invalid email or password");
+    throw new Error("No account found. Please register first.");
   }
 
   // Compare password
   const isMatch = await bcrypt.compare(password, user.passwordHash);
 
   if (!isMatch) {
-    throw new Error("Invalid email or password");
+    throw new Error("Incorrect password. Please try again.");
   }
 
   // Generate JWT Token

@@ -1,18 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Stethoscope, ArrowLeft, Lock, Mail, UserPlus } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import PasswordInput from './PasswordInput';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 
-export const DoctorLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess }) => {
+export const DoctorLoginScreen = ({ initialEmail = '', onBack, onCreateAccountClick, onLoginSuccess }) => {
   const { t } = useSettings();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => initialEmail || authService.getLastRegisteredEmail('doctor') || '');
   const [password, setPassword] = useState('');
   const [noticeMsg, setNoticeMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    const prefilled = initialEmail || authService.getLastRegisteredEmail('doctor');
+    if (prefilled) {
+      setEmail(prefilled);
+    }
+    setPassword('');
+  }, [initialEmail]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     if (!email.trim()) {
@@ -24,7 +32,7 @@ export const DoctorLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess
       return;
     }
 
-    const result = authService.loginDoctor(email, password);
+    const result = await authService.loginDoctor(email, password);
     if (!result.success) {
       setErrorMsg(result.error);
       return;

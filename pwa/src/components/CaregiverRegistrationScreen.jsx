@@ -73,7 +73,7 @@ export const CaregiverRegistrationScreen = ({ onBack, onSuccess, onSignInClick }
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
@@ -87,8 +87,8 @@ export const CaregiverRegistrationScreen = ({ onBack, onSuccess, onSignInClick }
       caregiverId: `CG-${Math.floor(1000 + Math.random() * 9000)}`,
     };
 
-    authService.registerCaregiver(caregiverProfile);
-    onSuccess();
+    await authService.registerCaregiver(caregiverProfile);
+    onSuccess(caregiverProfile);
   };
 
   return (

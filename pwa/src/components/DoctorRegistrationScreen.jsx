@@ -83,7 +83,7 @@ export const DoctorRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) =
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
 
@@ -100,8 +100,8 @@ export const DoctorRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) =
       doctorId: `DOC-${Math.floor(1000 + Math.random() * 9000)}`,
     };
 
-    authService.registerDoctor(doctorProfile);
-    onSuccess();
+    await authService.registerDoctor(doctorProfile);
+    onSuccess(doctorProfile);
   };
 
   return (

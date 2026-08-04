@@ -1,24 +1,19 @@
-/**
- * VoiceBack Modular Authentication & Session Service
- * Role-Based Access Control (RBAC), client-side validation, localStorage persistence.
- * Pre-architected for Spring Boot + JWT REST API replacement.
- */
+import apiClient from './apiClient';
+import patientService from './patientService';
+import doctorService from './doctorService';
+import caregiverService from './caregiverService';
 
 const STORAGE_KEYS = {
+  ACTIVE_SESSION: 'voiceback_auth_session',
+  CURRENT_USER_OBJECT: 'currentUser',
+  PATIENT_INTRO_COMPLETED: 'voiceback_patient_intro_completed',
+  PATIENT_REGISTERED: 'voiceback_patient_registered',
+  LAST_REGISTERED_EMAIL_PATIENT: 'voiceback_registered_email_patient',
+  LAST_REGISTERED_EMAIL_DOCTOR: 'voiceback_registered_email_doctor',
+  LAST_REGISTERED_EMAIL_CAREGIVER: 'voiceback_registered_email_caregiver',
   PATIENT_ACCOUNT: 'voiceback_patient_account',
   DOCTOR_ACCOUNT: 'voiceback_doctor_account',
   CAREGIVER_ACCOUNT: 'voiceback_caregiver_account',
-  ACTIVE_SESSION: 'voiceback_auth_session',
-  CURRENT_USER_OBJECT: 'currentUser',
-  CURRENT_PATIENT: 'voiceback_current_user',
-  CURRENT_DOCTOR: 'voiceback_doctor_user',
-  CURRENT_CAREGIVER: 'voiceback_caregiver_user',
-  PATIENT_INTRO_COMPLETED: 'voiceback_patient_intro_completed',
-  PATIENT_REGISTERED: 'voiceback_patient_registered',
-  // Legacy aliases
-  PATIENTS_LEGACY: 'voiceback_registered_users',
-  DOCTORS_LEGACY: 'voiceback_registered_doctors',
-  CAREGIVERS_LEGACY: 'voiceback_registered_caregivers',
 };
 
 export const authService = {
@@ -49,8 +44,7 @@ export const authService = {
       const flag = localStorage.getItem(STORAGE_KEYS.PATIENT_REGISTERED) === 'true';
       if (flag) return true;
       const accounts = JSON.parse(localStorage.getItem(STORAGE_KEYS.PATIENT_ACCOUNT) || '[]');
-      const legacy = JSON.parse(localStorage.getItem(STORAGE_KEYS.PATIENTS_LEGACY) || '[]');
-      return (Array.isArray(accounts) && accounts.length > 0) || (Array.isArray(legacy) && legacy.length > 0);
+      return Array.isArray(accounts) && accounts.length > 0;
     } catch (e) {
       return false;
     }
@@ -65,272 +59,269 @@ export const authService = {
     }
   },
 
-  // Helper to fetch list of accounts for a role
-  getAccountsByRole: (roleKey, legacyKey) => {
+  // Get Last Registered Email for Pre-filling Login forms
+  getLastRegisteredEmail: (role) => {
     try {
-      const primary = JSON.parse(localStorage.getItem(roleKey) || '[]');
-      const legacy = JSON.parse(localStorage.getItem(legacyKey) || '[]');
-      const list = [
-        ...(Array.isArray(primary) ? primary : [primary]),
-        ...(Array.isArray(legacy) ? legacy : [legacy])
-      ].filter(Boolean);
-      return list;
+      if (role === 'patient') return localStorage.getItem(STORAGE_KEYS.LAST_REGISTERED_EMAIL_PATIENT) || '';
+      if (role === 'doctor') return localStorage.getItem(STORAGE_KEYS.LAST_REGISTERED_EMAIL_DOCTOR) || '';
+      if (role === 'caregiver') return localStorage.getItem(STORAGE_KEYS.LAST_REGISTERED_EMAIL_CAREGIVER) || '';
     } catch (e) {
-      return [];
+      return '';
+    }
+    return '';
+  },
+
+  setLastRegisteredEmail: (role, email) => {
+    try {
+      const normalized = (email || '').trim().toLowerCase();
+      if (role === 'patient') localStorage.setItem(STORAGE_KEYS.LAST_REGISTERED_EMAIL_PATIENT, normalized);
+      if (role === 'doctor') localStorage.setItem(STORAGE_KEYS.LAST_REGISTERED_EMAIL_DOCTOR, normalized);
+      if (role === 'caregiver') localStorage.setItem(STORAGE_KEYS.LAST_REGISTERED_EMAIL_CAREGIVER, normalized);
+    } catch (e) {
+      // ignore
     }
   },
 
-  // Register Patient
-  registerPatient: (patientData) => {
+  // Unified Backend Registration Methods
+  registerPatient: async (patientData) => {
+    const normalizedEmail = (patientData.email || '').trim().toLowerCase();
     try {
-      const normalizedEmail = (patientData.email || '').trim().toLowerCase();
-      const existing = authService.getAccountsByRole(STORAGE_KEYS.PATIENT_ACCOUNT, STORAGE_KEYS.PATIENTS_LEGACY);
+      // 1. Create UserLogin record in Express Backend
+      const loginRes = await apiClient.post('/user-logins', {
+        email: normalizedEmail,
+        passwordHash: patientData.password,
+        role: 'Patient',
+      });
+      const userLogin = loginRes.data.data;
 
+      // 2. Create Patient profile in Express Backend
+      const validAphasiaTypes = [
+        "Broca's", "Wernicke's", "Global", "Anomic",
+        "Transcortical Motor", "Transcortical Sensory", "Conduction", "Mixed", "Other"
+      ];
+      const selectedAphasia = validAphasiaTypes.includes(patientData.aphasiaType)
+        ? patientData.aphasiaType
+        : "Broca's";
+
+      await patientService.createPatientProfile({
+        userId: userLogin._id,
+        fullName: (patientData.fullName || '').trim(),
+        age: Number(patientData.age) || 45,
+        aphasiaType: selectedAphasia,
+      });
+
+      authService.setLastRegisteredEmail('patient', normalizedEmail);
+      authService.setPatientRegistered();
+
+      return { success: true, user: { email: normalizedEmail, role: 'patient' } };
+    } catch (apiError) {
+      console.warn('Backend API registration failed, falling back to local storage:', apiError.message);
+      // Local storage fallback if backend is offline
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.PATIENT_ACCOUNT) || '[]');
       const newRecord = {
         fullName: (patientData.fullName || '').trim(),
         email: normalizedEmail,
         password: patientData.password || '',
         role: 'patient',
-        registrationStatus: 'registered',
-        age: patientData.age || '',
-        gender: patientData.gender || '',
-        mobileNumber: patientData.mobileNumber || '',
-        aphasiaType: patientData.aphasiaType || '',
-        preferredLanguage: patientData.preferredLanguage || 'english',
-        emergencyContact: patientData.emergencyContact || '',
       };
-
-      const updated = [...existing.filter(u => (u.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
+      const updated = [...existing.filter((u) => (u.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
       localStorage.setItem(STORAGE_KEYS.PATIENT_ACCOUNT, JSON.stringify(updated));
-      localStorage.setItem(STORAGE_KEYS.PATIENTS_LEGACY, JSON.stringify(updated));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_PATIENT, JSON.stringify(newRecord));
-
+      authService.setLastRegisteredEmail('patient', normalizedEmail);
       authService.setPatientRegistered();
-
       return { success: true, user: newRecord };
-    } catch (e) {
-      return { success: false, error: 'Registration storage failed.' };
     }
   },
 
-  // Login Patient
-  loginPatient: (email, password) => {
+  registerDoctor: async (doctorData) => {
+    const normalizedEmail = (doctorData.email || '').trim().toLowerCase();
     try {
-      const normalizedEmail = (email || '').trim().toLowerCase();
-      if (!normalizedEmail) {
-        return { success: false, error: 'Please enter a valid email address.' };
-      }
+      // 1. Create UserLogin record in Express Backend
+      const loginRes = await apiClient.post('/user-logins', {
+        email: normalizedEmail,
+        passwordHash: doctorData.password,
+        role: 'Doctor',
+      });
+      const userLogin = loginRes.data.data;
 
-      const existing = authService.getAccountsByRole(STORAGE_KEYS.PATIENT_ACCOUNT, STORAGE_KEYS.PATIENTS_LEGACY);
-      const currentPatient = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_PATIENT) || 'null');
+      // 2. Create Doctor profile in Express Backend
+      await doctorService.createDoctorProfile({
+        userId: userLogin._id,
+        fullName: (doctorData.fullName || '').trim(),
+        specialization: doctorData.specialization || 'Neurologist',
+        hospitalAffiliation: doctorData.hospital || doctorData.hospitalName || 'AIIMS Clinical Rehabilitation Center',
+        licenseNumber: doctorData.licenseNumber || `LIC-${Math.floor(1000 + Math.random() * 9000)}`,
+        email: normalizedEmail,
+        phone: doctorData.mobileNumber || '',
+      });
 
-      const allAccounts = [
-        ...existing,
-        ...(currentPatient ? [currentPatient] : [])
-      ].filter(Boolean);
-
-      const found = allAccounts.find(u => (u.email || '').trim().toLowerCase() === normalizedEmail);
-
-      // Step 1: Check whether account exists
-      if (!found) {
-        return { success: false, error: 'No account found. Please register first.' };
-      }
-
-      // Step 2: Validate password
-      if (!password || found.password !== password) {
-        return { success: false, error: 'Incorrect email or password.' };
-      }
-
-      // Step 3: Create Active Session & currentUser object (RBAC format)
-      const currentUser = {
-        role: 'patient',
-        email: found.email,
-        name: found.fullName || 'Patient',
-        isAuthenticated: true,
-        user: found,
-        timestamp: Date.now(),
-      };
-
-      localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, JSON.stringify(currentUser));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_OBJECT, JSON.stringify(currentUser));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_PATIENT, JSON.stringify(found));
-      authService.setPatientRegistered();
-
-      return { success: true, user: found };
-    } catch (e) {
-      return { success: false, error: 'Login error occurred.' };
-    }
-  },
-
-  // Register Doctor
-  registerDoctor: (doctorData) => {
-    try {
-      const normalizedEmail = (doctorData.email || '').trim().toLowerCase();
-      const existing = authService.getAccountsByRole(STORAGE_KEYS.DOCTOR_ACCOUNT, STORAGE_KEYS.DOCTORS_LEGACY);
-
+      authService.setLastRegisteredEmail('doctor', normalizedEmail);
+      return { success: true, user: { email: normalizedEmail, role: 'doctor' } };
+    } catch (apiError) {
+      console.warn('Backend API doctor registration failed, falling back to local storage:', apiError.message);
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.DOCTOR_ACCOUNT) || '[]');
       const newRecord = {
         fullName: (doctorData.fullName || '').trim(),
         email: normalizedEmail,
         password: doctorData.password || '',
         role: 'doctor',
-        registrationStatus: 'registered',
-        doctorId: doctorData.doctorId || `DOC-${Math.floor(1000 + Math.random() * 9000)}`,
-        specialization: doctorData.specialization || 'Neurologist',
-        hospital: doctorData.hospital || 'AIIMS Clinical Rehabilitation Center',
-        mobileNumber: doctorData.mobileNumber || '',
       };
-
-      const updated = [...existing.filter(d => (d.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
+      const updated = [...existing.filter((d) => (d.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
       localStorage.setItem(STORAGE_KEYS.DOCTOR_ACCOUNT, JSON.stringify(updated));
-      localStorage.setItem(STORAGE_KEYS.DOCTORS_LEGACY, JSON.stringify(updated));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_DOCTOR, JSON.stringify(newRecord));
-
+      authService.setLastRegisteredEmail('doctor', normalizedEmail);
       return { success: true, user: newRecord };
-    } catch (e) {
-      return { success: false, error: 'Doctor registration failed.' };
     }
   },
 
-  // Login Doctor
-  loginDoctor: (email, password) => {
+  registerCaregiver: async (caregiverData) => {
+    const normalizedEmail = (caregiverData.email || '').trim().toLowerCase();
     try {
-      const normalizedEmail = (email || '').trim().toLowerCase();
-      if (!normalizedEmail) {
-        return { success: false, error: 'Please enter a valid email address.' };
-      }
+      // 1. Create UserLogin record in Express Backend
+      const loginRes = await apiClient.post('/user-logins', {
+        email: normalizedEmail,
+        passwordHash: caregiverData.password,
+        role: 'Caregiver',
+      });
+      const userLogin = loginRes.data.data;
 
-      const existing = authService.getAccountsByRole(STORAGE_KEYS.DOCTOR_ACCOUNT, STORAGE_KEYS.DOCTORS_LEGACY);
-      const currentDoctor = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_DOCTOR) || 'null');
+      // 2. Create Caregiver profile in Express Backend
+      await caregiverService.createCaregiverProfile({
+        userId: userLogin._id,
+        fullName: (caregiverData.fullName || '').trim(),
+        phone: caregiverData.mobileNumber || '9876543210',
+        relationshipToPatient: caregiverData.relationship || 'Caregiver',
+        email: normalizedEmail,
+      });
 
-      const allAccounts = [
-        ...existing,
-        ...(currentDoctor ? [currentDoctor] : [])
-      ].filter(Boolean);
-
-      const found = allAccounts.find(d => (d.email || '').trim().toLowerCase() === normalizedEmail);
-
-      // Step 1: Check whether account exists
-      if (!found) {
-        return { success: false, error: 'No account found. Please register first.' };
-      }
-
-      // Step 2: Validate password
-      if (!password || found.password !== password) {
-        return { success: false, error: 'Incorrect email or password.' };
-      }
-
-      // Step 3: Create Active Session & currentUser object (RBAC format)
-      const currentUser = {
-        role: 'doctor',
-        email: found.email,
-        name: found.fullName || 'Doctor',
-        isAuthenticated: true,
-        user: found,
-        timestamp: Date.now(),
-      };
-
-      localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, JSON.stringify(currentUser));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_OBJECT, JSON.stringify(currentUser));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_DOCTOR, JSON.stringify(found));
-
-      return { success: true, user: found };
-    } catch (e) {
-      return { success: false, error: 'Doctor login error occurred.' };
-    }
-  },
-
-  // Register Caregiver
-  registerCaregiver: (caregiverData) => {
-    try {
-      const normalizedEmail = (caregiverData.email || '').trim().toLowerCase();
-      const existing = authService.getAccountsByRole(STORAGE_KEYS.CAREGIVER_ACCOUNT, STORAGE_KEYS.CAREGIVERS_LEGACY);
-
+      authService.setLastRegisteredEmail('caregiver', normalizedEmail);
+      return { success: true, user: { email: normalizedEmail, role: 'caregiver' } };
+    } catch (apiError) {
+      console.warn('Backend API caregiver registration failed, falling back to local storage:', apiError.message);
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.CAREGIVER_ACCOUNT) || '[]');
       const newRecord = {
         fullName: (caregiverData.fullName || '').trim(),
         email: normalizedEmail,
         password: caregiverData.password || '',
         role: 'caregiver',
-        registrationStatus: 'registered',
-        relationship: caregiverData.relationship || 'Caregiver',
-        mobileNumber: caregiverData.mobileNumber || '',
       };
-
-      const updated = [...existing.filter(c => (c.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
+      const updated = [...existing.filter((c) => (c.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
       localStorage.setItem(STORAGE_KEYS.CAREGIVER_ACCOUNT, JSON.stringify(updated));
-      localStorage.setItem(STORAGE_KEYS.CAREGIVERS_LEGACY, JSON.stringify(updated));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_CAREGIVER, JSON.stringify(newRecord));
-
+      authService.setLastRegisteredEmail('caregiver', normalizedEmail);
       return { success: true, user: newRecord };
-    } catch (e) {
-      return { success: false, error: 'Caregiver registration failed.' };
     }
   },
 
-  // Login Caregiver
-  loginCaregiver: (email, password) => {
+  // Generic login handler calling POST /api/user-logins/login
+  loginUser: async (email, password, targetRole = 'patient') => {
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+    if (!password) {
+      return { success: false, error: 'Password is required.' };
+    }
+
     try {
-      const normalizedEmail = (email || '').trim().toLowerCase();
-      if (!normalizedEmail) {
-        return { success: false, error: 'Please enter a valid email address.' };
+      // Call Express Backend Login Endpoint
+      const response = await apiClient.post('/user-logins/login', {
+        email: normalizedEmail,
+        password,
+      });
+
+      const { token, user } = response.data.data;
+      const backendRole = (user.role || targetRole).toLowerCase();
+
+      // Store ONLY voiceback_auth_session (No password stored)
+      const authSession = {
+        token: token || `jwt-token-${Date.now()}`,
+        role: backendRole,
+        email: user.email,
+        isAuthenticated: true,
+        user: {
+          id: user.id || user._id,
+          email: user.email,
+          role: backendRole,
+        },
+      };
+
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, JSON.stringify(authSession));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_OBJECT, JSON.stringify(authSession));
+
+      if (backendRole === 'patient') {
+        authService.setPatientRegistered();
       }
 
-      const existing = authService.getAccountsByRole(STORAGE_KEYS.CAREGIVER_ACCOUNT, STORAGE_KEYS.CAREGIVERS_LEGACY);
-      const currentCaregiver = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_CAREGIVER) || 'null');
+      return { success: true, user: authSession };
+    } catch (apiError) {
+      // If backend responded with a 4xx client error (e.g. 401 Unauthorized, 400 Bad Request), return backend message directly
+      if (apiError && apiError.status && apiError.status < 500) {
+        return { success: false, error: apiError.message || 'Authentication failed.' };
+      }
 
-      const allAccounts = [
-        ...existing,
-        ...(currentCaregiver ? [currentCaregiver] : [])
-      ].filter(Boolean);
+      console.warn('Backend login API call failed, attempting local fallback:', apiError.message);
 
-      const found = allAccounts.find(c => (c.email || '').trim().toLowerCase() === normalizedEmail);
+      const storageKeyMap = {
+        patient: STORAGE_KEYS.PATIENT_ACCOUNT,
+        doctor: STORAGE_KEYS.DOCTOR_ACCOUNT,
+        caregiver: STORAGE_KEYS.CAREGIVER_ACCOUNT,
+      };
 
-      // Step 1: Check whether account exists
+      const key = storageKeyMap[targetRole] || STORAGE_KEYS.PATIENT_ACCOUNT;
+      const accounts = JSON.parse(localStorage.getItem(key) || '[]');
+      const found = accounts.find((a) => (a.email || '').trim().toLowerCase() === normalizedEmail);
+
       if (!found) {
         return { success: false, error: 'No account found. Please register first.' };
       }
 
-      // Step 2: Validate password
-      if (!password || found.password !== password) {
-        return { success: false, error: 'Incorrect email or password.' };
+      if (found.password !== password) {
+        return { success: false, error: 'Incorrect password. Please try again.' };
       }
 
-      // Step 3: Create Active Session & currentUser object (RBAC format)
-      const currentUser = {
-        role: 'caregiver',
+      const authSession = {
+        token: `mock-jwt-token-${Date.now()}`,
+        role: targetRole,
         email: found.email,
-        name: found.fullName || 'Caregiver',
         isAuthenticated: true,
-        user: found,
-        timestamp: Date.now(),
+        user: {
+          email: found.email,
+          role: targetRole,
+          name: found.fullName || 'User',
+        },
       };
 
-      localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, JSON.stringify(currentUser));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_OBJECT, JSON.stringify(currentUser));
-      localStorage.setItem(STORAGE_KEYS.CURRENT_CAREGIVER, JSON.stringify(found));
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, JSON.stringify(authSession));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_OBJECT, JSON.stringify(authSession));
 
-      return { success: true, user: found };
-    } catch (e) {
-      return { success: false, error: 'Caregiver login error occurred.' };
+      if (targetRole === 'patient') {
+        authService.setPatientRegistered();
+      }
+
+      return { success: true, user: authSession };
     }
   },
 
-  // Get active session / currentUser
+  // Role-specific login wrappers
+  loginPatient: (email, password) => authService.loginUser(email, password, 'patient'),
+  loginDoctor: (email, password) => authService.loginUser(email, password, 'doctor'),
+  loginCaregiver: (email, password) => authService.loginUser(email, password, 'caregiver'),
+
+  // Get Active Session
   getActiveSession: () => {
     try {
-      const session = JSON.parse(localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION) || 'null');
-      if (session && session.isAuthenticated !== false) return session;
-      const currentUserObj = JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_USER_OBJECT) || 'null');
-      if (currentUserObj && currentUserObj.isAuthenticated !== false) return currentUserObj;
+      const raw = localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION);
+      if (!raw) return null;
+      const session = JSON.parse(raw);
+      if (session && session.isAuthenticated && session.token) return session;
       return null;
     } catch (e) {
       return null;
     }
   },
 
-  // Check if role is authenticated
+  // Check if user is authenticated with required role
   isAuthenticated: (requiredRole) => {
     const session = authService.getActiveSession();
-    if (!session || !session.role || session.isAuthenticated === false) return false;
+    if (!session || !session.isAuthenticated || !session.token) return false;
     if (requiredRole && session.role !== requiredRole) return false;
     return true;
   },
@@ -340,20 +331,12 @@ export const authService = {
     return session ? session.role : null;
   },
 
-  getCurrentUser: (role) => {
-    try {
-      const session = authService.getActiveSession();
-      if (session && session.user) return session.user;
-      if (role === 'patient') return JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_PATIENT) || 'null');
-      if (role === 'doctor') return JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_DOCTOR) || 'null');
-      if (role === 'caregiver') return JSON.parse(localStorage.getItem(STORAGE_KEYS.CURRENT_CAREGIVER) || 'null');
-    } catch (e) {
-      return null;
-    }
-    return null;
+  getCurrentUser: () => {
+    const session = authService.getActiveSession();
+    return session ? session.user : null;
   },
 
-  // Logout cleanly
+  // Logout & Clear Session
   logout: () => {
     try {
       localStorage.removeItem(STORAGE_KEYS.ACTIVE_SESSION);

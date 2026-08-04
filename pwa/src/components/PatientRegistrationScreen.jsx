@@ -188,10 +188,10 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
     isConfirmPasswordValid,
   ]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isFormValid) return;
-    authService.registerPatient(formData);
+    await authService.registerPatient(formData);
     setIsSubmittedSuccess(true);
   };
 

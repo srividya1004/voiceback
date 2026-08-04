@@ -1,18 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Heart, ArrowLeft, Lock, Mail, UserPlus } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import PasswordInput from './PasswordInput';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 
-export const CaregiverLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess }) => {
+export const CaregiverLoginScreen = ({ initialEmail = '', onBack, onCreateAccountClick, onLoginSuccess }) => {
   const { t } = useSettings();
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => initialEmail || authService.getLastRegisteredEmail('caregiver') || '');
   const [password, setPassword] = useState('');
   const [noticeMsg, setNoticeMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    const prefilled = initialEmail || authService.getLastRegisteredEmail('caregiver');
+    if (prefilled) {
+      setEmail(prefilled);
+    }
+    setPassword('');
+  }, [initialEmail]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     if (!email.trim()) {
@@ -24,7 +32,7 @@ export const CaregiverLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucc
       return;
     }
 
-    const result = authService.loginCaregiver(email, password);
+    const result = await authService.loginCaregiver(email, password);
     if (!result.success) {
       setErrorMsg(result.error);
       return;

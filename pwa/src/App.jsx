@@ -18,6 +18,13 @@ function App() {
   const [currentScreen, setCurrentScreen] = useState('splash');
   const [roleNotice, setRoleNotice] = useState('');
 
+  // Registered Emails for Auto pre-fill on Login
+  const [registeredEmail, setRegisteredEmail] = useState({
+    patient: '',
+    doctor: '',
+    caregiver: '',
+  });
+
   // Role-Based Access Control (RBAC) & Protected Route Guard
   useEffect(() => {
     if (currentScreen === 'splash') return;
@@ -93,8 +100,12 @@ function App() {
     setCurrentScreen('patient-register');
   };
 
-  const handleRegistrationSuccess = () => {
+  const handleRegistrationSuccess = (data) => {
     authService.setPatientRegistered();
+    if (data?.email) {
+      setRegisteredEmail((prev) => ({ ...prev, patient: data.email }));
+      authService.setLastRegisteredEmail('patient', data.email);
+    }
     setCurrentScreen('patient-login');
   };
 
@@ -106,7 +117,11 @@ function App() {
     setCurrentScreen('doctor-dashboard');
   };
 
-  const handleDoctorRegistrationSuccess = () => {
+  const handleDoctorRegistrationSuccess = (data) => {
+    if (data?.email) {
+      setRegisteredEmail((prev) => ({ ...prev, doctor: data.email }));
+      authService.setLastRegisteredEmail('doctor', data.email);
+    }
     setCurrentScreen('doctor-login');
   };
 
@@ -114,7 +129,11 @@ function App() {
     setCurrentScreen('caregiver-dashboard');
   };
 
-  const handleCaregiverRegistrationSuccess = () => {
+  const handleCaregiverRegistrationSuccess = (data) => {
+    if (data?.email) {
+      setRegisteredEmail((prev) => ({ ...prev, caregiver: data.email }));
+      authService.setLastRegisteredEmail('caregiver', data.email);
+    }
     setCurrentScreen('caregiver-login');
   };
 
@@ -155,9 +174,10 @@ function App() {
         />
       )}
 
-      {/* Screen 5: Patient Login Screen */}
+      {/* Screen 5: Patient Login Screen (Pre-fills ONLY email) */}
       {currentScreen === 'patient-login' && !authService.getActiveSession() && (
         <PatientLoginScreen
+          initialEmail={registeredEmail.patient || authService.getLastRegisteredEmail('patient')}
           onBack={() => setCurrentScreen('role-selection')}
           onCreateAccountClick={() => setCurrentScreen('patient-register')}
           onLoginSuccess={handleLoginSuccess}
@@ -172,9 +192,10 @@ function App() {
       )}
 
       {/* DOCTOR FLOW (RBAC Gated) */}
-      {/* Screen 7: Doctor Login Screen */}
+      {/* Screen 7: Doctor Login Screen (Pre-fills ONLY email) */}
       {currentScreen === 'doctor-login' && !authService.getActiveSession() && (
         <DoctorLoginScreen
+          initialEmail={registeredEmail.doctor || authService.getLastRegisteredEmail('doctor')}
           onBack={() => setCurrentScreen('role-selection')}
           onCreateAccountClick={() => setCurrentScreen('doctor-register')}
           onLoginSuccess={handleDoctorLoginSuccess}
@@ -198,9 +219,10 @@ function App() {
       )}
 
       {/* CAREGIVER FLOW (RBAC Gated) */}
-      {/* Screen 10: Caregiver Login Screen */}
+      {/* Screen 10: Caregiver Login Screen (Pre-fills ONLY email) */}
       {currentScreen === 'caregiver-login' && !authService.getActiveSession() && (
         <CaregiverLoginScreen
+          initialEmail={registeredEmail.caregiver || authService.getLastRegisteredEmail('caregiver')}
           onBack={() => setCurrentScreen('role-selection')}
           onCreateAccountClick={() => setCurrentScreen('caregiver-register')}
           onLoginSuccess={handleCaregiverLoginSuccess}

@@ -6,12 +6,12 @@ import PasswordInput from './PasswordInput';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 
-export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess }) => {
+export const PatientLoginScreen = ({ initialEmail = '', onBack, onCreateAccountClick, onLoginSuccess }) => {
   const { t, voiceAssistant, speak } = useSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Form State
-  const [email, setEmail] = useState('');
+  // Form State - Pre-fill ONLY registered email, password remains empty
+  const [email, setEmail] = useState(() => initialEmail || authService.getLastRegisteredEmail('patient') || '');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   
@@ -19,13 +19,16 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
   const [errorMessage, setErrorMessage] = useState('');
   const [forgotPasswordMsg, setForgotPasswordMsg] = useState('');
 
-  // Clear inputs on mount
+  // Sync initialEmail if prop changes
   useEffect(() => {
-    setEmail('');
-    setPassword('');
+    const prefilled = initialEmail || authService.getLastRegisteredEmail('patient');
+    if (prefilled) {
+      setEmail(prefilled);
+    }
+    setPassword(''); // MUST NOT pre-fill password
     setErrorMessage('');
     setForgotPasswordMsg('');
-  }, []);
+  }, [initialEmail]);
 
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const isPasswordValid = password.length > 0;
@@ -37,7 +40,7 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!email.trim()) {
@@ -50,8 +53,8 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
       return;
     }
 
-    // Authenticate Patient via authService (handles role-specific keys & step validation)
-    const result = authService.loginPatient(email, password);
+    // Authenticate Patient via authService (handles backend API & fallback)
+    const result = await authService.loginPatient(email, password);
     if (!result.success) {
       setErrorMessage(result.error);
       if (voiceAssistant && speak) {
