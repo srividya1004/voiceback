@@ -3,6 +3,7 @@ import { ArrowLeft, Settings, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import authService from '../services/authService';
 
 export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) => {
   const { t, language, setLanguage, voiceAssistant, speak } = useSettings();
@@ -189,14 +190,7 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!isFormValid) return;
-    try {
-      const existing = JSON.parse(localStorage.getItem('voiceback_registered_users') || '[]');
-      const updated = [...existing.filter((u) => u.email.toLowerCase() !== formData.email.toLowerCase()), formData];
-      localStorage.setItem('voiceback_registered_users', JSON.stringify(updated));
-      localStorage.setItem('voiceback_current_user', JSON.stringify(formData));
-    } catch (err) {
-      console.warn('Failed to save registered user to localStorage:', err);
-    }
+    authService.registerPatient(formData);
     setIsSubmittedSuccess(true);
   };
 
@@ -220,27 +214,18 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
               aria-label={t('back') || 'Back'}
               onClick={onBack}
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={22} />
             </button>
           ) : (
             <div style={{ width: 42 }} />
           )}
 
           <VoiceBackLogo variant="header" />
-
-          <button
-            type="button"
-            className="settings-btn"
-            aria-label={t('settings') || 'Settings'}
-            title={t('settings') || 'Settings'}
-            onClick={() => setIsSettingsOpen(true)}
-          >
-            <Settings size={20} />
-          </button>
+          <div style={{ width: 42 }} />
         </header>
 
-        {/* Title & Subtitle Centered Top */}
-        <div className="role-title-section text-compact text-center" style={{ marginTop: '0.25rem', marginBottom: '0.75rem' }}>
+        {/* Title Section */}
+        <div className="role-title-section text-compact text-center" style={{ marginTop: '0.5rem', marginBottom: '0.75rem' }}>
           <h1 className="role-main-title">Patient Registration</h1>
           <p className="role-subtitle">Create your VoiceBack account to begin your recovery journey.</p>
         </div>

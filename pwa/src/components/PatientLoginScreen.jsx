@@ -3,6 +3,7 @@ import { ArrowLeft, Settings, Eye, EyeOff, Mail, Lock, AlertCircle } from 'lucid
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import authService from '../services/authService';
 
 export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSuccess }) => {
   const { t, voiceAssistant, speak } = useSettings();
@@ -55,32 +56,19 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
       return;
     }
 
-    // Mock Authentication: Check if user is registered in localStorage
-    try {
-      const users = JSON.parse(localStorage.getItem('voiceback_registered_users') || '[]');
-      const currentUser = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase()) ||
-                    (currentUser && currentUser.email?.toLowerCase() === email.trim().toLowerCase() ? currentUser : null);
-
-      if (!found) {
-        const noAccountMsg = 'No account found. Please register first.';
-        setErrorMessage(noAccountMsg);
-        if (voiceAssistant && speak) {
-          speak(noAccountMsg);
-        }
-        return;
+    // Authenticate Patient via authService
+    const result = authService.loginPatient(email, password);
+    if (!result.success) {
+      setErrorMessage(result.error);
+      if (voiceAssistant && speak) {
+        speak(result.error);
       }
+      return;
+    }
 
-      setErrorMessage('');
-
-      if (onLoginSuccess) {
-        onLoginSuccess(found);
-      }
-    } catch (err) {
-      console.warn('Error checking registered user:', err);
-      if (onLoginSuccess) {
-        onLoginSuccess({ email: email.trim() });
-      }
+    setErrorMessage('');
+    if (onLoginSuccess) {
+      onLoginSuccess(result.user);
     }
   };
 
@@ -101,30 +89,21 @@ export const PatientLoginScreen = ({ onBack, onCreateAccountClick, onLoginSucces
               aria-label={t('back') || 'Back'}
               onClick={onBack}
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={22} />
             </button>
           ) : (
             <div style={{ width: 42 }} />
           )}
 
           <VoiceBackLogo variant="header" />
-
-          <button
-            type="button"
-            className="settings-btn"
-            aria-label={t('settings') || 'Settings'}
-            title={t('settings') || 'Settings'}
-            onClick={() => setIsSettingsOpen(true)}
-          >
-            <Settings size={20} />
-          </button>
+          <div style={{ width: 42 }} />
         </header>
 
-        {/* Title Section (Matching Intro & Role Selection Typography & Spacing) */}
-        <div className="role-title-section text-center" style={{ marginTop: '0.1rem', marginBottom: '0.5rem' }}>
+        {/* Title Section */}
+        <div className="role-title-section text-center" style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
           <h1 className="role-main-title">Patient Login</h1>
           <p className="role-subtitle">
-            Welcome back.<br />Sign in to continue your recovery journey.
+            Sign in to continue your recovery journey.
           </p>
         </div>
 
