@@ -162,7 +162,111 @@ Call
 ```
 Call my daughter.
 ```
+# AI Module 3 – Safety & Confirmation Engine
 
+## Objective
+
+The Safety & Confirmation Engine ensures that VoiceBack preserves the patient's intended meaning before generating speech.
+
+This module is especially important for medical and emergency communication where an incorrect interpretation could have serious consequences.
+
+---
+
+## Responsibilities
+
+- Evaluate the confidence score of the predicted sentence.
+- Determine whether confirmation is required.
+- Prevent incorrect AI-generated responses.
+- Preserve patient intent.
+- Improve communication safety.
+
+---
+
+## Confidence Levels
+
+### High Confidence (≥95%)
+
+The predicted sentence is highly reliable.
+
+Example
+
+Predicted Text
+
+"I want water."
+
+↓
+
+Speak automatically.
+
+---
+
+### Medium Confidence (70–95%)
+
+The prediction is uncertain.
+
+The system displays possible intended meanings.
+
+Example
+
+Patient Prediction
+
+"Help"
+
+↓
+
+Suggested Responses
+
+• Help me sit up.
+
+• I need water.
+
+• Call my caregiver.
+
+• Call my doctor.
+
+The patient selects the intended message before speech is generated.
+
+---
+
+### Low Confidence (<70%)
+
+The AI is unable to determine the patient's intent reliably.
+
+The original predicted text is displayed without expansion.
+
+The system requests additional patient input rather than making assumptions.
+
+---
+
+## Medical Safety Principles
+
+The AI must never invent emergency situations.
+
+The AI must never change the patient's intended meaning.
+
+Patient intent always has the highest priority.
+
+When uncertainty exists, confirmation is required before generating speech.
+
+---
+
+## Learning
+
+Over time, the system learns frequently selected responses.
+
+For example,
+
+If the patient repeatedly selects
+
+"Help me sit up."
+
+after predicting
+
+"Help",
+
+that option is prioritized in future suggestions while still allowing patient confirmation.
+
+This enables personalization without sacrificing safety.
 
 ```
 # 5. AI Module 3 – Emotion Engine
