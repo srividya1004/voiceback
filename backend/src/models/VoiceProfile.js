@@ -36,6 +36,19 @@ const voiceProfileSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: ''
+    },
+    voiceId: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    status: {
+      type: String,
+      enum: ['Not Configured', 'Processing', 'Ready', 'Failed'],
+      default: 'Not Configured'
+    },
+    lastClonedAt: {
+      type: Date
     }
   },
   {

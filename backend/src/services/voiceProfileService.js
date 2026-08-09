@@ -83,15 +83,52 @@ const deleteVoiceProfile = async (id) => {
   return voiceProfile;
 };
 
+/**
+ * Retrieve VoiceProfile by patientId ObjectId (or return null if none)
+ * @param {String} patientId - Patient ObjectId
+ * @returns {Promise<Object|null>} VoiceProfile document
+ */
+const getVoiceProfileByPatientId = async (patientId) => {
+  validateObjectId(patientId, 'Patient');
+  const voiceProfile = await VoiceProfile.findOne({ patientId }).populate('patientId', 'fullName aphasiaType age');
+  return voiceProfile;
+};
+
+/**
+ * Upsert VoiceProfile for a given patient
+ * @param {String} patientId - Patient ObjectId
+ * @param {Object} updateData - Data fields to update/create
+ * @returns {Promise<Object>} Updated or created VoiceProfile document
+ */
+const updateOrCreateByPatientId = async (patientId, updateData) => {
+  validateObjectId(patientId, 'Patient');
+  let voiceProfile = await VoiceProfile.findOne({ patientId });
+
+  if (voiceProfile) {
+    voiceProfile = await VoiceProfile.findByIdAndUpdate(
+      voiceProfile._id,
+      { ...updateData, patientId },
+      { new: true, runValidators: true }
+    );
+  } else {
+    voiceProfile = await VoiceProfile.create({ ...updateData, patientId });
+  }
+
+  return voiceProfile;
+};
+
 module.exports = {
   create: createVoiceProfile,
   getAll: getAllVoiceProfiles,
   getById: getVoiceProfileById,
+  getByPatientId: getVoiceProfileByPatientId,
+  updateOrCreateByPatientId,
   update: updateVoiceProfile,
   delete: deleteVoiceProfile,
   createVoiceProfile,
   getAllVoiceProfiles,
   getVoiceProfileById,
+  getVoiceProfileByPatientId,
   updateVoiceProfile,
   deleteVoiceProfile
 };

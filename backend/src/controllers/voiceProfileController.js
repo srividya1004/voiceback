@@ -4,6 +4,8 @@
  */
 
 const voiceProfileService = require('../services/voiceProfileService');
+const elevenLabsService = require('../services/elevenLabsService');
+const { Patient } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
 
 /**
@@ -95,15 +97,112 @@ const deleteVoiceProfile = async (req, res) => {
   }
 };
 
+/**
+ * Handle Patient Voice Sample Upload & ElevenLabs Instant Voice Cloning
+ * @route POST /api/voice-profiles/clone-voice
+ */
+const cloneVoiceSample = async (req, res) => {
+  try {
+    if (!req.file) {
+      return sendError(res, 400, 'Audio sample file is required for voice cloning.');
+    }
+
+    const { patientId, voiceName } = req.body;
+    let targetPatientId = patientId;
+
+    // If patientId not provided, search for first patient or create/link default
+    if (!targetPatientId) {
+      const firstPatient = await Patient.findOne();
+      if (firstPatient) {
+        targetPatientId = firstPatient._id;
+      }
+    }
+
+    if (!targetPatientId) {
+      return sendError(res, 400, 'Patient ID is required for voice cloning.');
+    }
+
+    // Call ElevenLabs IVC Service (automatically cleans up local temp file)
+    const voiceId = await elevenLabsService.createInstantVoiceClone({
+      voiceName: voiceName || `VoiceBack_Patient_${targetPatientId}`,
+      audioFilePath: req.file.path,
+    });
+
+    // Update or create VoiceProfile for this patient
+    const voiceProfile = await voiceProfileService.updateOrCreateByPatientId(targetPatientId, {
+      voiceId,
+      status: 'Ready',
+      lastClonedAt: new Date(),
+    });
+
+    return sendSuccess(res, 200, 'Voice profile cloned successfully', {
+      _id: voiceProfile._id,
+      patientId: voiceProfile.patientId,
+      status: voiceProfile.status,
+      lastClonedAt: voiceProfile.lastClonedAt,
+    });
+  } catch (error) {
+    return sendError(res, 500, 'Failed to clone patient voice sample', error.message);
+  }
+};
+
+/**
+ * Handle Text-to-Speech Synthesis in Patient's Cloned Voice using eleven_v3
+ * @route POST /api/voice-profiles/synthesize
+ */
+const synthesizeSpeech = async (req, res) => {
+  try {
+    const { patientId, text, language, emotion } = req.body;
+
+    if (!text || !text.trim()) {
+      return sendError(res, 400, 'Text parameter is required for speech synthesis.');
+    }
+
+    let targetVoiceId = null;
+
+    if (patientId) {
+      const profile = await voiceProfileService.getByPatientId(patientId);
+      if (profile && profile.voiceId && profile.status === 'Ready') {
+        targetVoiceId = profile.voiceId;
+      }
+    }
+
+    // Fallback: Check if any active VoiceProfile exists with a ready voiceId
+    if (!targetVoiceId) {
+      const allProfiles = await voiceProfileService.getAll();
+      const readyProfile = allProfiles.find((p) => p.voiceId && p.status === 'Ready');
+      if (readyProfile) {
+        targetVoiceId = readyProfile.voiceId;
+      }
+    }
+
+    if (!targetVoiceId) {
+      return sendError(res, 404, 'No ready cloned voice profile found for this patient. Please record/upload a voice sample first.');
+    }
+
+    // Call ElevenLabs TTS Service (returns MP3 Buffer)
+    const audioBuffer = await elevenLabsService.generateSpeech({
+      voiceId: targetVoiceId,
+      text,
+      language: language || 'English',
+      emotion: emotion || 'neutral',
+    });
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Length', audioBuffer.length);
+    res.setHeader('Accept-Ranges', 'bytes');
+    return res.status(200).send(audioBuffer);
+  } catch (error) {
+    return sendError(res, 500, 'Speech synthesis failed', error.message);
+  }
+};
+
 module.exports = {
   create: createVoiceProfile,
   getAll: getAllVoiceProfiles,
   getById: getVoiceProfileById,
   update: updateVoiceProfile,
   delete: deleteVoiceProfile,
-  createVoiceProfile,
-  getAllVoiceProfiles,
-  getVoiceProfileById,
-  updateVoiceProfile,
-  deleteVoiceProfile
+  cloneVoiceSample,
+  synthesizeSpeech,
 };
