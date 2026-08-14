@@ -24,3 +24,5 @@ emg-ai/data/
 # OS files
 .DS_Store
 Thumbs.db
+
+emg-ai/data/
