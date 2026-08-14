@@ -56,6 +56,27 @@ const getDoctorById = async (req, res) => {
 };
 
 /**
+ * Assign patient to doctor via registered patient email
+ * @route PUT /api/doctors/:id/assign-patient
+ */
+const assignPatient = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const emailInput = req.body.email || req.body.patientEmail;
+    if (!emailInput) {
+      return sendError(res, 400, 'Patient registered email address is required');
+    }
+    const updated = await doctorService.assignPatientByEmail(id, emailInput);
+    return sendSuccess(res, 200, 'Patient assigned to doctor successfully', updated);
+  } catch (error) {
+    if (error.message.includes('No patient found')) {
+      return sendError(res, 404, error.message);
+    }
+    return sendError(res, 400, error.message);
+  }
+};
+
+/**
  * Update a Doctor record by ObjectId
  * @route PUT /api/doctors/:id
  */
@@ -99,6 +120,7 @@ module.exports = {
   create: createDoctor,
   getAll: getAllDoctors,
   getById: getDoctorById,
+  assignPatient,
   update: updateDoctor,
   delete: deleteDoctor,
   createDoctor,

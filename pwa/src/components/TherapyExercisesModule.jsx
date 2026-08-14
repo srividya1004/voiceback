@@ -1,483 +1,605 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Menu,
   X,
   ArrowLeft,
   Brain,
   MessageSquare,
   Volume2,
-  Smile,
-  Headphones,
-  MessageCircle,
+  Droplet,
+  Utensils,
+  Sparkles,
+  Info,
+  AlertTriangle,
+  Heart,
+  UserCheck,
   ArrowRight,
   CheckCircle2,
+  Lock,
   Home,
   RefreshCw,
-  Info,
   User,
   Settings,
   LogOut,
   Play,
-  Check
+  Trophy,
+  Mic,
+  HelpCircle,
+  Lightbulb,
+  Phone,
+  Coffee,
+  Smile,
+  Book,
+  Smartphone,
+  Bus,
+  Sun,
+  Star,
+  Thermometer,
+  CloudSnow,
+  Apple
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
+import SpeechInputTrigger from './SpeechInputTrigger';
 import { useSettings } from '../context/SettingsContext';
+import validationService from '../services/validationService';
+import therapyService from '../services/therapyService';
+import authService from '../services/authService';
 
 export const TherapyExercisesModule = ({
-  initialCategories,
   onBackToDashboard,
   onOpenProfile,
   onLogout
 }) => {
-  const { t, voiceAssistant, speak } = useSettings();
-  const [currentStep, setCurrentStep] = useState('home'); // 'home' | 'exercise' | 'complete'
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [isSessionActive, setIsSessionActive] = useState(false);
+  const { t, voiceAssistant, speak, language } = useSettings();
+  const [currentStep, setCurrentStep] = useState('levels'); // 'levels' | 'activity' | 'complete'
+  const [activeLevelNum, setActiveLevelNum] = useState(1);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const lastSpokenRef = useRef(null);
 
-  // Default Categories Schema (Ready to be populated via GET /api/therapy-exercises REST API)
-  const defaultCategories = [
+  // Patient Session Data
+  const [session] = useState(() => authService.getActiveSession() || {});
+  const patientId = session.user?.id || session.patientId || '6a71fce81cb089a32ce1159d';
+
+  // --- PERSISTENT UNLOCKED LEVELS (1 to 6) ---
+  const [unlockedLevels, setUnlockedLevels] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('voiceback_therapy_unlocked_levels') || '[1]');
+      return Array.isArray(stored) && stored.length > 0 ? stored : [1];
+    } catch (e) {
+      return [1];
+    }
+  });
+
+  const unlockLevel = (lvlNum) => {
+    setUnlockedLevels((prev) => {
+      if (!prev.includes(lvlNum)) {
+        const next = [...prev, lvlNum].sort((a, b) => a - b);
+        try { localStorage.setItem('voiceback_therapy_unlocked_levels', JSON.stringify(next)); } catch (e) {}
+        return next;
+      }
+      return prev;
+    });
+  };
+
+  // --- 12 DIVERSE REAL VISUAL SCENARIOS ("LOOK & RESPOND") & SPEAK & BUILD POOLS ---
+  const levelDefinitions = [
     {
-      id: 'speech-practice',
-      title: 'Speech Practice',
-      desc: 'Improve pronunciation and speech formation.',
-      instructions: 'Read the displayed word aloud slowly and clearly.',
-      icon: MessageSquare,
-      colorClass: 'blue',
+      level: 1,
+      typeTitle: 'Speak & Build — Level 1: Single Words',
+      keyTitle: 'level1Name',
+      keyDesc: 'level1Desc',
+      validationMode: 'exact',
+      items: [
+        { id: 'apple', label: 'APPLE', target: 'APPLE', hint: 'Say "APPLE"', icon: Apple, color: '#DC2626' },
+        { id: 'book', label: 'BOOK', target: 'BOOK', hint: 'Say "BOOK"', icon: Book, color: '#9333EA' },
+        { id: 'cup', label: 'CUP', target: 'CUP', hint: 'Say "CUP"', icon: Coffee, color: '#EAB308' },
+        { id: 'chair', label: 'CHAIR', target: 'CHAIR', hint: 'Say "CHAIR"', icon: Home, color: '#16A34A' },
+        { id: 'phone', label: 'PHONE', target: 'PHONE', hint: 'Say "PHONE"', icon: Smartphone, color: '#0284C7' },
+      ]
     },
     {
-      id: 'language-exercises',
-      title: 'Language Exercises',
-      desc: 'Practice word recognition and language comprehension.',
-      instructions: 'Recognize the word images and practice articulating each phrase.',
-      icon: Brain,
-      colorClass: 'green',
+      level: 2,
+      typeTitle: 'Speak & Build — Level 2: Two-Word Phrases',
+      keyTitle: 'level2Name',
+      keyDesc: 'level2Desc',
+      validationMode: 'phrase',
+      items: [
+        { id: 'need_water', label: 'NEED WATER', target: 'NEED WATER', keywords: ['need water', 'want water', 'water'], hint: 'Say "NEED WATER"', icon: Droplet, color: '#0284C7' },
+        { id: 'want_food', label: 'WANT FOOD', target: 'WANT FOOD', keywords: ['want food', 'need food', 'food'], hint: 'Say "WANT FOOD"', icon: Utensils, color: '#EAB308' },
+        { id: 'call_mom', label: 'CALL MOM', target: 'CALL MOM', keywords: ['call mom', 'call family', 'mom'], hint: 'Say "CALL MOM"', icon: Phone, color: '#DB2777' },
+        { id: 'need_medicine', label: 'NEED MEDICINE', target: 'NEED MEDICINE', keywords: ['need medicine', 'medicine'], hint: 'Say "NEED MEDICINE"', icon: Sparkles, color: '#9333EA' },
+      ]
     },
     {
-      id: 'mouth-movement',
-      title: 'Mouth Movement',
-      desc: 'Exercises to strengthen speech muscles.',
-      instructions: 'Practice mouth and lip movements slowly following guided postures.',
-      icon: Smile,
-      colorClass: 'orange',
+      level: 3,
+      typeTitle: 'Speak & Build — Level 3: Simple Sentences',
+      keyTitle: 'level3Name',
+      keyDesc: 'level3Desc',
+      validationMode: 'sentence',
+      items: [
+        { id: 's_need_water', label: 'I NEED WATER', target: 'I NEED WATER', keywords: ['i', 'need', 'water'], hint: 'Say "I NEED WATER"', icon: Droplet, color: '#0284C7' },
+        { id: 's_want_food', label: 'I WANT FOOD', target: 'I WANT FOOD', keywords: ['i', 'want', 'food'], hint: 'Say "I WANT FOOD"', icon: Utensils, color: '#EAB308' },
+        { id: 's_need_medicine', label: 'I NEED MEDICINE', target: 'I NEED MEDICINE', keywords: ['i', 'need', 'medicine'], hint: 'Say "I NEED MEDICINE"', icon: Sparkles, color: '#9333EA' },
+        { id: 's_call_mom', label: 'PLEASE CALL MOM', target: 'PLEASE CALL MOM', keywords: ['please', 'call', 'mom'], hint: 'Say "PLEASE CALL MOM"', icon: Phone, color: '#DB2777' },
+      ]
     },
     {
-      id: 'listening-practice',
-      title: 'Listening Practice',
-      desc: 'Improve listening and understanding.',
-      instructions: 'Listen carefully to clear speech prompts and practice repeating.',
-      icon: Headphones,
-      colorClass: 'blue',
+      level: 4,
+      typeTitle: 'Speak & Build — Level 4: Visual Sentences',
+      keyTitle: 'level4Name',
+      keyDesc: 'level4Desc',
+      validationMode: 'sentence',
+      items: [
+        { id: 'v_water', label: 'I NEED WATER', target: 'I NEED WATER', keywords: ['i', 'need', 'water'], hint: 'Look at empty glass. Say "I NEED WATER"', icon: Droplet, color: '#0284C7' },
+        { id: 'v_food', label: 'I WANT FOOD', target: 'I WANT FOOD', keywords: ['i', 'want', 'food'], hint: 'Look at empty plate. Say "I WANT FOOD"', icon: Utensils, color: '#EAB308' },
+        { id: 'v_tired', label: 'I AM TIRED', target: 'I AM TIRED', keywords: ['i', 'am', 'tired'], hint: 'Say "I AM TIRED"', icon: HelpCircle, color: '#6366F1' },
+      ]
     },
     {
-      id: 'daily-communication',
-      title: 'Daily Communication',
-      desc: 'Practice common daily conversations.',
-      instructions: 'Practice essential everyday conversational greetings and phrases.',
-      icon: MessageCircle,
-      colorClass: 'green',
+      level: 5,
+      typeTitle: 'LOOK & RESPOND — 12 Visual Scenarios',
+      keyTitle: 'level5Name',
+      keyDesc: 'level5Desc',
+      validationMode: 'scenario',
+      items: [
+        { id: 'scen_1', promptKey: 'scen1EmptyGlass', category: 'water', target: 'WATER', hint: 'The glass is empty. They need water.', icon: Droplet, color: '#0284C7' },
+        { id: 'scen_2', promptKey: 'scen2EmptyPlate', category: 'food', target: 'FOOD', hint: 'The plate is empty. They need food.', icon: Utensils, color: '#EAB308' },
+        { id: 'scen_3', promptKey: 'scen3Discomfort', category: 'pain', target: 'PAIN', hint: 'Holding head in pain. They are in pain.', icon: AlertTriangle, color: '#DC2626' },
+        { id: 'scen_4', promptKey: 'scen4MedicineBottle', category: 'medicine', target: 'MEDICINE', hint: 'Holding medicine bottle. They need medicine.', icon: Sparkles, color: '#9333EA' },
+        { id: 'scen_5', promptKey: 'scen5CaregiverLeaving', category: 'caregiver', target: 'PLEASE CALL MY CAREGIVER', hint: 'Say "Please call my caregiver."', icon: Heart, color: '#DB2777' },
+        { id: 'scen_6', promptKey: 'scen6ToiletSign', category: 'toilet', target: 'TOILET', hint: 'Restroom sign. They need toilet.', icon: Info, color: '#16A34A' },
+        { id: 'scen_7', promptKey: 'scen7FeelingTiredInBed', category: 'tired', target: 'I AM TIRED', hint: 'In bed tired. Say "I am tired."', icon: HelpCircle, color: '#6366F1' },
+        { id: 'scen_8', promptKey: 'scen8WaitingDoctor', category: 'doctor', target: 'PLEASE CALL DOCTOR', hint: 'Waiting for doctor. Say "Call doctor."', icon: UserCheck, color: '#059669' },
+        { id: 'scen_9', promptKey: 'scen9HotDay', category: 'hot', target: 'COLD WATER', hint: 'Sweating in sun. Say "I need cold water."', icon: Thermometer, color: '#EAB308' },
+        { id: 'scen_10', promptKey: 'scen10ColdDay', category: 'cold', target: 'I AM COLD', hint: 'Shivering in cold. Say "I am cold."', icon: CloudSnow, color: '#0284C7' },
+        { id: 'scen_11', promptKey: 'scen11FamilyPhoto', category: 'family', target: 'I WANT MY FAMILY', hint: 'Looking at photo. Say "I want my family."', icon: Heart, color: '#DB2777' },
+        { id: 'scen_12', promptKey: 'scen12FruitBowl', category: 'apple', target: 'I WANT AN APPLE', hint: 'Fruit bowl. Say "I want an apple."', icon: Apple, color: '#DC2626' },
+      ]
     },
+    {
+      level: 6,
+      typeTitle: 'Conversational Dialogues',
+      keyTitle: 'level6Name',
+      keyDesc: 'level6Desc',
+      validationMode: 'scenario',
+      items: [
+        { id: 'c_doctor', promptKey: 'scen8DoctorConsult', category: 'doctor', target: 'I FEEL BETTER', hint: 'Respond to doctor: "I feel better."', icon: UserCheck, color: '#16A34A' },
+      ]
+    }
   ];
 
-  // Dynamic Categories State ready to receive API data
-  const [categories, setCategories] = useState(initialCategories || defaultCategories);
+  // Active Runner State
+  const [actIndex, setActIndex] = useState(0);
+  const [actPhase, setActPhase] = useState('start'); // 'start' | 'your_turn' | 'feedback'
+  const [attemptCount, setAttemptCount] = useState(1);
+  const [totalPoints, setTotalPoints] = useState(0);
+  const [actFeedback, setActFeedback] = useState(null);
+  const [lastCompletedSummary, setLastCompletedSummary] = useState(null);
 
-  // Sync profile data & avatar from localStorage / ready for API data
-  const [profileData] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      if (stored && stored.fullName) return stored;
-    } catch (e) {
-      // ignore
-    }
-    return { fullName: 'Srividya Raman' };
-  });
+  // Profile metadata
+  const profileName = session.user?.name || session.email?.split('@')[0] || 'Patient';
+  const firstLetter = profileName.charAt(0).toUpperCase();
 
-  const [avatarDataUrl] = useState(() => {
-    try {
-      return localStorage.getItem('voiceback_patient_avatar') || '';
-    } catch (e) {
-      return '';
-    }
-  });
-
-  const firstLetter = profileData.fullName ? profileData.fullName.trim().charAt(0).toUpperCase() : 'S';
-
-  // Voice Assistant: Speak once per screen / step
+  // Voice Assistant Guidance
   useEffect(() => {
     if (!voiceAssistant || !speak) return;
-
-    if (currentStep === 'home' && lastSpokenRef.current !== 'home') {
-      lastSpokenRef.current = 'home';
-      speak('Welcome to Therapy Exercises. Select an exercise to begin.');
-    } else if (currentStep === 'exercise' && selectedCategory && lastSpokenRef.current !== `exercise-${selectedCategory.id}`) {
-      lastSpokenRef.current = `exercise-${selectedCategory.id}`;
-      speak(`${selectedCategory.title}. ${selectedCategory.instructions}`);
-    } else if (currentStep === 'complete' && lastSpokenRef.current !== 'complete') {
-      lastSpokenRef.current = 'complete';
-      speak("Thank you for completing today's exercise.");
+    if (currentStep === 'levels' && lastSpokenRef.current !== 'levels') {
+      lastSpokenRef.current = 'levels';
+      speak(`${t('therapyExercises')}. Select a level to practice.`);
     }
-  }, [currentStep, selectedCategory, voiceAssistant, speak]);
+  }, [currentStep, voiceAssistant, speak, t]);
 
-  const handleSelectCategory = (cat) => {
-    setSelectedCategory(cat);
-    setIsSessionActive(false);
-    setCurrentStep('exercise');
+  const handleSelectLevel = (lvlNum) => {
+    if (!unlockedLevels.includes(lvlNum)) return;
+    setActiveLevelNum(lvlNum);
+    setActIndex(0);
+    setAttemptCount(1);
+    setTotalPoints(0);
+    setActPhase('start');
+    setActFeedback(null);
+    setCurrentStep('activity');
   };
 
-  const handleStartExercise = () => {
-    setIsSessionActive(true);
-    if (voiceAssistant && speak && selectedCategory) {
-      speak('Exercise session started.');
+  const handleStartPractice = () => {
+    setActPhase('your_turn');
+    if (speak) speak(t('yourTurn'));
+  };
+
+  // CLEAN IN-PLACE RESET FOR NEXT ROUND / TRY AGAIN
+  const handleResetForRetry = () => {
+    setActPhase('your_turn');
+    setActFeedback(null);
+  };
+
+  // ENFORCED REAL VALIDATION EVERYWHERE
+  const handleTranscriptReceived = (rawTranscript) => {
+    const activeLevelObj = levelDefinitions.find((l) => l.level === activeLevelNum);
+    const item = activeLevelObj.items[actIndex % activeLevelObj.items.length];
+
+    const res = validationService.validateAnswer(rawTranscript, {
+      target: item.target || item.label,
+      keywords: item.keywords,
+      category: item.category,
+      mode: activeLevelObj.validationMode,
+    });
+
+    if (res.isCorrect) {
+      const earned = attemptCount === 1 ? 3 : attemptCount === 2 ? 2 : 1;
+      setTotalPoints((prev) => prev + earned);
+
+      setActFeedback({
+        success: true,
+        text: `✅ ${t('greatJob')} ("${res.recognized}")`,
+        points: earned,
+      });
+      if (speak) speak(t('greatJob'));
+      setActPhase('feedback');
+    } else {
+      if (attemptCount < 3) {
+        const nextAttempt = attemptCount + 1;
+        setAttemptCount(nextAttempt);
+        setActFeedback({
+          success: false,
+          text: `❌ ${res.reason || t('didNotUnderstand')} (${t('attemptsUsed')} ${attemptCount}/3)`,
+          hint: item.hint,
+        });
+        if (speak) speak(t('didNotUnderstand'));
+      } else {
+        setActFeedback({
+          success: false,
+          text: `❌ 0 Points. Expected: "${item.target}". ${t('movingToNext')}`,
+          hint: item.hint,
+        });
+        if (speak) speak(t('movingToNext'));
+        setActPhase('feedback');
+      }
     }
   };
 
-  const handleFinishExercise = () => {
-    setIsSessionActive(false);
+  // IN-PLACE CLEAN RESET FOR NEXT ITEM (No dashboard redirect!)
+  const handleNextActivityItem = () => {
+    const activeLevelObj = levelDefinitions.find((l) => l.level === activeLevelNum);
+    const totalItems = activeLevelObj.items.length;
+    const maxPossible = totalItems * 3;
+
+    if (actIndex + 1 < totalItems) {
+      setActIndex((prev) => prev + 1);
+      setAttemptCount(1);
+      setActPhase('start');
+      setActFeedback(null);
+    } else {
+      const accuracyPct = Math.round((totalPoints / maxPossible) * 100);
+      if (accuracyPct >= 60 && activeLevelNum < 6) unlockLevel(activeLevelNum + 1);
+      saveLevelProgress(activeLevelNum, totalItems, accuracyPct, totalPoints);
+    }
+  };
+
+  const saveLevelProgress = async (lvlNum, count, accuracy, pts) => {
+    const activeLevelObj = levelDefinitions.find((l) => l.level === lvlNum);
+    const sessionData = {
+      patientId: patientId,
+      exercisesCompleted: count,
+      accuracyScore: Math.min(100, Math.max(0, accuracy)),
+      notes: `${activeLevelObj?.typeTitle || `Therapy Level ${lvlNum}`} (${pts} pts)`,
+    };
+
+    try {
+      await therapyService.createTherapySession(sessionData);
+      console.log(`✅ Saved Validated Level ${lvlNum} Progress:`, sessionData);
+    } catch (err) {
+      console.warn('Backend therapy save notice:', err.message);
+    }
+
+    setLastCompletedSummary({ levelNum: lvlNum, title: activeLevelObj?.typeTitle, count, accuracy, pts, unlockedNext: accuracy >= 60 && lvlNum < 6 });
     setCurrentStep('complete');
   };
-
-  const handleReturnToTherapy = () => {
-    setSelectedCategory(null);
-    setIsSessionActive(false);
-    setCurrentStep('home');
-  };
-
-  // Drawer Navigation Items
-  const drawerItems = [
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icon: Home,
-      action: () => onBackToDashboard(),
-      isActive: false,
-    },
-    {
-      id: 'therapy-home',
-      label: 'Therapy Exercises',
-      icon: Brain,
-      action: () => handleReturnToTherapy(),
-      isActive: currentStep === 'home',
-    },
-    {
-      id: 'profile',
-      label: 'Profile',
-      icon: User,
-      action: () => onOpenProfile(),
-      isActive: false,
-    },
-    {
-      id: 'settings',
-      label: 'Settings',
-      icon: Settings,
-      action: () => {
-        setIsDrawerOpen(false);
-        setIsSettingsOpen(true);
-      },
-      isActive: false,
-    },
-  ];
 
   return (
     <div className="app-viewport">
       <div className="mobile-container therapy-container">
-        
+
         {/* LEFT SLIDE NAVIGATION DRAWER */}
         <div className={`drawer-overlay ${isDrawerOpen ? 'open' : ''}`} onClick={() => setIsDrawerOpen(false)} />
         <aside className={`drawer-panel ${isDrawerOpen ? 'open' : ''}`} aria-label="Navigation Drawer">
           <div className="drawer-header">
             <VoiceBackLogo variant="header" />
-            <button
-              type="button"
-              className="btn-close-sheet"
-              onClick={() => setIsDrawerOpen(false)}
-              aria-label="Close Navigation Menu"
-            >
+            <button type="button" className="btn-close-sheet" onClick={() => setIsDrawerOpen(false)}>
               <X size={20} />
             </button>
           </div>
 
           <div className="drawer-user-badge" onClick={onOpenProfile}>
             <div className="drawer-avatar-circle">
-              {avatarDataUrl ? (
-                <img src={avatarDataUrl} alt={profileData.fullName} className="drawer-avatar-img" />
-              ) : (
-                <span>{firstLetter}</span>
-              )}
+              <span>{firstLetter}</span>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h4 className="drawer-user-name">{profileData.fullName}</h4>
+              <h4 className="drawer-user-name">{profileName}</h4>
               <span className="drawer-user-role">Patient</span>
             </div>
-            <ArrowRight size={16} color="var(--color-brand-tagline)" />
           </div>
 
           <nav className="drawer-menu-list">
-            {drawerItems.map((item) => {
-              const ItemIcon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`drawer-menu-item ${item.isActive ? 'active' : ''}`}
-                  onClick={item.action}
-                >
-                  <ItemIcon size={19} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
+            <button type="button" className="drawer-menu-item" onClick={onBackToDashboard}>
+              <Home size={19} />
+              <span>{t('dashboard')}</span>
+            </button>
+            <button type="button" className="drawer-menu-item active" onClick={() => setCurrentStep('levels')}>
+              <Brain size={19} />
+              <span>{t('therapyExercises')}</span>
+            </button>
+            <button type="button" className="drawer-menu-item" onClick={onOpenProfile}>
+              <User size={19} />
+              <span>{t('profile')}</span>
+            </button>
           </nav>
 
           <div className="drawer-footer">
-            <button
-              type="button"
-              className="drawer-logout-btn"
-              onClick={() => {
-                setIsDrawerOpen(false);
-                if (onLogout) onLogout();
-              }}
-            >
+            <button type="button" className="drawer-logout-btn" onClick={onLogout}>
               <LogOut size={18} />
-              <span>Logout</span>
+              <span>{t('logOut')}</span>
             </button>
           </div>
         </aside>
 
-        {/* STEP 1: THERAPY HOME */}
-        {currentStep === 'home' && (
+        {/* STEP 1: LEVEL SELECTOR */}
+        {currentStep === 'levels' && (
           <>
             <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <button
-                  type="button"
-                  className="settings-btn"
-                  aria-label="Return to Dashboard"
-                  title="Return to Dashboard"
-                  onClick={onBackToDashboard}
-                >
+                <button type="button" className="settings-btn" onClick={onBackToDashboard}>
                   <ArrowLeft size={22} />
                 </button>
                 <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                  Therapy Exercises
+                  {t('therapyExercises')}
                 </h1>
               </div>
-
-              <button
-                type="button"
-                className="header-profile-avatar-btn"
-                aria-label={`Patient Profile for ${profileData.fullName}`}
-                onClick={onOpenProfile}
-              >
-                {avatarDataUrl ? (
-                  <img src={avatarDataUrl} alt={profileData.fullName} className="header-avatar-img" />
-                ) : (
-                  <span className="header-avatar-initial">{firstLetter}</span>
-                )}
-              </button>
             </header>
 
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', width: '100%' }}>
+            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
               <section className="welcome-compact-section">
-                <p className="welcome-subtitle" style={{ fontSize: '0.95rem', color: 'var(--color-brand-tagline)', fontWeight: 600, lineHeight: 1.45 }}>
-                  Practice speech and communication exercises designed to improve your rehabilitation.
+                <p className="welcome-subtitle" style={{ fontSize: '0.95rem', color: 'var(--color-brand-tagline)', fontWeight: 600 }}>
+                  SPEAK & BUILD & LOOK & RESPOND Therapy Levels
                 </p>
               </section>
 
-              {/* CATEGORY CARDS */}
-              <section style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
-                {categories.map((cat) => {
-                  const CatIcon = cat.icon;
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
+                {levelDefinitions.map((lvl) => {
+                  const isUnlocked = unlockedLevels.includes(lvl.level);
+                  const isCompleted = unlockedLevels.includes(lvl.level + 1) || (lvl.level === 6 && unlockedLevels.includes(6));
                   return (
                     <div
-                      key={cat.id}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={cat.title}
-                      className="action-card"
-                      onClick={() => handleSelectCategory(cat)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleSelectCategory(cat);
-                        }
+                      key={lvl.level}
+                      onClick={() => isUnlocked && handleSelectLevel(lvl.level)}
+                      style={{
+                        padding: '1.2rem',
+                        borderRadius: 20,
+                        border: isUnlocked ? (isCompleted ? '2px solid #16A34A' : '2px solid var(--color-blue-primary)') : '2px solid var(--border-color)',
+                        background: isUnlocked ? 'var(--color-bg-card)' : 'rgba(0,0,0,0.03)',
+                        opacity: isUnlocked ? 1 : 0.65,
+                        cursor: isUnlocked ? 'pointer' : 'not-allowed',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.4rem',
                       }}
-                      style={{ minHeight: 'auto', padding: '1.15rem' }}
                     >
-                      <div className="action-card-header">
-                        <div className="action-icon-box">
-                          <CatIcon size={22} />
-                        </div>
-                        <ArrowRight size={18} className="action-arrow-icon" />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: isUnlocked ? 'var(--color-blue-primary)' : 'var(--color-brand-tagline)' }}>
+                          {lvl.typeTitle}
+                        </span>
+                        {isCompleted ? (
+                          <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#16A34A' }}>✅ {t('statusCompleted')}</span>
+                        ) : isUnlocked ? (
+                          <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-blue-primary)' }}>▶ {t('statusCurrent')}</span>
+                        ) : (
+                          <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--color-brand-tagline)' }}>🔒 {t('statusLocked')}</span>
+                        )}
                       </div>
 
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <h3 className="action-card-title" style={{ fontSize: '1.1rem' }}>{cat.title}</h3>
-                        <p className="action-card-desc">{cat.desc}</p>
-                      </div>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: 0 }}>
+                        {t(lvl.keyTitle)}
+                      </h3>
+                      <p style={{ fontSize: '0.875rem', color: 'var(--color-brand-tagline)', margin: 0 }}>
+                        {t(lvl.keyDesc)}
+                      </p>
                     </div>
                   );
                 })}
-              </section>
-
-              {/* RECENT THERAPY PROGRESS (HONEST EMPTY STATE) */}
-              <section className="recent-activity-card">
-                <div className="recent-activity-header">
-                  <Info size={18} color="var(--color-blue-primary)" />
-                  <h3>Therapy Progress</h3>
-                </div>
-
-                <div className="recent-activity-empty-state">
-                  <p className="empty-state-title">No therapy history available.</p>
-                  <p className="empty-state-desc">
-                    Your therapy progress will appear here after completing therapy sessions.
-                  </p>
-                </div>
-              </section>
-            </main>
-          </>
-        )}
-
-        {/* STEP 2: EXERCISE PAGE */}
-        {currentStep === 'exercise' && selectedCategory && (
-          <>
-            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="settings-btn"
-                aria-label="Back to Therapy Home"
-                onClick={handleReturnToTherapy}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                {selectedCategory.title}
-              </h1>
-              <div style={{ width: 42 }} />
-            </header>
-
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              <div className="profile-section-card" style={{ width: '100%', gap: '1rem', textAlign: 'center' }}>
-                <div style={{ width: 64, height: 64, borderRadius: 20, background: 'rgba(2, 132, 199, 0.12)', color: 'var(--color-blue-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-                  {React.createElement(selectedCategory.icon, { size: 32 })}
-                </div>
-
-                <div>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                    {selectedCategory.title}
-                  </h2>
-                  <p style={{ fontSize: '0.9rem', color: 'var(--color-brand-tagline)', marginTop: '0.25rem' }}>
-                    {selectedCategory.desc}
-                  </p>
-                </div>
-
-                {/* Instructions Box */}
-                <div style={{ padding: '1.15rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.05)', border: '1.5px solid var(--border-color)', textAlign: 'left' }}>
-                  <h4 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-blue-primary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '0.35rem' }}>
-                    Instructions
-                  </h4>
-                  <p style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-brand-title)', lineHeight: 1.45 }}>
-                    {selectedCategory.instructions}
-                  </p>
-                </div>
-
-                {isSessionActive && (
-                  <div style={{ padding: '0.75rem 1rem', borderRadius: '12px', background: 'rgba(22, 163, 74, 0.1)', border: '1px solid var(--color-green-primary)', color: 'var(--color-green-primary)', fontWeight: 700, fontSize: '0.875rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
-                    <CheckCircle2 size={18} />
-                    <span>Session in Progress...</span>
-                  </div>
-                )}
-
-                {/* Buttons */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem', width: '100%' }}>
-                  {!isSessionActive ? (
-                    <button
-                      type="button"
-                      className="btn-continue"
-                      onClick={handleStartExercise}
-                      style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                    >
-                      <Play size={18} />
-                      <span>Start Exercise</span>
-                    </button>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    className="btn-continue"
-                    onClick={handleFinishExercise}
-                    style={{ width: '100%', background: isSessionActive ? 'var(--color-green-primary)' : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  >
-                    <Check size={18} />
-                    <span>Finish Exercise</span>
-                  </button>
-                </div>
               </div>
             </main>
           </>
         )}
 
-        {/* STEP 3: SESSION COMPLETE */}
+        {/* STEP 2: LEVEL ACTIVITY RUNNER (IN-PLACE NEXT / RETRY RESET) */}
+        {currentStep === 'activity' && (
+          <>
+            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <button type="button" className="settings-btn" onClick={() => setCurrentStep('levels')}>
+                <ArrowLeft size={20} />
+              </button>
+              <h1 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                {levelDefinitions.find((l) => l.level === activeLevelNum)?.typeTitle}
+              </h1>
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#EAB308', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                <Star size={16} fill="#EAB308" /> {totalPoints} Pts
+              </span>
+            </header>
+
+            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', width: '100%', alignItems: 'center' }}>
+              {(() => {
+                const activeLevelObj = levelDefinitions.find((l) => l.level === activeLevelNum);
+                const item = activeLevelObj.items[actIndex % activeLevelObj.items.length];
+                const ItemIcon = item.icon || MessageSquare;
+
+                return (
+                  <div className="profile-section-card" style={{ width: '100%', padding: '1.5rem', textAlign: 'center', gap: '1.2rem' }}>
+                    
+                    {/* VISUAL PROMPT / SCENARIO CARD */}
+                    <div style={{ padding: '1.5rem', borderRadius: 20, background: 'rgba(2, 132, 199, 0.06)', border: '2px solid var(--color-blue-primary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                      
+                      {item.promptKey && (
+                        <div style={{ padding: '0.75rem', borderRadius: 14, background: 'rgba(147, 51, 234, 0.1)', color: '#9333EA', fontWeight: 800, fontSize: '1rem', lineHeight: 1.4 }}>
+                          🖼️ {t(item.promptKey)}
+                        </div>
+                      )}
+
+                      <div style={{ width: 72, height: 72, borderRadius: 22, background: item.color, color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <ItemIcon size={38} />
+                      </div>
+
+                      <h2 style={{ fontSize: '1.85rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: 0 }}>
+                        {t(item.label) || item.label}
+                      </h2>
+                    </div>
+
+                    {/* ATTEMPT HINTS */}
+                    {attemptCount === 2 && (
+                      <div style={{ width: '100%', padding: '0.85rem', borderRadius: 14, background: 'rgba(234, 179, 8, 0.12)', border: '1.5px solid #EAB308', color: '#B45309', fontWeight: 700, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Lightbulb size={20} />
+                        <div><strong>{t('attemptHintTitle')}:</strong> {item.hint}</div>
+                      </div>
+                    )}
+
+                    {attemptCount === 3 && (
+                      <div style={{ width: '100%', padding: '0.85rem', borderRadius: 14, background: 'rgba(2, 132, 199, 0.12)', border: '1.5px solid var(--color-blue-primary)', color: 'var(--color-blue-primary)', fontWeight: 700, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Info size={20} />
+                        <div><strong>{t('attemptHelpTitle')}:</strong> Speak target "{item.target}"</div>
+                      </div>
+                    )}
+
+                    {/* PHASE 1: START */}
+                    {actPhase === 'start' && (
+                      <button
+                        type="button"
+                        className="btn-continue"
+                        onClick={handleStartPractice}
+                        style={{ width: '100%', padding: '1.1rem', fontSize: '1.15rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                      >
+                        <Play size={22} />
+                        <span>{t('startPractice')}</span>
+                      </button>
+                    )}
+
+                    {/* PHASE 2: YOUR TURN — REAL SPEECH VALIDATION */}
+                    {actPhase === 'your_turn' && (
+                      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ padding: '0.75rem', borderRadius: 14, background: 'rgba(22, 163, 74, 0.1)', color: '#16A34A', fontWeight: 800, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                          <Mic size={22} />
+                          <span>{t('yourTurn')} (Attempt {attemptCount}/3)</span>
+                        </div>
+
+                        <SpeechInputTrigger
+                          onTranscriptReceived={handleTranscriptReceived}
+                          targetIntent={item.target || item.label}
+                          buttonLabel={`🎙️ ${t('tapToSpeak')}`}
+                        />
+
+                        {actFeedback && !actFeedback.success && (
+                          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                            <div style={{ padding: '0.85rem', borderRadius: 14, background: 'rgba(220, 38, 38, 0.12)', border: '1.5px solid #DC2626', color: '#DC2626', fontWeight: 800 }}>
+                              {actFeedback.text}
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-secondary-auth"
+                              onClick={handleResetForRetry}
+                              style={{ width: '100%', padding: '0.75rem' }}
+                            >
+                              🔄 {t('tryAgain')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* PHASE 3: FEEDBACK & IN-PLACE NEXT ITEM BUTTON */}
+                    {actPhase === 'feedback' && actFeedback && (
+                      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ padding: '1.25rem', borderRadius: 16, background: actFeedback.success ? 'rgba(22, 163, 74, 0.12)' : 'rgba(220, 38, 38, 0.12)', border: `2px solid ${actFeedback.success ? '#16A34A' : '#DC2626'}`, color: actFeedback.success ? '#16A34A' : '#DC2626', fontWeight: 800, fontSize: '1.2rem' }}>
+                          {actFeedback.text}
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-continue"
+                          onClick={handleNextActivityItem}
+                          style={{ width: '100%', padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                        >
+                          <span>{t('nextItem')}</span>
+                          <ArrowRight size={20} />
+                        </button>
+                      </div>
+                    )}
+
+                  </div>
+                );
+              })()}
+            </main>
+          </>
+        )}
+
+        {/* STEP 3: LEVEL COMPLETE (IN-PLACE REPLAY / NEXT LEVEL) */}
         {currentStep === 'complete' && (
           <>
             <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="settings-btn"
-                aria-label="Return to Therapy"
-                onClick={handleReturnToTherapy}
-              >
+              <button type="button" className="settings-btn" onClick={() => setCurrentStep('levels')}>
                 <ArrowLeft size={20} />
               </button>
               <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                Session Complete
+                {t('congratulations')}
               </h1>
-              <div style={{ width: 42 }} />
             </header>
 
             <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
               <div className="profile-section-card" style={{ textAlign: 'center', width: '100%', padding: '2rem 1.25rem', gap: '1rem' }}>
-                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(22, 163, 74, 0.12)', border: '2px solid var(--color-green-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-                  <CheckCircle2 size={42} color="var(--color-green-primary)" />
+                <div style={{ width: 76, height: 76, borderRadius: '50%', background: 'rgba(22, 163, 74, 0.12)', border: '3px solid #16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                  <Trophy size={44} color="#16A34A" />
                 </div>
 
                 <div>
-                  <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                    Session Completed 🎉
+                  <h2 style={{ fontSize: '1.65rem', fontWeight: 900, color: 'var(--color-brand-title)' }}>
+                    {t('congratulations')}
                   </h2>
-                  <p style={{ fontSize: '0.95rem', color: 'var(--color-brand-tagline)', marginTop: '0.4rem', lineHeight: 1.5 }}>
-                    Thank you for completing today's exercise.
+                  <p style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-blue-primary)', marginTop: '0.3rem' }}>
+                    {lastCompletedSummary?.title || `Level ${lastCompletedSummary?.levelNum}`}
                   </p>
                 </div>
 
-                <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px dashed var(--border-color)', textAlign: 'center' }}>
-                  <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', fontWeight: 500 }}>
-                    Your progress will be available after backend integration.
-                  </p>
-                </div>
+                {lastCompletedSummary?.unlockedNext && (
+                  <div style={{ padding: '0.85rem', borderRadius: 14, background: 'rgba(22, 163, 74, 0.12)', border: '1.5px solid #16A34A', color: '#16A34A', fontWeight: 800, fontSize: '1.05rem' }}>
+                    🎉 {t('levelUnlockedMsg')}
+                  </div>
+                )}
+
+                {lastCompletedSummary && (
+                  <div style={{ padding: '1rem', borderRadius: 16, background: 'rgba(2, 132, 199, 0.06)', border: '1.5px solid var(--border-color)', display: 'flex', justifyContent: 'space-around' }}>
+                    <div>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', fontWeight: 600 }}>{t('score')}</span>
+                      <h4 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#EAB308', margin: '0.2rem 0 0 0' }}>{lastCompletedSummary.pts} Pts</h4>
+                    </div>
+                    <div style={{ borderLeft: '1px solid var(--border-color)' }} />
+                    <div>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', fontWeight: 600 }}>{t('accuracyScoreText')}</span>
+                      <h4 style={{ fontSize: '1.4rem', fontWeight: 900, color: '#16A34A', margin: '0.2rem 0 0 0' }}>{lastCompletedSummary.accuracy}%</h4>
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem', width: '100%' }}>
-                  <button
-                    type="button"
-                    className="btn-continue"
-                    onClick={handleReturnToTherapy}
-                    style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  >
+                  <button type="button" className="btn-continue" onClick={() => handleSelectLevel(activeLevelNum)} style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                     <RefreshCw size={18} />
-                    <span>Return to Therapy</span>
+                    <span>{t('replayLevel')}</span>
                   </button>
 
-                  <button
-                    type="button"
-                    className="btn-secondary-auth"
-                    onClick={onBackToDashboard}
-                    style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  >
+                  {lastCompletedSummary?.unlockedNext && activeLevelNum < 6 && (
+                    <button type="button" className="btn-continue" onClick={() => handleSelectLevel(activeLevelNum + 1)} style={{ width: '100%', background: '#16A34A', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                      <ArrowRight size={18} />
+                      <span>{t('nextLevel')}</span>
+                    </button>
+                  )}
+
+                  <button type="button" className="btn-secondary-auth" onClick={() => setCurrentStep('levels')} style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                     <Home size={18} />
-                    <span>Return to Dashboard</span>
+                    <span>{t('returnToTherapy')}</span>
                   </button>
                 </div>
               </div>
@@ -487,10 +609,7 @@ export const TherapyExercisesModule = ({
 
       </div>
 
-      <SettingsBottomSheet
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+      <SettingsBottomSheet isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 };

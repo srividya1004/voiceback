@@ -12,6 +12,7 @@ import {
   Sparkles,
   Home,
   User,
+  Users,
   Activity,
   MessageSquare,
   Info,
@@ -20,7 +21,17 @@ import {
   LogOut,
   Wifi,
   Radio,
-  Calendar
+  Calendar,
+  Square,
+  Volume2,
+  Droplet,
+  Utensils,
+  HelpCircle,
+  Heart,
+  CheckCircle2,
+  XCircle,
+  Moon,
+  PhoneCall
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
@@ -42,12 +53,25 @@ import voiceService from '../services/voiceService';
 import deviceService from '../services/deviceService';
 
 export const PatientDashboardScreen = ({ onLogout }) => {
-  const { t, voiceAssistant, speak } = useSettings();
+  const { t, voiceAssistant, speak, language } = useSettings();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' | 'profile' | 'module'
   const [activeModule, setActiveModule] = useState(null);
   const hasSpokenWelcome = useRef(false);
+
+  // In-Place Dashboard Speech Audio Recording & Processing State
+  const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [listeningTranscript, setListeningTranscript] = useState('');
+  const [activeOutputPhrase, setActiveOutputPhrase] = useState('');
+  const [speechErrorMsg, setSpeechErrorMsg] = useState('');
+  const [isSynthesizingVoice, setIsSynthesizingVoice] = useState(false);
+  const [activeCategoryTab, setActiveCategoryTab] = useState('basic'); // 'basic' | 'people'
+  
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const mediaStreamRef = useRef(null);
 
   // Backend Profile State
   const [profileData, setProfileData] = useState({
@@ -92,13 +116,23 @@ export const PatientDashboardScreen = ({ onLogout }) => {
       const session = authService.getActiveSession();
       const userEmail = session?.email || '';
 
-      // 1. Fetch Patient Profile
+      // 1. Fetch Patient Profile from Backend
       try {
-        const patientsRes = await patientService.getAllPatients();
+        const [patientsRes, caregiversRes] = await Promise.all([
+          patientService.getAllPatients().catch(() => ({ data: [] })),
+          caregiverService.getAllCaregivers().catch(() => ({ data: [] }))
+        ]);
+
         const list = Array.isArray(patientsRes?.data)
           ? patientsRes.data
           : Array.isArray(patientsRes)
           ? patientsRes
+          : [];
+
+        const cList = Array.isArray(caregiversRes?.data)
+          ? caregiversRes.data
+          : Array.isArray(caregiversRes)
+          ? caregiversRes
           : [];
 
         const match = list.find(
@@ -107,6 +141,18 @@ export const PatientDashboardScreen = ({ onLogout }) => {
 
         if (isMounted) {
           if (match) {
+            // Find linked caregiver if match.assignedCaregiverId is missing
+            let linkedCgName = match.assignedCaregiverId?.fullName || '';
+            if (!linkedCgName) {
+              const matchedCg = cList.find((c) =>
+                Array.isArray(c.assignedPatients) &&
+                c.assignedPatients.some((ap) => (ap._id || ap) === match._id)
+              );
+              if (matchedCg) {
+                linkedCgName = matchedCg.fullName;
+              }
+            }
+
             setProfileData({
               id: match._id,
               fullName: match.fullName || session?.name || 'Not Available',
@@ -115,6 +161,8 @@ export const PatientDashboardScreen = ({ onLogout }) => {
               age: match.age ? `${match.age} Years` : 'Not Available',
               preferredLanguage: match.preferredLanguage || 'Not Available',
               aphasiaType: match.aphasiaType || 'Not Available',
+              assignedDoctorName: match.assignedDoctorId?.fullName ? `Dr. ${match.assignedDoctorId.fullName}` : '',
+              assignedCaregiverName: linkedCgName,
               role: 'Patient',
             });
           } else {
@@ -207,21 +255,171 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     ? displayName.trim().charAt(0).toUpperCase()
     : 'P';
 
-  // Speak ONLY ONCE on dashboard load if Voice Assistant is ON
+  // Speak ONCE on dashboard load if Voice Assistant is ON
   useEffect(() => {
     if (voiceAssistant && speak && !hasSpokenWelcome.current) {
       hasSpokenWelcome.current = true;
-      speak('Welcome back. Select a module to continue.');
+      speak('Welcome back. Tap Communicate or choose a message below.');
     }
   }, [voiceAssistant, speak]);
 
   // Determine time-appropriate greeting
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 17) return 'Good Afternoon';
-    return 'Good Evening';
+    if (hour < 12) return t('goodMorning');
+    if (hour < 17) return t('goodAfternoon');
+    return t('goodEvening');
   };
+
+  // In-Place Voice Generation & Audio Output Pipeline
+  const processPhraseOutput = async (phraseText, phraseKey) => {
+    if (!phraseText) return;
+    setSpeechErrorMsg(''); // Clear error message on valid phrase output
+    const textToSynthesize = phraseKey ? t(phraseKey) : phraseText;
+    setActiveOutputPhrase(textToSynthesize);
+
+    // 1. Attempt ElevenLabs Cloud TTS synthesis via backend voiceService
+    try {
+      setIsSynthesizingVoice(true);
+      const audioBlob = await voiceService.synthesizeSpeech({
+        patientId: profileData?.id || '',
+        text: textToSynthesize,
+        language: language === 'kannada' ? 'Kannada' : language === 'hindi' ? 'Hindi' : 'English',
+      });
+      if (audioBlob && audioBlob.size > 0) {
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        await audio.play();
+        setIsSynthesizingVoice(false);
+
+        try {
+          await communicationService.saveHistory({ recognizedText: textToSynthesize, attemptType: 'Voice' });
+        } catch (e) {}
+        return;
+      }
+    } catch (e) {
+      console.warn('ElevenLabs Cloud synthesis unavailable, falling back to local TTS:', e.message);
+    } finally {
+      setIsSynthesizingVoice(false);
+    }
+
+    // 2. Fallback to browser Web Speech API (speechSynthesis)
+    if (speak) {
+      speak(textToSynthesize);
+    }
+
+    // 3. Log history
+    try {
+      await communicationService.saveHistory({ recognizedText: textToSynthesize, attemptType: 'Voice' });
+    } catch (e) {}
+  };
+
+  // Start In-Place Dashboard Speech Audio Recording using MediaRecorder -> ElevenLabs Scribe v2 STT
+  const handleStartListening = async () => {
+    setSpeechErrorMsg('');
+    setListeningTranscript('');
+    setIsProcessing(false);
+    setIsListening(true);
+    audioChunksRef.current = [];
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setSpeechErrorMsg('Microphone recording is not supported in this browser environment.');
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      console.log('🎙️ Requesting microphone access for MediaRecorder audio capture...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : '';
+
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        console.log('🛑 MediaRecorder stopped. Releasing microphone stream...');
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current = null;
+        }
+
+        const recordedChunks = audioChunksRef.current;
+        if (!recordedChunks || recordedChunks.length === 0) {
+          console.warn('No audio chunks captured during recording session.');
+          setSpeechErrorMsg("Couldn't hear that. Please try again or choose a message below.");
+          setIsListening(false);
+          setIsProcessing(false);
+          return;
+        }
+
+        setIsProcessing(true);
+        console.log('⏳ Processing... Sending recorded audio to ElevenLabs Scribe v2 STT API...');
+
+        try {
+          const audioBlob = new Blob(recordedChunks, {
+            type: mediaRecorder.mimeType || 'audio/webm',
+          });
+
+          const formData = new FormData();
+          formData.append('audioSample', audioBlob, 'patient_recording.webm');
+
+          const response = await voiceService.transcribeSpeech(formData);
+          const transcript = response?.data?.text || response?.text || '';
+
+          if (transcript && transcript.trim().length > 0) {
+            const cleanTranscript = transcript.trim();
+            console.log(`✅ Scribe v2 Transcript received: "${cleanTranscript}"`);
+            setSpeechErrorMsg('');
+            processPhraseOutput(cleanTranscript);
+          } else {
+            console.warn('ElevenLabs Scribe v2 returned an empty transcript string.');
+            setSpeechErrorMsg("Couldn't hear that. Please try again or choose a message below.");
+          }
+        } catch (sttErr) {
+          console.error('ElevenLabs Scribe v2 Speech-to-Text error:', sttErr.message);
+          setSpeechErrorMsg("Couldn't hear that. Please try again or choose a message below.");
+        } finally {
+          setIsProcessing(false);
+          setIsListening(false);
+        }
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start(250); // Slice audio chunk every 250ms
+      console.log('🎙️ MediaRecorder started successfully. Patient is now recording audio...');
+    } catch (micErr) {
+      console.error('Microphone permission error during MediaRecorder start:', micErr);
+      setSpeechErrorMsg('Microphone is turned off. Please allow microphone access or choose a message below.');
+      setIsListening(false);
+      setIsProcessing(false);
+    }
+  };
+
+  // Stop In-Place Speech Audio Recording
+  const handleStopListening = () => {
+    console.log('User manually tapped STOP LISTENING.');
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.warn('Error stopping MediaRecorder:', e);
+      }
+    }
+  };
+
 
   // Open module handler
   const handleOpenModule = (moduleName) => {
@@ -246,75 +444,21 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     setActiveModule(null);
   };
 
-  // Quick Actions Configuration
-  const quickActions = [
-    {
-      id: 'silent-speech',
-      title: 'Silent Speech',
-      desc: 'View live EMG signals and communicate silently.',
-      icon: Mic,
-    },
-    {
-      id: 'therapy-exercises',
-      title: 'Therapy Exercises',
-      desc: 'Practice speech rehabilitation.',
-      icon: Brain,
-    },
-    {
-      id: 'therapy-games',
-      title: 'Therapy Games',
-      desc: 'Interactive rehabilitation games.',
-      icon: Gamepad2,
-    },
-    {
-      id: 'voice-cloning',
-      title: 'Voice Cloning',
-      desc: 'Manage your personalized voice model.',
-      icon: UserCheck,
-    },
-    {
-      id: 'reports',
-      title: 'Reports',
-      desc: 'View therapy reports and communication history.',
-      icon: BarChart3,
-    },
-    {
-      id: 'appointments',
-      title: 'Appointments',
-      desc: 'View or request healthcare consultations.',
-      icon: Calendar,
-    },
-    {
-      id: 'emergency-sos',
-      title: 'Emergency SOS',
-      desc: 'Send urgent alert notification to caregiver.',
-      icon: AlertTriangle,
-      isDanger: true,
-    },
-  ];
-
   // Drawer menu items for Patient
   const drawerItems = [
     {
       id: 'dashboard',
-      label: 'Dashboard',
+      label: 'Home',
       icon: Home,
       action: () => handleBackToDashboard(),
       isActive: currentView === 'dashboard',
     },
     {
-      id: 'start-conversation',
-      label: 'Start Conversation',
+      id: 'communicate',
+      label: 'Communicate',
       icon: MessageSquare,
-      action: () => handleOpenModule('Start Conversation'),
-      isActive: currentView === 'module' && activeModule === 'Start Conversation',
-    },
-    {
-      id: 'silent-speech',
-      label: 'Silent Speech',
-      icon: Mic,
       action: () => handleOpenModule('Silent Speech'),
-      isActive: currentView === 'module' && activeModule === 'Silent Speech',
+      isActive: currentView === 'module' && (activeModule === 'Silent Speech' || activeModule === 'Start Conversation'),
     },
     {
       id: 'therapy',
@@ -324,15 +468,15 @@ export const PatientDashboardScreen = ({ onLogout }) => {
       isActive: currentView === 'module' && activeModule === 'Therapy Exercises',
     },
     {
-      id: 'therapy-games',
-      label: 'Therapy Games',
+      id: 'play-practice',
+      label: 'Play & Practice',
       icon: Gamepad2,
       action: () => handleOpenModule('Therapy Games'),
       isActive: currentView === 'module' && activeModule === 'Therapy Games',
     },
     {
-      id: 'voice-cloning',
-      label: 'Voice Cloning',
+      id: 'voice-profile',
+      label: 'Voice Profile',
       icon: UserCheck,
       action: () => handleOpenModule('Voice Cloning'),
       isActive: currentView === 'module' && activeModule === 'Voice Cloning',
@@ -350,6 +494,13 @@ export const PatientDashboardScreen = ({ onLogout }) => {
       icon: Calendar,
       action: () => handleOpenModule('Appointments'),
       isActive: currentView === 'module' && activeModule === 'Appointments',
+    },
+    {
+      id: 'caregiver-tech-info',
+      label: 'Caregiver & Technical Info',
+      icon: Radio,
+      action: () => handleOpenModule('Caregiver Device Info'),
+      isActive: currentView === 'module' && activeModule === 'Caregiver Device Info',
     },
     {
       id: 'profile',
@@ -370,7 +521,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     },
     {
       id: 'emergency-sos',
-      label: 'Emergency SOS',
+      label: 'I Need Help (Emergency)',
       icon: AlertTriangle,
       action: () => handleOpenModule('Emergency SOS'),
       isActive: currentView === 'module' && activeModule === 'Emergency SOS',
@@ -386,6 +537,95 @@ export const PatientDashboardScreen = ({ onLogout }) => {
         onLogout={onLogout}
         backendProfile={profileData}
       />
+    );
+  }
+
+  // Render Caregiver / Technical Device Info View
+  if (currentView === 'module' && (activeModule === 'Caregiver Device Info' || activeModule === 'Device Technical Info')) {
+    return (
+      <div className="app-viewport">
+        <div className="mobile-container dashboard-container">
+          <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={handleBackToDashboard}
+              aria-label="Back to Patient Home"
+              title="Back to Patient Home"
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>Caregiver & Technical Info</h2>
+            <div style={{ width: 22 }} />
+          </header>
+          
+          <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+            <div className="caregiver-tech-card">
+              <span className="caregiver-tech-badge">
+                <Radio size={14} /> Technical Diagnostics
+              </span>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800 }}>Device & Signal Status</h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)' }}>
+                This technical information is intended for caregivers and technical support.
+              </p>
+              
+              <div className="device-metrics-grid" style={{ marginTop: '0.5rem' }}>
+                <div className="metric-box">
+                  <span className="metric-label">Connection Status</span>
+                  <span className={`metric-value ${deviceStatus.status === 'Connected' ? 'status-online' : 'status-offline'}`}>
+                    {deviceStatus.status}
+                  </span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">Device Name</span>
+                  <span className="metric-value">{deviceStatus.deviceName || 'VoiceBack Band v1'}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">Firmware Version</span>
+                  <span className="metric-value">{deviceStatus.isConnected ? (deviceStatus.firmwareVersion || 'v1.0') : 'Not connected'}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">Battery Level</span>
+                  <span className="metric-value">{deviceStatus.isConnected && deviceStatus.batteryLevel ? `${deviceStatus.batteryLevel}%` : 'Battery —'}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">Signal Strength</span>
+                  <span className="metric-value">{deviceStatus.isConnected && deviceStatus.signalStrength ? deviceStatus.signalStrength : 'Signal —'}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">EMG Status</span>
+                  <span className="metric-value">{deviceStatus.isConnected ? 'Active' : 'Not connected'}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">Signal Quality</span>
+                  <span className="metric-value">{deviceStatus.isConnected ? 'Optimal' : 'Not connected'}</span>
+                </div>
+
+                <div className="metric-box">
+                  <span className="metric-label">Synthesis Engine</span>
+                  <span className="metric-value">ElevenLabs v2 / REST API</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn-continue"
+                onClick={handleBackToDashboard}
+                style={{ marginTop: '1rem', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+              >
+                <ArrowLeft size={18} />
+                <span>Return to Patient Home</span>
+              </button>
+            </div>
+          </main>
+        </div>
+      </div>
     );
   }
 
@@ -557,297 +797,488 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           </div>
         </aside>
 
-        {/* IF MODULE VIEW OPENED */}
-        {currentView === 'module' && activeModule ? (
-          <main className="role-main" style={{ justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-            <div className="placeholder-card" style={{ textAlign: 'center', width: '100%', maxWidth: '420px' }}>
-              <div
-                className="action-icon-box"
-                style={{ width: 64, height: 64, margin: '0 auto 1rem auto', borderRadius: 20 }}
-              >
-                <Activity size={32} color="var(--color-blue-primary)" />
-              </div>
-              <span className="placeholder-badge">Module View</span>
-              <h1 className="placeholder-title" style={{ fontSize: '1.6rem', marginTop: '0.4rem' }}>
-                {activeModule}
-              </h1>
-              <p className="placeholder-desc" style={{ marginTop: '0.5rem', marginBottom: '1.5rem' }}>
-                The <strong>{activeModule}</strong> module is connected to VoiceBack Express REST APIs.
-              </p>
-              <button
-                type="button"
-                className="btn-continue"
-                onClick={handleBackToDashboard}
-                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%' }}
-              >
-                <ArrowLeft size={18} />
-                <span>Back to Dashboard</span>
-              </button>
-            </div>
-          </main>
-        ) : (
-          /* MAIN DASHBOARD VIEW */
-          <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', width: '100%' }}>
-            
-            {/* 1. WELCOME SECTION (NAME FROM BACKEND) */}
-            <section className="welcome-compact-section" style={{ marginTop: '0.2rem' }}>
-              <h1 className="welcome-title">
+        {/* MAIN PATIENT DASHBOARD VIEW - DOMINANT CENTRAL COMMUNICATE HUB */}
+        <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+          
+          {/* 1. WELCOME & TRUTHFUL COMPACT DEVICE BAR */}
+          <section className="welcome-compact-section" style={{ marginTop: '0.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h1 className="welcome-title" style={{ margin: 0 }}>
                 {getGreeting()}, {firstName}
               </h1>
-              <p className="welcome-subtitle">Welcome back to VoiceBack.</p>
-            </section>
 
-            {/* 2. WEARABLE DEVICE STATUS CARD */}
-            <section className="device-status-card">
-              <div className="device-status-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                  <Radio size={18} color="var(--color-brand-tagline)" />
-                  <h3 className="device-status-title">Wearable Device</h3>
-                </div>
-                <span className={`device-name-badge ${deviceStatus.status === 'Connected' ? 'connected' : 'disconnected'}`}>
-                  {deviceStatus.status}
+              {/* COMPACT TRUTHFUL DEVICE PILL */}
+              <div className="truthful-device-pill" title="Hardware telemetry status">
+                <span className={`device-dot ${deviceStatus.status === 'Connected' ? 'connected' : ''}`} />
+                <span>
+                  {t('deviceStatus')}: <strong>{deviceStatus.status === 'Connected' ? t('connected') : t('disconnected')}</strong>
+                </span>
+                <span style={{ opacity: 0.5 }}>|</span>
+                <span>
+                  {t('battery')}: <strong>{deviceStatus.status === 'Connected' && deviceStatus.batteryLevel ? deviceStatus.batteryLevel : '—'}</strong>
+                </span>
+              </div>
+            </div>
+
+            <p className="welcome-subtitle">{t('tapToSpeakSubtitle')}</p>
+          </section>
+
+          {/* 2. DOMINANT CENTRAL COMMUNICATE CONTROL (IN-PLACE LISTENING / PROCESSING VS NORMAL HERO STATE) */}
+          {isListening ? (
+            <div className="in-place-listening-card">
+              <div className="listening-header-row">
+                <span className="hero-badge" style={{ background: 'rgba(255,255,255,0.2)' }}>
+                  {isProcessing ? 'ElevenLabs Scribe v2 STT' : 'Microphone Input'}
                 </span>
               </div>
 
-              <div className="device-metrics-grid">
-                <div className="metric-box">
-                  <span className="metric-label">Connection Status</span>
-                  <span className={`metric-value ${deviceStatus.status === 'Connected' ? 'status-online' : 'status-offline'}`}>
-                    {deviceStatus.status}
-                  </span>
+              <div className="listening-pulse-stage">
+                <div className="listening-icon-circle">
+                  {isProcessing ? <Sparkles size={34} strokeWidth={2.5} /> : <Mic size={34} strokeWidth={2.5} />}
                 </div>
-
-                <div className="metric-box">
-                  <span className="metric-label">Device Name</span>
-                  <span className="metric-value status-offline">{deviceStatus.deviceName}</span>
-                </div>
-
-                <div className="metric-box">
-                  <span className="metric-label">Firmware Version</span>
-                  <span className="metric-value status-offline">{deviceStatus.firmwareVersion}</span>
-                </div>
-
-                <div className="metric-box">
-                  <span className="metric-label">Battery Level</span>
-                  <span className="metric-value status-offline">{deviceStatus.batteryLevel}</span>
-                </div>
-
-                <div className="metric-box">
-                  <span className="metric-label">Signal Strength</span>
-                  <span className="metric-value status-offline">{deviceStatus.signalStrength}</span>
-                </div>
-
-                <div className="metric-box">
-                  <span className="metric-label">EMG Status</span>
-                  <span className="metric-value status-offline">{deviceStatus.emgStatus}</span>
-                </div>
-
-                <div className="metric-box">
-                  <span className="metric-label">Signal Quality</span>
-                  <span className="metric-value status-offline">{deviceStatus.signalQuality}</span>
-                </div>
+                {!isProcessing && <div className="listening-pulse-ring-anim" />}
               </div>
 
-              <button
-                type="button"
-                className="btn-connect-device"
-                onClick={() => {
-                  deviceService.startConnectionSequence();
-                  handleOpenModule('Connect Device');
-                }}
-              >
-                <Wifi size={18} />
-                <span>Connect Device</span>
-              </button>
-            </section>
-
-            {/* 3. PRIMARY ACTION: START CONVERSATION CARD */}
-            <section className="primary-action-card">
-              <div className="primary-action-content">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-                  <MessageSquare size={22} fill="#FFFFFF" color="#FFFFFF" />
-                  <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0 }}>Start Conversation</h2>
-                </div>
-                <p style={{ fontSize: '0.925rem', opacity: 0.95, fontWeight: 500, lineHeight: 1.4 }}>
-                  Begin communicating using VoiceBack.
+              <div className="listening-status-text">
+                <h2 className="listening-headline">
+                  {isProcessing ? `⏳ ${t('processing')}` : `🎙️ ${t('listening')}`}
+                </h2>
+                <p className="listening-subtitle">
+                  {isProcessing ? t('processing') : t('listening')}
                 </p>
               </div>
 
-              <button
-                type="button"
-                className="btn-primary-action"
-                onClick={() => handleOpenModule('Start Conversation')}
-              >
-                <span>Start Conversation</span>
-                <ArrowRight size={20} strokeWidth={2.5} />
-              </button>
-            </section>
-
-            {/* 4. UPCOMING APPOINTMENTS SECTION */}
-            <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Calendar size={18} color="var(--color-blue-primary)" />
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                    Appointments
-                  </h3>
-                </div>
+              <div className="live-transcript-box">
+                {isProcessing
+                  ? t('processing')
+                  : listeningTranscript || 'Speak now...'}
               </div>
 
-              {appointments && appointments.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                  {appointments.slice(0, 3).map((appt, idx) => (
-                    <div key={appt._id || idx} style={{ padding: '0.75rem 0.9rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px solid var(--border-color)' }}>
-                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                        {appt.appointmentDate ? new Date(appt.appointmentDate).toLocaleString() : 'Scheduled Session'}
-                      </p>
-                      <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', marginTop: '0.2rem' }}>
-                        Status: <strong style={{ color: 'var(--color-blue-primary)' }}>{appt.status || 'Scheduled'}</strong>
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.04)', border: '1px solid var(--border-color)' }}>
-                  <p style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                    No upcoming appointments.
-                  </p>
-                </div>
+              {!isProcessing && (
+                <button
+                  type="button"
+                  className="btn-stop-listening"
+                  onClick={handleStopListening}
+                >
+                  <Square size={18} fill="#FFFFFF" />
+                  <span>{t('stopListening')}</span>
+                </button>
               )}
+            </div>
+          ) : (
 
+            <div
+              tabIndex={0}
+              role="button"
+              aria-label="Communicate"
+              className="hero-communicate-card"
+              style={{ minHeight: '175px', padding: '1.6rem 1.5rem' }}
+              onClick={handleStartListening}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleStartListening();
+                }
+              }}
+            >
+              <div className="hero-top-row">
+                <div className="hero-icon-circle" style={{ width: 64, height: 64, borderRadius: 20 }}>
+                  <MessageSquare size={36} strokeWidth={2.5} />
+                </div>
+                <span className="hero-badge" style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem' }}>
+                  {t('tapToSpeak')}
+                </span>
+              </div>
+
+              <div className="hero-body" style={{ marginTop: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <h2 className="hero-title" style={{ fontSize: '1.85rem' }}>{t('communicate')}</h2>
+                  <Mic size={28} strokeWidth={2.5} />
+                </div>
+                <p className="hero-desc" style={{ fontSize: '1rem' }}>{t('tapToSpeakSubtitle')}</p>
+              </div>
+            </div>
+          )}
+
+          {/* SPEECH ERROR DISPLAY IF ANY */}
+          {speechErrorMsg && (
+            <div style={{ padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(220, 38, 38, 0.08)', border: '1px solid rgba(220, 38, 38, 0.3)', color: '#DC2626', fontSize: '0.875rem', fontWeight: 600 }}>
+              {speechErrorMsg}
+            </div>
+          )}
+
+          {/* RECOGNIZED / ACTIVE SPOKEN PHRASE DISPLAY BOX */}
+          {activeOutputPhrase && !isListening && (
+            <div className="spoken-phrase-box" style={{ marginTop: '0.2rem' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-blue-primary)' }}>
+                  {isSynthesizingVoice ? t('synthesizingVoice') : t('youSaid')}
+                </span>
+                <p className="spoken-phrase-text" style={{ marginTop: '0.2rem' }}>
+                  "{activeOutputPhrase}"
+                </p>
+              </div>
               <button
                 type="button"
-                className="btn-secondary-auth"
-                onClick={() => handleOpenModule('Appointments')}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                className="btn-speak-again"
+                aria-label="Speak phrase again"
+                title="Speak phrase again"
+                onClick={() => processPhraseOutput(activeOutputPhrase)}
               >
-                <Calendar size={16} />
-                <span>View Appointments</span>
+                <Volume2 size={22} />
               </button>
-            </section>
+            </div>
+          )}
 
-            {/* 5. QUICK ACTIONS GRID */}
-            <section style={{ width: '100%' }}>
-              <h3 className="quick-actions-section-title">
-                <Sparkles size={18} color="var(--color-blue-primary)" />
-                <span>Quick Actions</span>
+
+          {/* 3. TWO LARGE CATEGORY SELECTION CONTROLS: BASIC & PEOPLE */}
+          <section style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.65rem' }}>
+              <Sparkles size={16} color="var(--color-blue-primary)" />
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0, color: 'var(--color-brand-title)' }}>
+                {t('quickMessages')}
               </h3>
+            </div>
 
-              <div className="quick-actions-grid">
-                {quickActions.map((action) => {
-                  const IconComp = action.icon;
-                  return (
-                    <div
-                      key={action.id}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={action.title}
-                      className={`action-card ${action.isDanger ? 'danger' : ''}`}
-                      onClick={() => handleOpenModule(action.title)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handleOpenModule(action.title);
-                        }
-                      }}
-                    >
-                      <div className="action-card-header">
-                        <div className={`action-icon-box ${action.isDanger ? 'danger' : ''}`}>
-                          <IconComp size={22} />
-                        </div>
-                        <ArrowRight size={18} className="action-arrow-icon" />
-                      </div>
-
-                      <div>
-                        <h4 className="action-card-title">{action.title}</h4>
-                        <p className="action-card-desc">{action.desc}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* 6. THERAPY SESSIONS SECTION */}
-            <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Brain size={18} color="var(--color-blue-primary)" />
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                  Therapy Sessions
-                </h3>
+            {/* TWO LARGE CATEGORY SELECTOR CARDS */}
+            <div className="category-selector-grid" style={{ marginBottom: '0.85rem' }}>
+              {/* CATEGORY 1: BASIC */}
+              <div
+                tabIndex={0}
+                role="button"
+                aria-label="Basic Everyday Needs"
+                className={`category-selector-card basic ${activeCategoryTab === 'basic' ? 'active' : ''}`}
+                onClick={() => setActiveCategoryTab('basic')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveCategoryTab('basic');
+                  }
+                }}
+              >
+                <h4 className="category-card-title">
+                  <Sparkles size={20} />
+                  <span>{t('basicTab')}</span>
+                </h4>
+                <p className="category-card-sub">{t('everydayNeeds')}</p>
               </div>
 
-              {therapyProgress && therapyProgress.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                  {therapyProgress.slice(0, 3).map((item, idx) => (
-                    <div key={item._id || idx} style={{ padding: '0.75rem 0.9rem', borderRadius: '12px', background: 'rgba(22, 163, 74, 0.05)', border: '1px solid var(--border-color)' }}>
-                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                        Exercises: {item.exercisesCompleted || 0} | Accuracy: {item.accuracyScore || 0}%
-                      </p>
-                    </div>
-                  ))}
+              {/* CATEGORY 2: PEOPLE */}
+              <div
+                tabIndex={0}
+                role="button"
+                aria-label="People Family and Care"
+                className={`category-selector-card people ${activeCategoryTab === 'people' ? 'active' : ''}`}
+                onClick={() => setActiveCategoryTab('people')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveCategoryTab('people');
+                  }
+                }}
+              >
+                <h4 className="category-card-title">
+                  <Users size={20} />
+                  <span>{t('peopleTab')}</span>
+                </h4>
+                <p className="category-card-sub">{t('familyAndCare')}</p>
+              </div>
+            </div>
+
+            {/* QUICK MESSAGE BUTTONS GRID */}
+            {activeCategoryTab === 'basic' ? (
+              <div className="quick-msg-grid-8">
+                {/* 1. WATER */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseWater'), 'phraseWater')}
+                >
+                  <div className="quick-msg-icon-box">
+                    <Droplet size={22} />
+                  </div>
+                  <span>{t('labelWater')}</span>
+                </button>
+
+                {/* 2. FOOD */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseFood'), 'phraseFood')}
+                >
+                  <div className="quick-msg-icon-box">
+                    <Utensils size={22} />
+                  </div>
+                  <span>{t('labelFood')}</span>
+                </button>
+
+                {/* 3. MEDICINE */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseMedicine'), 'phraseMedicine')}
+                >
+                  <div className="quick-msg-icon-box">
+                    <Sparkles size={22} />
+                  </div>
+                  <span>{t('labelMedicine')}</span>
+                </button>
+
+                {/* 4. PAIN */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phrasePain'), 'phrasePain')}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(220, 38, 38, 0.1)', color: '#DC2626' }}>
+                    <Activity size={22} />
+                  </div>
+                  <span>{t('labelPain')}</span>
+                </button>
+
+                {/* 5. TOILET */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseToilet'), 'phraseToilet')}
+                >
+                  <div className="quick-msg-icon-box">
+                    <Info size={22} />
+                  </div>
+                  <span>{t('labelToilet')}</span>
+                </button>
+
+                {/* 6. YES */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseYes'), 'phraseYes')}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(22, 163, 74, 0.1)', color: '#16A34A' }}>
+                    <CheckCircle2 size={22} />
+                  </div>
+                  <span>{t('labelYes')}</span>
+                </button>
+
+                {/* 7. NO */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseNo'), 'phraseNo')}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(220, 38, 38, 0.1)', color: '#DC2626' }}>
+                    <XCircle size={22} />
+                  </div>
+                  <span>{t('labelNo')}</span>
+                </button>
+
+                {/* 8. TIRED */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseTired'), 'phraseTired')}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(124, 58, 237, 0.1)', color: '#7C3AED' }}>
+                    <Moon size={22} />
+                  </div>
+                  <span>{t('labelTired')}</span>
+                </button>
+              </div>
+            ) : (
+              <div className="quick-msg-grid-4">
+                {/* 1. FAMILY */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseFamily'), 'phraseFamily')}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(219, 39, 119, 0.1)', color: '#DB2777' }}>
+                    <Heart size={22} />
+                  </div>
+                  <span>{t('labelFamily')}</span>
+                </button>
+
+                {/* 2. CAREGIVER */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseCaregiver'), 'phraseCaregiver')}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(2, 132, 199, 0.1)', color: '#0284C7' }}>
+                    <User size={22} />
+                  </div>
+                  <span>{t('labelCaregiver')}</span>
+                </button>
+
+                {/* 3. DOCTOR */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseDoctor'), 'phraseDoctor')}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(22, 163, 74, 0.1)', color: '#16A34A' }}>
+                    <Activity size={22} />
+                  </div>
+                  <span>{t('labelDoctor')}</span>
+                </button>
+
+                {/* 4. CALL FAMILY */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseCallFamily'), 'phraseCallFamily')}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(124, 58, 237, 0.1)', color: '#7C3AED' }}>
+                    <PhoneCall size={22} />
+                  </div>
+                  <span>{t('labelCallFamily')}</span>
+                </button>
+              </div>
+            )}
+          </section>
+
+          {/* 4. SEPARATE LARGE RED SOS EMERGENCY ACTION */}
+          <section style={{ width: '100%' }}>
+            <div
+              tabIndex={0}
+              role="button"
+              aria-label="I Need Help Emergency SOS"
+              className="sos-large-card"
+              onClick={() => handleOpenModule('Emergency SOS')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleOpenModule('Emergency SOS');
+                }
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AlertTriangle size={26} color="#FFFFFF" strokeWidth={2.5} />
                 </div>
-              ) : (
-                <div className="recent-activity-empty-state">
-                  <p className="empty-state-title">No therapy sessions available.</p>
-                </div>
-              )}
-            </section>
-
-            {/* 7. VOICE PROFILE SECTION */}
-            <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <UserCheck size={18} color="var(--color-blue-primary)" />
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                  Voice Profile
-                </h3>
-              </div>
-
-              {voiceProfiles && voiceProfiles.length > 0 ? (
-                <div style={{ padding: '0.75rem 0.9rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px solid var(--border-color)' }}>
-                  <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                    Gender: {voiceProfiles[0].voiceGender || 'Neutral'} | Pitch: {voiceProfiles[0].pitch || 1.0}
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 900, margin: 0, color: '#FFFFFF', letterSpacing: '0.02em' }}>
+                    {t('emergencySos')}
+                  </h3>
+                  <p style={{ fontSize: '0.875rem', fontWeight: 600, margin: 0, color: 'rgba(255,255,255,0.9)' }}>
+                    {t('emergencySosDesc')}
                   </p>
                 </div>
-              ) : (
-                <div className="recent-activity-empty-state">
-                  <p className="empty-state-title">No voice profile created yet.</p>
-                </div>
-              )}
-            </section>
+              </div>
+              <ArrowRight size={24} color="#FFFFFF" strokeWidth={3} />
+            </div>
+          </section>
 
-            {/* 8. RECENT ACTIVITY SECTION (Communication History) */}
-            <section className="recent-activity-card">
+          {/* 5. DEDICATED THERAPY & PLAY REHABILITATION SECTION */}
+          <section style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.65rem' }}>
+              <Brain size={16} color="var(--color-green-primary)" />
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', margin: 0, color: 'var(--color-brand-title)' }}>
+                {t('therapyExercises')} & {t('playAndPractice')}
+              </h3>
+            </div>
+
+            <div className="home-secondary-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
+              {/* CARD 1: THERAPY */}
+              <div
+                tabIndex={0}
+                role="button"
+                aria-label="Therapy Exercises"
+                className="therapy-play-card therapy"
+                onClick={() => handleOpenModule('Therapy Exercises')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleOpenModule('Therapy Exercises');
+                  }
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '0.65rem' }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 14, background: 'rgba(22, 163, 74, 0.12)', color: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Brain size={24} strokeWidth={2.5} />
+                  </div>
+                  <ArrowRight size={18} color="var(--color-brand-title)" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0, color: 'var(--color-brand-title)' }}>
+                    {t('therapyExercises')}
+                  </h3>
+                  <p style={{ fontSize: '0.825rem', fontWeight: 600, margin: 0, color: 'var(--color-brand-tagline)' }}>
+                    {t('therapyExercisesDesc')}
+                  </p>
+                </div>
+              </div>
+
+              {/* CARD 2: PLAY */}
+              <div
+                tabIndex={0}
+                role="button"
+                aria-label="Practice and Learn Games"
+                className="therapy-play-card play"
+                onClick={() => handleOpenModule('Therapy Games')}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleOpenModule('Therapy Games');
+                  }
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: '0.65rem' }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 14, background: 'rgba(147, 51, 234, 0.12)', color: '#9333EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Gamepad2 size={24} strokeWidth={2.5} />
+                  </div>
+                  <ArrowRight size={18} color="var(--color-brand-title)" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 900, margin: 0, color: 'var(--color-brand-title)' }}>
+                    {t('playAndPractice')}
+                  </h3>
+                  <p style={{ fontSize: '0.825rem', fontWeight: 600, margin: 0, color: 'var(--color-brand-tagline)' }}>
+                    {t('playAndPracticeDesc')}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 6. REAL DATA FEEDS (BACKEND THERAPY PROGRESS & RECENT ACTIVITY) */}
+          {therapyProgress && therapyProgress.length > 0 && (
+            <section className="profile-section-card" style={{ width: '100%', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Brain size={18} color="var(--color-green-primary)" />
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, margin: 0 }}>Recent Therapy Progress</h3>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {therapyProgress.slice(0, 2).map((item, idx) => (
+                  <div key={item._id || idx} style={{ padding: '0.65rem 0.85rem', borderRadius: '12px', background: 'rgba(22, 163, 74, 0.05)', border: '1px solid var(--border-color)' }}>
+                    <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                      Exercises: {item.exercisesCompleted || 0} | Accuracy: {item.accuracyScore || 0}%
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {communicationHistory && communicationHistory.length > 0 && (
+            <section className="recent-activity-card" style={{ width: '100%' }}>
               <div className="recent-activity-header">
                 <Info size={18} color="var(--color-blue-primary)" />
-                <h3>Recent Activity</h3>
+                <h3>Recent Communication</h3>
               </div>
-
-              {communicationHistory && communicationHistory.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                  {communicationHistory.slice(0, 3).map((log, idx) => (
-                    <div key={log._id || idx} style={{ padding: '0.75rem 0.9rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px solid var(--border-color)' }}>
-                      <p style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                        "{log.recognizedText}"
-                      </p>
-                      <p style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)', marginTop: '0.15rem' }}>
-                        Type: {log.attemptType || 'Silent'} | Confidence: {((log.confidenceScore || 0) * 100).toFixed(0)}%
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="recent-activity-empty-state">
-                  <p className="empty-state-title">No activity available.</p>
-                  <p className="empty-state-desc">
-                    Your communication history will appear here after your first communication session.
-                  </p>
-                </div>
-              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {communicationHistory.slice(0, 2).map((log, idx) => (
+                  <div key={log._id || idx} style={{ padding: '0.65rem 0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px solid var(--border-color)' }}>
+                    <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                      "{log.recognizedText}"
+                    </p>
+                  </div>
+                ))}
+              </div>
             </section>
+          )}
 
-          </main>
-        )}
+        </main>
 
       </div>
 

@@ -9,6 +9,7 @@ const caregiverController = require('../controllers/caregiverController');
 router.get('/', caregiverController.getAll);
 router.get('/:id', caregiverController.getById);
 router.post('/', caregiverController.create);
+router.put('/:id/link-patient', caregiverController.linkPatient);
 router.put('/:id', caregiverController.update);
 router.delete('/:id', caregiverController.delete);
 

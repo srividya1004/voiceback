@@ -56,6 +56,27 @@ const getPatientById = async (req, res) => {
 };
 
 /**
+ * Assign a doctor to a patient
+ * @route PUT /api/patients/:id/assign-doctor
+ */
+const assignDoctor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { doctorId } = req.body;
+    if (!doctorId) {
+      return sendError(res, 400, 'Doctor ID is required for assignment');
+    }
+    const updated = await patientService.assignDoctor(id, doctorId);
+    return sendSuccess(res, 200, 'Doctor assigned to patient successfully', updated);
+  } catch (error) {
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
+    return sendError(res, 400, error.message);
+  }
+};
+
+/**
  * Update a Patient record by ObjectId
  * @route PUT /api/patients/:id
  */
@@ -99,6 +120,7 @@ module.exports = {
   create: createPatient,
   getAll: getAllPatients,
   getById: getPatientById,
+  assignDoctor,
   update: updatePatient,
   delete: deletePatient,
   createPatient,

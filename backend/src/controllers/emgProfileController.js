@@ -1,6 +1,6 @@
 /**
  * EMGProfile Controller
- * Handles HTTP request/response orchestration for calibrated sEMG threshold profiles using EMGProfile Service.
+ * Handles HTTP request/response orchestration for calibrated sEMG threshold profiles and AI gesture inference.
  */
 
 const emgProfileService = require('../services/emgProfileService');
@@ -32,6 +32,20 @@ const getAllEMGProfiles = async (req, res) => {
     return sendSuccess(res, 200, 'EMG profiles retrieved successfully', emgProfiles);
   } catch (error) {
     return sendError(res, 500, 'Failed to retrieve EMG profiles', error.message);
+  }
+};
+
+/**
+ * Perform sEMG AI gesture inference
+ * @route POST /api/emg-profiles/predict
+ */
+const predictEMGIntent = async (req, res) => {
+  try {
+    const { patientId, rawAnalogSignal, rmsAmplitude, mode } = req.body;
+    const result = await emgProfileService.predictEMGIntent(patientId, rawAnalogSignal, rmsAmplitude, mode);
+    return sendSuccess(res, 200, 'sEMG AI intent inferred successfully', result);
+  } catch (error) {
+    return sendError(res, 500, 'Failed to infer sEMG intent', error.message);
   }
 };
 
@@ -99,6 +113,7 @@ module.exports = {
   create: createEMGProfile,
   getAll: getAllEMGProfiles,
   getById: getEMGProfileById,
+  predictEMGIntent,
   update: updateEMGProfile,
   delete: deleteEMGProfile,
   createEMGProfile,

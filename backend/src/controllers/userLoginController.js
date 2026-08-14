@@ -39,6 +39,23 @@ const getAllUserLogins = async (req, res) => {
 };
 
 /**
+ * Retrieve current user profile
+ * @route GET /api/user-logins/me or /me/:id
+ */
+const getMe = async (req, res) => {
+  try {
+    const userId = req.params.id || req.query.userId;
+    if (!userId) {
+      return sendError(res, 400, 'User ID parameter is required');
+    }
+    const result = await userLoginService.getMe(userId);
+    return sendSuccess(res, 200, 'User profile retrieved successfully', result);
+  } catch (error) {
+    return sendError(res, 500, 'Failed to retrieve user profile', error.message);
+  }
+};
+
+/**
  * Retrieve a single UserLogin by ObjectId
  * @route GET /api/user-logins/:id
  */
@@ -114,7 +131,7 @@ const login = async (req, res) => {
     const result = await userLoginService.loginUser(email, password);
     return sendSuccess(res, 200, 'Login successful', result);
   } catch (error) {
-    if (error.message.includes('Invalid')) {
+    if (error.message.includes('Invalid') || error.message.includes('Incorrect') || error.message.includes('No account')) {
       return sendError(res, 401, error.message);
     }
     return sendError(res, 500, 'Failed to login', error.message);
@@ -125,6 +142,7 @@ module.exports = {
   create: createUserLogin,
   getAll: getAllUserLogins,
   getById: getUserLoginById,
+  getMe,
   update: updateUserLogin,
   delete: deleteUserLogin,
   login,
@@ -135,4 +153,3 @@ module.exports = {
   updateUserLogin,
   deleteUserLogin
 };
-

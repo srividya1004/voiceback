@@ -27,6 +27,11 @@ export const caregiverService = {
     const response = await apiClient.put(`/caregivers/${id}`, updateData);
     return response.data;
   },
+
+  update: async (id, updateData) => {
+    const response = await apiClient.put(`/caregivers/${id}`, updateData);
+    return response.data;
+  },
 };
 
 export default caregiverService;

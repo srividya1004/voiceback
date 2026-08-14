@@ -14,9 +14,12 @@ npm-debug.log
 __pycache__/
 *.pyc
 venv/
+.venv/
 .env/
 *.onnx
 *.pt
+emg-ai/data/
+
 
 # OS files
 .DS_Store

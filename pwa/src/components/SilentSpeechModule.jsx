@@ -18,23 +18,32 @@ import {
   Settings,
   AlertTriangle,
   LogOut,
-  Info
+  Info,
+  Droplet,
+  Utensils,
+  HelpCircle,
+  Heart,
+  Sparkles
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
 import deviceService from '../services/deviceService';
+import authService from '../services/authService';
 
 export const SilentSpeechModule = ({
   initialStep = 'silent-speech-home',
   onBackToDashboard,
   onOpenProfile,
+  onOpenAppointments,
   onLogout
 }) => {
   const { t, voiceAssistant, speak } = useSettings();
   const [step, setStep] = useState(initialStep);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activePhrase, setActivePhrase] = useState('I need water.');
+  const [activeCategory, setActiveCategory] = useState('basic'); // 'basic' | 'relation' | 'sos'
   const [deviceStatus, setDeviceStatus] = useState(() => deviceService.getDeviceStatus());
   const lastSpokenStepRef = useRef(null);
 
@@ -45,15 +54,39 @@ export const SilentSpeechModule = ({
     return () => unsubscribe();
   }, []);
 
+  // Categorized Quick Communication Phrases
+  const basicPhrases = [
+    { id: 'water', label: 'WATER', text: 'I need water.', icon: Droplet, colorClass: 'water' },
+    { id: 'food', label: 'FOOD', text: 'I need food.', icon: Utensils, colorClass: 'food' },
+    { id: 'pain', label: 'PAIN', text: 'I am in pain.', icon: Activity, colorClass: 'pain' },
+    { id: 'toilet', label: 'TOILET', text: 'I need the toilet.', icon: Info, colorClass: 'water' },
+    { id: 'medicine', label: 'MEDICINE', text: 'I need my medicine.', icon: Sparkles, colorClass: 'food' },
+  ];
+
+  const relationPhrases = [
+    { id: 'family', label: 'FAMILY', text: 'I want my family.', icon: Heart, colorClass: 'family' },
+    { id: 'caregiver', label: 'CAREGIVER', text: 'I want my caregiver.', icon: User, colorClass: 'water' },
+    { id: 'doctor', label: 'DOCTOR', text: 'I want my doctor.', icon: CheckCircle2, colorClass: 'pain' },
+  ];
+
+  const sosPhrases = [
+    { id: 'help', label: 'HELP', text: 'I need help.', icon: HelpCircle, colorClass: 'help' },
+  ];
+
+
   // Sync profile data & avatar from localStorage
   const [profileData] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      if (stored && stored.fullName) return stored;
-    } catch (e) {
-      // ignore
-    }
-    return { fullName: 'Srividya Raman' };
+    const session = authService.getActiveSession();
+    const sessionUser = session?.user;
+    const stored = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('voiceback_patient_user') || 'null') || JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
+      } catch (e) {
+        return null;
+      }
+    })();
+    const name = sessionUser?.fullName || sessionUser?.profile?.fullName || stored?.fullName || session?.email || 'Patient';
+    return { fullName: name };
   });
 
   const [avatarDataUrl] = useState(() => {
@@ -234,7 +267,7 @@ export const SilentSpeechModule = ({
           </div>
         </aside>
 
-        {/* SCREEN 1: SILENT SPEECH HOME */}
+        {/* SCREEN 1: SILENT SPEECH & QUICK COMMUNICATION */}
         {step === 'silent-speech-home' && (
           <>
             <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -242,14 +275,14 @@ export const SilentSpeechModule = ({
                 <button
                   type="button"
                   className="settings-btn"
-                  aria-label="Return to Dashboard"
-                  title="Return to Dashboard"
+                  aria-label="Return to Patient Home"
+                  title="Return to Patient Home"
                   onClick={onBackToDashboard}
                 >
                   <ArrowLeft size={22} />
                 </button>
                 <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                  Silent Speech
+                  COMMUNICATE
                 </h1>
               </div>
 
@@ -267,57 +300,167 @@ export const SilentSpeechModule = ({
               </button>
             </header>
 
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', width: '100%' }}>
-              <section className="welcome-compact-section">
-                <p className="welcome-subtitle" style={{ fontSize: '1rem', color: 'var(--color-brand-title)', fontWeight: 700 }}>
-                  Communicate naturally using your VoiceBack wearable device.
-                </p>
-              </section>
-
-              {/* DEVICE STATUS CARD */}
-              <section className="device-status-card">
-                <div className="device-status-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                    <Radio size={18} color="var(--color-brand-tagline)" />
-                    <h3 className="device-status-title">Wearable Device</h3>
-                  </div>
-                  <span className="device-name-badge disconnected">Not Connected</span>
-                </div>
-
-                <div style={{ padding: '0.5rem 0', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                  <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-brand-title)' }}>
-                    Your wearable device is not connected.
-                  </p>
-                  <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)' }}>
-                    Connect the device to begin communication.
+            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+              
+              {/* 1. ACTIVE SPOKEN PHRASE DISPLAY BOX */}
+              <div className="spoken-phrase-box">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-blue-primary)' }}>
+                    Active Speech Output
+                  </span>
+                  <p className="spoken-phrase-text" style={{ marginTop: '0.2rem' }}>
+                    "{activePhrase || 'I need water.'}"
                   </p>
                 </div>
 
                 <button
                   type="button"
-                  className="btn-continue"
-                  onClick={() => handleStepChange('connect-device')}
-                  style={{ width: '100%' }}
+                  className="btn-speak-again"
+                  aria-label="Speak phrase again"
+                  title="Speak phrase again"
+                  onClick={() => {
+                    if (speak) speak(activePhrase || 'I need water.');
+                  }}
                 >
-                  <Wifi size={18} />
-                  <span>Connect Device</span>
+                  <Volume2 size={22} />
                 </button>
-              </section>
+              </div>
 
-              {/* RECENT CONVERSATIONS (EMPTY STATE) */}
-              <section className="recent-activity-card">
-                <div className="recent-activity-header">
-                  <Info size={18} color="var(--color-blue-primary)" />
-                  <h3>Recent Conversations</h3>
+              {/* 2. CATEGORY TABS (BASIC, RELATION, SOS) */}
+              <section className="common-needs-section">
+                <div className="category-tab-grid">
+                  <button
+                    type="button"
+                    className={`category-tab-btn ${activeCategory === 'basic' ? 'active' : ''}`}
+                    onClick={() => setActiveCategory('basic')}
+                  >
+                    <Sparkles size={16} />
+                    <span>BASIC</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`category-tab-btn ${activeCategory === 'relation' ? 'active' : ''}`}
+                    onClick={() => setActiveCategory('relation')}
+                  >
+                    <User size={16} />
+                    <span>RELATION</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`category-tab-btn ${activeCategory === 'sos' ? 'active' : ''}`}
+                    onClick={() => setActiveCategory('sos')}
+                  >
+                    <HelpCircle size={16} />
+                    <span>SOS</span>
+                  </button>
                 </div>
 
-                <div className="recent-activity-empty-state">
-                  <p className="empty-state-title">No conversations available.</p>
-                  <p className="empty-state-desc">
-                    Your conversation history will appear here after using Silent Speech.
-                  </p>
+                {/* CATEGORIZED PHRASE CARDS GRID */}
+                <div className="phrase-card-grid" style={{ marginTop: '0.65rem' }}>
+                  {activeCategory === 'basic' && basicPhrases.map((phrase) => {
+                    const IconComponent = phrase.icon;
+                    return (
+                      <button
+                        key={phrase.id}
+                        type="button"
+                        className={`common-need-btn ${phrase.colorClass}`}
+                        onClick={() => {
+                          setActivePhrase(phrase.text);
+                          if (speak) speak(phrase.text);
+                        }}
+                      >
+                        <div className="common-need-icon">
+                          <IconComponent size={22} />
+                        </div>
+                        <span>{phrase.label}</span>
+                      </button>
+                    );
+                  })}
+
+                  {activeCategory === 'relation' && relationPhrases.map((phrase) => {
+                    const IconComponent = phrase.icon;
+                    return (
+                      <button
+                        key={phrase.id}
+                        type="button"
+                        className={`common-need-btn ${phrase.colorClass}`}
+                        onClick={() => {
+                          setActivePhrase(phrase.text);
+                          if (speak) speak(phrase.text);
+                        }}
+                      >
+                        <div className="common-need-icon">
+                          <IconComponent size={22} />
+                        </div>
+                        <span>{phrase.label}</span>
+                      </button>
+                    );
+                  })}
+
+                  {activeCategory === 'sos' && sosPhrases.map((phrase) => {
+                    const IconComponent = phrase.icon;
+                    return (
+                      <button
+                        key={phrase.id}
+                        type="button"
+                        className={`common-need-btn ${phrase.colorClass}`}
+                        onClick={() => {
+                          setActivePhrase(phrase.text);
+                          if (speak) speak(phrase.text);
+                        }}
+                      >
+                        <div className="common-need-icon">
+                          <IconComponent size={22} />
+                        </div>
+                        <span>{phrase.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
+
+              {/* 3. TRUTHFUL MICROPHONE & HARDWARE SPEECH INPUT SECTION */}
+              <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Mic size={20} color="var(--color-blue-primary)" />
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0 }}>Microphone & Speech Input</h3>
+                  </div>
+                  <span className={`device-name-badge ${deviceStatus.status === 'Connected' ? 'connected' : 'disconnected'}`}>
+                    {deviceStatus.status === 'Connected' ? 'Connected' : 'Not Connected'}
+                  </span>
+                </div>
+
+                <p style={{ fontSize: '0.875rem', color: 'var(--color-brand-tagline)' }}>
+                  Microphone input is active. ESP32 + EMG wearable signals can be connected in Device Setup when hardware is present.
+                </p>
+
+                <div style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
+                  <button
+                    type="button"
+                    className="btn-continue"
+                    onClick={() => handleStepChange('listening')}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    <Mic size={18} />
+                    <span>Start Speech Input</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn-secondary-auth"
+                    onClick={() => handleStepChange('connect-device')}
+                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                  >
+                    <Wifi size={16} />
+                    <span>Device Setup</span>
+                  </button>
+                </div>
+              </section>
+
+
             </main>
           </>
         )}

@@ -13,10 +13,7 @@ let server;
  */
 const startServer = async () => {
   try {
-    // 1. Connect to MongoDB Atlas
-    await connectDB();
-
-    // 2. Start Express HTTP Server
+    // 1. Start Express HTTP Server immediately
     server = app.listen(config.port, () => {
       console.log(`🚀 Server Running on Port ${config.port}`);
       console.log(`=======================================================`);
@@ -26,13 +23,18 @@ const startServer = async () => {
       console.log(`  Health Check: http://localhost:${config.port}/health`);
       console.log(`=======================================================`);
     });
+
+    // 2. Connect to MongoDB Atlas asynchronously
+    connectDB().catch((dbErr) => {
+      console.warn('⚠️ MongoDB Connection Warning (API server operating in fallback mode):', dbErr.message);
+    });
   } catch (error) {
     console.error('❌ Server startup error:', error.message);
-    process.exit(1);
   }
 };
 
 startServer();
+
 
 // Graceful Shutdown Handlers
 process.on('SIGTERM', () => {

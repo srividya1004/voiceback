@@ -56,6 +56,27 @@ const getCaregiverById = async (req, res) => {
 };
 
 /**
+ * Link patient to caregiver via registered email
+ * @route PUT /api/caregivers/:id/link-patient
+ */
+const linkPatient = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const emailInput = req.body.email || req.body.patientIdentifier;
+    if (!emailInput) {
+      return sendError(res, 400, 'Patient registered email address is required');
+    }
+    const updated = await caregiverService.linkPatientByEmail(id, emailInput);
+    return sendSuccess(res, 200, 'Patient linked successfully', updated);
+  } catch (error) {
+    if (error.message.includes('No patient found')) {
+      return sendError(res, 404, error.message);
+    }
+    return sendError(res, 400, error.message);
+  }
+};
+
+/**
  * Update a Caregiver record by ObjectId
  * @route PUT /api/caregivers/:id
  */
@@ -99,6 +120,7 @@ module.exports = {
   create: createCaregiver,
   getAll: getAllCaregivers,
   getById: getCaregiverById,
+  linkPatient,
   update: updateCaregiver,
   delete: deleteCaregiver,
   createCaregiver,

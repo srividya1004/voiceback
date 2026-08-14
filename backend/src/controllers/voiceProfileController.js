@@ -161,24 +161,25 @@ const synthesizeSpeech = async (req, res) => {
     let targetVoiceId = null;
 
     if (patientId) {
-      const profile = await voiceProfileService.getByPatientId(patientId);
-      if (profile && profile.voiceId && profile.status === 'Ready') {
-        targetVoiceId = profile.voiceId;
+      try {
+        const profile = await voiceProfileService.getByPatientId(patientId);
+        if (profile && profile.voiceId && profile.status === 'Ready') {
+          targetVoiceId = profile.voiceId;
+        }
+      } catch (dbErr) {
+        console.warn(`ℹ️ VoiceProfile lookup skipped for patientId "${patientId}": ${dbErr.message}`);
       }
     }
 
-    // Fallback: Check if any active VoiceProfile exists with a ready voiceId
+    const DEFAULT_ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_DEFAULT_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
+
+    // Fallback: Use default ElevenLabs pre-made voice if patient has no custom cloned voice yet
     if (!targetVoiceId) {
-      const allProfiles = await voiceProfileService.getAll();
-      const readyProfile = allProfiles.find((p) => p.voiceId && p.status === 'Ready');
-      if (readyProfile) {
-        targetVoiceId = readyProfile.voiceId;
-      }
+      console.log(`ℹ️ No custom cloned voice found for patient. Using default ElevenLabs voice (${DEFAULT_ELEVENLABS_VOICE_ID}).`);
+      targetVoiceId = DEFAULT_ELEVENLABS_VOICE_ID;
     }
 
-    if (!targetVoiceId) {
-      return sendError(res, 404, 'No ready cloned voice profile found for this patient. Please record/upload a voice sample first.');
-    }
+
 
     // Call ElevenLabs TTS Service (returns MP3 Buffer)
     const audioBuffer = await elevenLabsService.generateSpeech({
@@ -197,6 +198,28 @@ const synthesizeSpeech = async (req, res) => {
   }
 };
 
+/**
+ * Handle Patient Speech Audio Transcription using ElevenLabs Scribe v2
+ * @route POST /api/voice-profiles/transcribe
+ */
+const transcribeSpeech = async (req, res) => {
+  try {
+    if (!req.file) {
+      return sendError(res, 400, 'Audio sample file is required for speech-to-text transcription.');
+    }
+
+    const transcript = await elevenLabsService.transcribeSpeech({
+      audioFilePath: req.file.path,
+    });
+
+    return sendSuccess(res, 200, 'Speech transcribed successfully', {
+      text: transcript,
+    });
+  } catch (error) {
+    return sendError(res, 500, 'Speech recognition failed', error.message);
+  }
+};
+
 module.exports = {
   create: createVoiceProfile,
   getAll: getAllVoiceProfiles,
@@ -205,4 +228,6 @@ module.exports = {
   delete: deleteVoiceProfile,
   cloneVoiceSample,
   synthesizeSpeech,
+  transcribeSpeech,
 };
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Menu,
   X,
@@ -14,37 +14,283 @@ import {
   ArrowRight,
   Info,
   Link,
-  Plus
+  Plus,
+  ArrowLeft,
+  Clock,
+  Stethoscope,
+  CheckCircle2,
+  AlertCircle,
+  ShieldCheck,
+  Edit3
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import authService from '../services/authService';
+import appointmentService from '../services/appointmentService';
+import patientService from '../services/patientService';
+import doctorService from '../services/doctorService';
+import caregiverService from '../services/caregiverService';
+import apiClient from '../services/apiClient';
 
 export const CaregiverDashboardScreen = ({ onLogout }) => {
   const { t, voiceAssistant, speak } = useSettings();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' | 'profile' | 'placeholder-module'
-  const [activeModule, setActiveModule] = useState('');
-  const [noticeMsg, setNoticeMsg] = useState('');
+  const [currentView, setCurrentView] = useState('dashboard');
 
-  // Sync caregiver profile from localStorage
-  const [caregiverProfile] = useState(() => {
+  // Appointment Booking & Relationship State
+  const [appointmentsList, setAppointmentsList] = useState([]);
+  const [patientsRoster, setPatientsRoster] = useState([]);
+  const [doctorsRoster, setDoctorsRoster] = useState([]);
+  const [emergencyAlerts, setEmergencyAlerts] = useState([]);
+  const [loadingData, setLoadingData] = useState(false);
+
+  // Form inputs for Caregiver Appointment Booking
+  const [selectedPatientId, setSelectedPatientId] = useState('');
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const [appointmentDateTime, setAppointmentDateTime] = useState('');
+  const [reasonForAppointment, setReasonForAppointment] = useState('');
+  const [bookingStatusMsg, setBookingStatusMsg] = useState(null);
+  const [submittingBooking, setSubmittingBooking] = useState(false);
+
+  // Link Patient Modal State
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [emailInput, setEmailInput] = useState('');
+  const [linkStatusMsg, setLinkStatusMsg] = useState(null);
+  const [submittingLink, setSubmittingLink] = useState(false);
+
+  // Edit Caregiver Profile Modal State
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [editProfileForm, setEditProfileForm] = useState({
+    fullName: '',
+    phone: '',
+    relationshipToPatient: ''
+  });
+  const [profileStatusMsg, setProfileStatusMsg] = useState(null);
+  const [submittingProfile, setSubmittingProfile] = useState(false);
+
+  // Authenticated Caregiver Profile state
+  const session = authService.getActiveSession();
+  const sessionUser = session?.user;
+  const storedCg = (() => {
     try {
-      const stored = JSON.parse(localStorage.getItem('voiceback_caregiver_user') || 'null');
-      if (stored && stored.fullName) return stored;
+      return JSON.parse(localStorage.getItem('voiceback_caregiver_user') || 'null');
     } catch (e) {
-      // ignore
+      return null;
     }
-    return {
-      fullName: 'Ramesh Raman',
-      relationship: 'Spouse',
-      email: 'caregiver@example.com',
-      mobileNumber: '+91 98765 11111',
-    };
+  })();
+
+  const initialCaregiverName = sessionUser?.fullName || sessionUser?.profile?.fullName || storedCg?.fullName || session?.email || 'Caregiver';
+
+  const [caregiverProfile, setCaregiverProfile] = useState({
+    id: sessionUser?.profile?._id || storedCg?._id || '',
+    fullName: initialCaregiverName,
+    relationship: sessionUser?.profile?.relationshipToPatient || storedCg?.relationshipToPatient || storedCg?.relationship || 'Caregiver',
+    email: sessionUser?.email || storedCg?.email || '',
+    mobileNumber: sessionUser?.profile?.phone || storedCg?.phone || storedCg?.mobileNumber || '',
+    assignedPatients: sessionUser?.profile?.assignedPatients || storedCg?.assignedPatients || []
   });
 
   const caregiverFirstName = caregiverProfile.fullName ? caregiverProfile.fullName.split(' ')[0] : 'Caregiver';
+
+  useEffect(() => {
+    loadCaregiverIdentity();
+  }, []);
+
+  const loadCaregiverIdentity = async () => {
+    try {
+      const res = await caregiverService.getAllCaregivers();
+      const list = Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
+      const currentEmail = (session?.email || '').trim().toLowerCase();
+      const currentUserId = sessionUser?.id;
+      const match = list.find((c) => {
+        const cEmail = (c.email || '').trim().toLowerCase();
+        const cUserId = c.userId?._id || c.userId;
+        return (currentEmail && cEmail === currentEmail) || (currentUserId && cUserId === currentUserId);
+      });
+      if (match) {
+        setCaregiverProfile({
+          id: match._id,
+          fullName: match.fullName,
+          relationship: match.relationshipToPatient || 'Caregiver',
+          email: match.email || currentEmail,
+          mobileNumber: match.phone || '',
+          assignedPatients: match.assignedPatients || []
+        });
+        setEditProfileForm({
+          fullName: match.fullName || '',
+          phone: match.phone || '',
+          relationshipToPatient: match.relationshipToPatient || 'Caregiver'
+        });
+      }
+    } catch (err) {
+      console.error('Error loading caregiver identity:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadAppointmentData();
+  }, [currentView, caregiverProfile.id]);
+
+  const loadAppointmentData = async () => {
+    setLoadingData(true);
+    try {
+      const [appsData, patientsRes, doctorsRes, sosRes] = await Promise.all([
+        appointmentService.getAppointments().catch(() => []),
+        patientService.getAllPatients().catch(() => ({ data: [] })),
+        doctorService.getAllDoctors().catch(() => ({ data: [] })),
+        apiClient.get('/emergency-sos').catch(() => ({ data: { data: [] } }))
+      ]);
+
+      setAppointmentsList(Array.isArray(appsData) ? appsData : []);
+
+      const allPatients = Array.isArray(patientsRes.data) ? patientsRes.data : Array.isArray(patientsRes) ? patientsRes : [];
+      setPatientsRoster(allPatients);
+
+      const allDoctors = Array.isArray(doctorsRes.data) ? doctorsRes.data : Array.isArray(doctorsRes) ? doctorsRes : [];
+      setDoctorsRoster(allDoctors);
+
+      const sosList = sosRes.data?.data || [];
+      setEmergencyAlerts(Array.isArray(sosList) ? sosList : []);
+    } catch (err) {
+      console.error('Error loading caregiver appointment data:', err);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  // Filter linked patients strictly for this caregiver
+  const linkedPatients = patientsRoster.filter((p) => {
+    if (!caregiverProfile.id) return false;
+    const assignedCgId = p.assignedCaregiverId?._id || p.assignedCaregiverId;
+    const inAssignedArray = Array.isArray(caregiverProfile.assignedPatients) &&
+      caregiverProfile.assignedPatients.some(ap => (ap._id || ap) === p._id);
+    return (assignedCgId && assignedCgId === caregiverProfile.id) || inAssignedArray;
+  });
+
+  // Auto-select assigned doctor when selected patient changes
+  useEffect(() => {
+    if (selectedPatientId) {
+      const p = linkedPatients.find(item => item._id === selectedPatientId);
+      if (p && p.assignedDoctorId) {
+        setSelectedDoctorId(p.assignedDoctorId._id || p.assignedDoctorId);
+      } else {
+        setSelectedDoctorId('');
+      }
+    }
+  }, [selectedPatientId, patientsRoster]);
+
+  // Handle linking patient via registered email
+  const handleLinkPatientSubmit = async (e) => {
+    e.preventDefault();
+    setLinkStatusMsg(null);
+    const normalizedEmail = emailInput.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setLinkStatusMsg({ type: 'error', text: 'Please enter a valid patient registered email.' });
+      return;
+    }
+    setSubmittingLink(true);
+    try {
+      if (!caregiverProfile.id) {
+        throw new Error('Caregiver session not found. Please log in again.');
+      }
+      await apiClient.put(`/caregivers/${caregiverProfile.id}/link-patient`, {
+        email: normalizedEmail
+      });
+      
+      setLinkStatusMsg({
+        type: 'success',
+        text: 'Patient verified and linked successfully!'
+      });
+      setEmailInput('');
+      await loadCaregiverIdentity();
+      await loadAppointmentData();
+      setTimeout(() => setIsLinkModalOpen(false), 2000);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Failed to link patient.';
+      setLinkStatusMsg({ type: 'error', text: msg });
+    } finally {
+      setSubmittingLink(false);
+    }
+  };
+
+  // Edit Profile Submit
+  const handleEditProfileSubmit = async (e) => {
+    e.preventDefault();
+    setProfileStatusMsg(null);
+    setSubmittingProfile(true);
+    try {
+      if (!caregiverProfile.id) throw new Error('Caregiver ID not found.');
+      await caregiverService.update(caregiverProfile.id, editProfileForm);
+      setProfileStatusMsg({ type: 'success', text: 'Caregiver profile updated successfully!' });
+      await loadCaregiverIdentity();
+      setTimeout(() => setIsEditProfileOpen(false), 1500);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Failed to update profile.';
+      setProfileStatusMsg({ type: 'error', text: msg });
+    } finally {
+      setSubmittingProfile(false);
+    }
+  };
+
+  const handleBookAppointmentSubmit = async (e) => {
+    e.preventDefault();
+    setBookingStatusMsg(null);
+
+    if (!selectedPatientId) {
+      setBookingStatusMsg({ type: 'error', text: 'No patient selected.' });
+      return;
+    }
+    if (!selectedDoctorId) {
+      setBookingStatusMsg({ type: 'error', text: 'No doctor assigned to this patient.' });
+      return;
+    }
+    if (!appointmentDateTime) {
+      setBookingStatusMsg({ type: 'error', text: 'Please select an appointment date & time.' });
+      return;
+    }
+
+    setSubmittingBooking(true);
+    try {
+      const payload = {
+        patientId: selectedPatientId,
+        doctorId: selectedDoctorId,
+        appointmentDate: new Date(appointmentDateTime).toISOString(),
+        status: 'Scheduled',
+        clinicalNotes: reasonForAppointment.trim(),
+      };
+
+      const result = await appointmentService.createAppointment(payload);
+      
+      setBookingStatusMsg({
+        type: 'success',
+        text: `Appointment scheduled successfully!`
+      });
+
+      setReasonForAppointment('');
+      setAppointmentDateTime('');
+      loadAppointmentData();
+
+      if (voiceAssistant && speak) {
+        speak('Appointment scheduled successfully.');
+      }
+    } catch (err) {
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to book appointment.';
+      setBookingStatusMsg({ type: 'error', text: errorMsg });
+    } finally {
+      setSubmittingBooking(false);
+    }
+  };
+
+  const handleAcknowledgeAlert = async (alertId) => {
+    try {
+      await apiClient.put(`/emergency-sos/${alertId}`, { status: 'Acknowledged' });
+      loadAppointmentData();
+    } catch (e) {
+      console.error('Failed to acknowledge alert:', e.message);
+    }
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -53,157 +299,142 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
     return 'Good Evening';
   };
 
-  const handleLinkPatient = () => {
-    setNoticeMsg('Patient linking will become available after backend integration.');
-    setTimeout(() => setNoticeMsg(''), 4000);
-    if (voiceAssistant && speak) {
-      speak('Patient linking will become available after backend integration.');
-    }
-  };
-
-  const handleOpenModule = (moduleTitle) => {
-    setActiveModule(moduleTitle);
-    setCurrentView('placeholder-module');
-    setIsDrawerOpen(false);
-    if (voiceAssistant && speak) {
-      speak(`${moduleTitle} selected.`);
-    }
-  };
-
-  const handleOpenProfile = () => {
-    setCurrentView('profile');
-    setIsDrawerOpen(false);
-  };
-
   const handleBackToDashboard = () => {
     setCurrentView('dashboard');
-    setActiveModule('');
   };
 
-  // Quick Action Cards definition
-  const quickActions = [
-    {
-      id: 'patient-profile',
-      title: 'Patient Profile',
-      desc: 'View patient information.',
-      icon: User,
-      action: () => handleOpenModule('Patient Profile'),
-    },
-    {
-      id: 'appointments',
-      title: 'Appointments',
-      desc: 'View upcoming appointments.',
-      icon: Calendar,
-      action: () => handleOpenModule('Appointments'),
-    },
-    {
-      id: 'therapy-progress',
-      title: 'Therapy Progress',
-      desc: 'Monitor therapy sessions.',
-      icon: Brain,
-      action: () => handleOpenModule('Therapy Progress'),
-    },
-    {
-      id: 'reports',
-      title: 'Reports',
-      desc: 'View rehabilitation reports.',
-      icon: BarChart3,
-      action: () => handleOpenModule('Reports'),
-    },
-    {
-      id: 'emergency-alerts',
-      title: 'Emergency Alerts',
-      desc: 'Receive SOS notifications.',
-      icon: AlertTriangle,
-      isDanger: true,
-      action: () => handleOpenModule('Emergency Alerts'),
-    },
-    {
-      id: 'settings',
-      title: 'Settings',
-      desc: 'Manage caregiver preferences.',
-      icon: Settings,
-      action: () => setIsSettingsOpen(true),
-    },
-  ];
+  const caregiverAppointments = appointmentsList.filter((app) => {
+    if (linkedPatients.length === 0) return false;
+    const appPatientId = app.patientId?._id || app.patientId;
+    return linkedPatients.some(lp => lp._id === appPatientId);
+  });
 
-  // Drawer Menu Items (RBAC compliant)
-  const drawerItems = [
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icon: Home,
-      action: () => handleBackToDashboard(),
-      isActive: currentView === 'dashboard',
-    },
-    {
-      id: 'linked-patient',
-      label: 'Linked Patient',
-      icon: User,
-      action: () => handleOpenModule('Linked Patient'),
-      isActive: currentView === 'placeholder-module' && activeModule === 'Linked Patient',
-    },
-    {
-      id: 'appointments',
-      label: 'Appointments',
-      icon: Calendar,
-      action: () => handleOpenModule('Appointments'),
-      isActive: currentView === 'placeholder-module' && activeModule === 'Appointments',
-    },
-    {
-      id: 'reports',
-      label: 'Reports',
-      icon: BarChart3,
-      action: () => handleOpenModule('Reports'),
-      isActive: currentView === 'placeholder-module' && activeModule === 'Reports',
-    },
-    {
-      id: 'emergency',
-      label: 'Emergency',
-      icon: AlertTriangle,
-      action: () => handleOpenModule('Emergency'),
-      isActive: currentView === 'placeholder-module' && activeModule === 'Emergency',
-    },
-    {
-      id: 'profile',
-      label: 'Profile',
-      icon: Heart,
-      action: () => handleOpenProfile(),
-      isActive: currentView === 'profile',
-    },
-    {
-      id: 'settings',
-      label: 'Settings',
-      icon: Settings,
-      action: () => {
-        setIsDrawerOpen(false);
-        setIsSettingsOpen(true);
-      },
-      isActive: false,
-    },
-  ];
+  const caregiverEmergencyAlerts = emergencyAlerts.filter((sos) => {
+    if (linkedPatients.length === 0) return false;
+    const sosPatientId = sos.patientId?._id || sos.patientId;
+    return linkedPatients.some(lp => lp._id === sosPatientId);
+  });
 
   return (
     <div className="app-viewport">
-      <div className="mobile-container caregiver-container" style={{ maxWidth: '480px' }}>
+      <div className="mobile-container caregiver-dashboard-container" style={{ maxWidth: '520px' }}>
         
-        {/* LEFT SLIDE NAVIGATION DRAWER */}
+        {/* LINK PATIENT MODAL BY REGISTERED EMAIL */}
+        {isLinkModalOpen && (
+          <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div className="modal-content" style={{ background: 'var(--color-bg-card, #FFFFFF)', borderRadius: '16px', padding: '1.5rem', width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                  Link Patient by Registered Email
+                </h3>
+                <button type="button" onClick={() => setIsLinkModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              {linkStatusMsg && (
+                <div style={{ padding: '0.65rem 0.85rem', borderRadius: '10px', fontSize: '0.825rem', fontWeight: 600, background: linkStatusMsg.type === 'success' ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)', color: linkStatusMsg.type === 'success' ? 'var(--color-green-primary)' : '#DC2626' }}>
+                  {linkStatusMsg.text}
+                </div>
+              )}
+
+              <form onSubmit={handleLinkPatientSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <div className="profile-field-group">
+                  <span className="profile-field-label">Patient Registered Email</span>
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="e.g. patient.name@example.com"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    required
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <button type="button" className="btn-secondary-auth" onClick={() => setIsLinkModalOpen(false)} style={{ flex: 1 }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary-auth" disabled={submittingLink} style={{ flex: 1, background: 'var(--color-orange-primary)' }}>
+                    {submittingLink ? 'Verifying...' : 'Link Patient'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* EDIT CAREGIVER PROFILE MODAL */}
+        {isEditProfileOpen && (
+          <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div className="modal-content" style={{ background: 'var(--color-bg-card, #FFFFFF)', borderRadius: '16px', padding: '1.5rem', width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                  Edit Caregiver Profile
+                </h3>
+                <button type="button" onClick={() => setIsEditProfileOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              {profileStatusMsg && (
+                <div style={{ padding: '0.65rem 0.85rem', borderRadius: '10px', fontSize: '0.825rem', fontWeight: 600, background: profileStatusMsg.type === 'success' ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)', color: profileStatusMsg.type === 'success' ? 'var(--color-green-primary)' : '#DC2626' }}>
+                  {profileStatusMsg.text}
+                </div>
+              )}
+
+              <form onSubmit={handleEditProfileSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <div className="profile-field-group">
+                  <span className="profile-field-label">Full Name</span>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={editProfileForm.fullName}
+                    onChange={(e) => setEditProfileForm({ ...editProfileForm, fullName: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="profile-field-group">
+                  <span className="profile-field-label">Relationship to Patient</span>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={editProfileForm.relationshipToPatient}
+                    onChange={(e) => setEditProfileForm({ ...editProfileForm, relationshipToPatient: e.target.value })}
+                  />
+                </div>
+                <div className="profile-field-group">
+                  <span className="profile-field-label">Mobile Phone</span>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={editProfileForm.phone}
+                    onChange={(e) => setEditProfileForm({ ...editProfileForm, phone: e.target.value })}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <button type="button" className="btn-secondary-auth" onClick={() => setIsEditProfileOpen(false)} style={{ flex: 1 }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary-auth" disabled={submittingProfile} style={{ flex: 1, background: 'var(--color-orange-primary)' }}>
+                    {submittingProfile ? 'Saving...' : 'Save Profile'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* NAVIGATION DRAWER */}
         <div className={`drawer-overlay ${isDrawerOpen ? 'open' : ''}`} onClick={() => setIsDrawerOpen(false)} />
-        <aside className={`drawer-panel ${isDrawerOpen ? 'open' : ''}`} aria-label="Caregiver Navigation Drawer">
+        <aside className={`drawer-panel ${isDrawerOpen ? 'open' : ''}`}>
           <div className="drawer-header">
             <VoiceBackLogo variant="header" />
-            <button
-              type="button"
-              className="btn-close-sheet"
-              onClick={() => setIsDrawerOpen(false)}
-              aria-label="Close Navigation Menu"
-            >
+            <button type="button" className="btn-close-sheet" onClick={() => setIsDrawerOpen(false)}>
               <X size={20} />
             </button>
           </div>
 
-          {/* Caregiver User Badge */}
-          <div className="drawer-user-badge" onClick={handleOpenProfile}>
+          <div className="drawer-user-badge" onClick={() => { setIsDrawerOpen(false); setIsEditProfileOpen(true); }}>
             <div className="drawer-avatar-circle" style={{ background: 'rgba(234, 88, 12, 0.12)', color: 'var(--color-orange-primary)' }}>
               <Heart size={22} />
             </div>
@@ -213,25 +444,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
                 Caregiver ({caregiverProfile.relationship})
               </span>
             </div>
-            <ArrowRight size={16} color="var(--color-brand-tagline)" />
           </div>
-
-          <nav className="drawer-menu-list">
-            {drawerItems.map((item) => {
-              const ItemIcon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`drawer-menu-item ${item.isActive ? 'active' : ''}`}
-                  onClick={item.action}
-                >
-                  <ItemIcon size={19} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
 
           <div className="drawer-footer">
             <button
@@ -248,233 +461,333 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
           </div>
         </aside>
 
-        {/* HEADER BAR: Top Left Hamburger Menu (NO BACK BUTTON), Top Right Circular Profile Avatar */}
+        {/* HEADER BAR */}
         <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <button
-            type="button"
-            className="settings-btn"
-            aria-label="Open Navigation Menu"
-            title="Open Navigation Menu"
-            onClick={() => setIsDrawerOpen(true)}
-          >
-            <Menu size={22} />
-          </button>
+          {currentView !== 'dashboard' ? (
+            <button type="button" className="settings-btn" onClick={handleBackToDashboard}>
+              <ArrowLeft size={22} />
+            </button>
+          ) : (
+            <button type="button" className="settings-btn" onClick={() => setIsDrawerOpen(true)}>
+              <Menu size={22} />
+            </button>
+          )}
 
           <VoiceBackLogo variant="header" />
 
           <button
             type="button"
             className="header-profile-avatar-btn"
-            aria-label={`Caregiver Profile for ${caregiverProfile.fullName}`}
-            onClick={handleOpenProfile}
+            onClick={() => setIsEditProfileOpen(true)}
             style={{ background: 'rgba(234, 88, 12, 0.12)', borderColor: 'var(--color-orange-primary)', color: 'var(--color-orange-primary)' }}
+            aria-label="Caregiver Profile"
+            title="Caregiver Profile"
           >
             <Heart size={20} />
           </button>
         </header>
 
-        {/* PROFILE VIEW */}
-        {currentView === 'profile' ? (
+        {/* APPOINTMENTS VIEW (CAREGIVER BOOKING & SCHEDULE) */}
+        {currentView === 'appointments' ? (
           <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-            <div className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(234, 88, 12, 0.15)', color: 'var(--color-orange-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Heart size={28} />
-                </div>
-                <div>
-                  <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                    {caregiverProfile.fullName}
+            
+            <section className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <Calendar size={22} color="var(--color-orange-primary)" />
+                  <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                    Book Appointment for Patient
                   </h2>
-                  <span style={{ fontSize: '0.825rem', color: 'var(--color-orange-primary)', fontWeight: 700 }}>
-                    Caregiver ({caregiverProfile.relationship})
-                  </span>
                 </div>
+                <button
+                  type="button"
+                  className="btn-secondary-auth"
+                  onClick={() => setIsLinkModalOpen(true)}
+                  style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', borderColor: 'var(--color-orange-primary)', color: 'var(--color-orange-primary)' }}
+                >
+                  + Link Patient
+                </button>
               </div>
 
-              <div className="profile-field-group">
-                <span className="profile-field-label">Email Address</span>
-                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-brand-title)' }}>{caregiverProfile.email}</span>
+              {bookingStatusMsg && (
+                <div
+                  style={{
+                    padding: '0.75rem 1rem',
+                    borderRadius: '12px',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    background: bookingStatusMsg.type === 'success' ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)',
+                    color: bookingStatusMsg.type === 'success' ? 'var(--color-green-primary)' : '#DC2626',
+                    border: `1px solid ${bookingStatusMsg.type === 'success' ? 'var(--color-green-primary)' : '#DC2626'}`
+                  }}
+                >
+                  {bookingStatusMsg.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+                  <span>{bookingStatusMsg.text}</span>
+                </div>
+              )}
+
+              {/* BOOKING FORM */}
+              <form onSubmit={handleBookAppointmentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', width: '100%' }}>
+                
+                {/* 1. SELECT LINKED PATIENT */}
+                <div className="profile-field-group">
+                  <span className="profile-field-label">Select Linked Patient</span>
+                  {linkedPatients.length > 0 ? (
+                    <select
+                      className="form-input select-input"
+                      value={selectedPatientId}
+                      onChange={(e) => setSelectedPatientId(e.target.value)}
+                      required
+                    >
+                      <option value="">-- Select Linked Patient --</option>
+                      {linkedPatients.map((p) => (
+                        <option key={p._id} value={p._id}>
+                          {p.fullName} ({p.aphasiaType || "Patient"})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select className="form-input select-input" disabled>
+                      <option value="">No patients linked.</option>
+                    </select>
+                  )}
+                </div>
+
+                {/* 2. AUTOMATICALLY DERIVED ASSIGNED DOCTOR */}
+                <div className="profile-field-group">
+                  <span className="profile-field-label">Assigned Primary Doctor</span>
+                  {(() => {
+                    const selP = linkedPatients.find(p => p._id === selectedPatientId);
+                    const doc = selP?.assignedDoctorId;
+                    if (doc) {
+                      return (
+                        <div style={{ padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(2, 132, 199, 0.06)', border: '1px solid var(--border-color)', fontWeight: 700, color: 'var(--color-brand-title)', fontSize: '0.9rem' }}>
+                          Dr. {doc.fullName} ({doc.specialization || 'Primary Doctor'})
+                        </div>
+                      );
+                    }
+                    return (
+                      <div style={{ padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(220, 38, 38, 0.06)', border: '1px solid #DC2626', fontWeight: 600, color: '#DC2626', fontSize: '0.85rem' }}>
+                        No doctor assigned to this patient.
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* 3. APPOINTMENT DATE & TIME */}
+                <div className="profile-field-group">
+                  <span className="profile-field-label">Appointment Date & Time</span>
+                  <input
+                    type="datetime-local"
+                    className="form-input"
+                    value={appointmentDateTime}
+                    onChange={(e) => setAppointmentDateTime(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* 4. REASON FOR APPOINTMENT */}
+                <div className="profile-field-group">
+                  <span className="profile-field-label">Reason for Appointment</span>
+                  <textarea
+                    className="form-input"
+                    rows="3"
+                    placeholder="Describe purpose of consultation..."
+                    value={reasonForAppointment}
+                    onChange={(e) => setReasonForAppointment(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-primary-auth"
+                  disabled={submittingBooking || linkedPatients.length === 0 || !selectedDoctorId}
+                  style={{ background: 'var(--color-orange-primary)', width: '100%', marginTop: '0.5rem' }}
+                >
+                  {submittingBooking ? 'Scheduling...' : 'Confirm Appointment'}
+                </button>
+              </form>
+            </section>
+
+            {/* SCHEDULED APPOINTMENTS */}
+            <section className="recent-activity-card" style={{ width: '100%' }}>
+              <div className="recent-activity-header">
+                <Calendar size={18} color="var(--color-orange-primary)" />
+                <h3>Caregiver Appointment History</h3>
               </div>
 
-              <div className="profile-field-group">
-                <span className="profile-field-label">Mobile Number</span>
-                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-brand-title)' }}>{caregiverProfile.mobileNumber}</span>
-              </div>
+              {caregiverAppointments.length === 0 ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-brand-tagline)' }}>
+                  No appointments booked yet for linked patients.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+                  {caregiverAppointments.map((app) => (
+                    <div key={app._id} style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                        <span>Patient: {app.patientId?.fullName || 'Linked Patient'}</span>
+                        <span className="device-name-badge connected">{app.status}</span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)' }}>
+                        Doctor: {app.doctorId?.fullName ? `Dr. ${app.doctorId.fullName}` : 'Assigned Doctor'}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--color-brand-title)', fontWeight: 600 }}>
+                        Date: {new Date(app.appointmentDate).toLocaleString()}
+                      </div>
+                      {app.clinicalNotes && (
+                        <div style={{ fontSize: '0.775rem', fontStyle: 'italic' }}>
+                          Reason: {app.clinicalNotes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
-              <button
-                type="button"
-                className="btn-continue"
-                onClick={handleBackToDashboard}
-                style={{ width: '100%', marginTop: '0.5rem' }}
-              >
-                <span>Return to Dashboard</span>
-              </button>
-            </div>
-          </main>
-        ) : currentView === 'placeholder-module' ? (
-          /* MODULE PLACEHOLDER VIEW */
-          <main className="role-main" style={{ justifyContent: 'center', alignItems: 'center', minHeight: '55vh' }}>
-            <div className="placeholder-card" style={{ textAlign: 'center', width: '100%', maxWidth: '420px' }}>
-              <div
-                className="action-icon-box"
-                style={{ width: 64, height: 64, margin: '0 auto 1rem auto', borderRadius: 20, background: 'rgba(234, 88, 12, 0.12)', color: 'var(--color-orange-primary)' }}
-              >
-                <Heart size={32} />
-              </div>
-              <span className="placeholder-badge" style={{ background: 'rgba(234, 88, 12, 0.12)', color: 'var(--color-orange-primary)' }}>
-                Caregiver Portal Module
-              </span>
-              <h1 className="placeholder-title" style={{ fontSize: '1.5rem', marginTop: '0.4rem' }}>
-                {activeModule}
-              </h1>
-              <p className="placeholder-desc" style={{ marginTop: '0.5rem', marginBottom: '1.5rem' }}>
-                The <strong>{activeModule}</strong> feature will become fully functional after patient linking and backend API integration.
-              </p>
-              <button
-                type="button"
-                className="btn-continue"
-                onClick={handleBackToDashboard}
-                style={{ width: '100%', background: 'var(--color-orange-primary)' }}
-              >
-                <span>Return to Dashboard</span>
-              </button>
-            </div>
           </main>
         ) : (
           /* MAIN CAREGIVER DASHBOARD VIEW */
-          <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', width: '100%' }}>
+          <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
             
-            {/* NOTICE ALERT */}
-            {noticeMsg && (
-              <div
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '14px',
-                  background: 'rgba(234, 88, 12, 0.1)',
-                  border: '1.5px solid var(--color-orange-primary)',
-                  color: 'var(--color-orange-primary)',
-                  fontWeight: 700,
-                  fontSize: '0.875rem',
-                  textAlign: 'center',
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.4rem',
-                }}
-              >
-                <Info size={18} />
-                <span>{noticeMsg}</span>
-              </div>
-            )}
+            {/* CAREGIVER IDENTITY CARD (MATCHING PATIENT PROFILE UX) */}
+            <section className="profile-section-card" style={{ width: '100%', gap: '0.75rem', background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.08) 0%, rgba(2, 132, 199, 0.06) 100%)', border: '1.5px solid rgba(234, 88, 12, 0.3)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--color-orange-primary)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Heart size={26} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                      {getGreeting()}, {caregiverFirstName}
+                    </h2>
+                    <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', fontWeight: 600 }}>
+                      Caregiver ({caregiverProfile.relationship})
+                    </p>
+                  </div>
+                </div>
 
-            {/* WELCOME SECTION */}
-            <section className="welcome-compact-section" style={{ marginTop: '0.2rem' }}>
-              <h1 className="welcome-title">
-                {getGreeting()}, {caregiverFirstName}
-              </h1>
-              <p className="welcome-subtitle">Welcome to VoiceBack.</p>
-              <p style={{ fontSize: '0.875rem', color: 'var(--color-brand-tagline)', fontWeight: 500, marginTop: '0.15rem' }}>
-                Support your loved one's communication journey.
-              </p>
+                <button
+                  type="button"
+                  className="btn-secondary-auth"
+                  onClick={() => setIsLinkModalOpen(true)}
+                  style={{ padding: '0.4rem 0.65rem', fontSize: '0.75rem', borderColor: 'var(--color-orange-primary)', color: 'var(--color-orange-primary)' }}
+                >
+                  + Link Patient
+                </button>
+              </div>
             </section>
 
-            {/* LINKED PATIENT CARD */}
-            <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            {/* LINKED PATIENTS ROSTER */}
+            <section className="recent-activity-card" style={{ width: '100%' }}>
+              <div className="recent-activity-header" style={{ justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <User size={20} color="var(--color-blue-primary)" />
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                    Linked Patient
-                  </h3>
+                  <User size={18} color="var(--color-orange-primary)" />
+                  <h3>Linked Patients Roster</h3>
                 </div>
-                <span className="device-name-badge disconnected" style={{ fontSize: '0.775rem' }}>
-                  No patient linked yet.
+                <span className="device-name-badge connected" style={{ fontSize: '0.75rem' }}>
+                  {linkedPatients.length} Linked
                 </span>
               </div>
 
-              <div style={{ padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.04)', border: '1px solid var(--border-color)' }}>
-                <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)', lineHeight: 1.45 }}>
-                  Your linked patient will appear here after backend integration.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                className="btn-secondary-auth"
-                onClick={handleLinkPatient}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--color-blue-primary)', borderColor: 'var(--color-blue-primary)' }}
-              >
-                <Link size={16} />
-                <span>Link Patient</span>
-              </button>
+              {linkedPatients.length === 0 ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center' }}>
+                  <p style={{ fontWeight: 700, margin: 0, color: 'var(--color-brand-title)' }}>No patients linked.</p>
+                  <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', marginTop: '0.35rem' }}>
+                    Click "+ Link Patient" to connect a patient using their registered email address.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.5rem' }}>
+                  {linkedPatients.map((p) => (
+                    <div key={p._id} style={{ padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>{p.fullName}</h4>
+                        <span style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)' }}>
+                          {p.email ? `Email: ${p.email} • ` : ''}Aphasia: {p.aphasiaType}
+                        </span>
+                      </div>
+                      <span className="device-name-badge connected" style={{ fontSize: '0.7rem' }}>Linked</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
-            {/* QUICK ACTIONS GRID */}
-            <section style={{ width: '100%' }}>
-              <h3 className="quick-actions-section-title">
-                <span>Quick Actions</span>
-              </h3>
+            {/* EMERGENCY SOS ALERTS RECORDED */}
+            <section className="recent-activity-card" style={{ width: '100%' }}>
+              <div className="recent-activity-header" style={{ justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <AlertTriangle size={18} color="#DC2626" />
+                  <h3>Emergency SOS Alerts</h3>
+                </div>
+                <span className="device-name-badge disconnected" style={{ fontSize: '0.75rem' }}>
+                  {caregiverEmergencyAlerts.length} Alerts
+                </span>
+              </div>
 
-              <div className="quick-actions-grid">
-                {quickActions.map((action) => {
-                  const IconComp = action.icon;
-                  return (
-                    <div
-                      key={action.id}
-                      tabIndex={0}
-                      role="button"
-                      aria-label={action.title}
-                      className={`action-card ${action.isDanger ? 'danger' : ''}`}
-                      onClick={action.action}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          action.action();
-                        }
-                      }}
-                    >
-                      <div className="action-card-header">
-                        <div className={`action-icon-box ${action.isDanger ? 'danger' : ''}`} style={!action.isDanger ? { background: 'rgba(2, 132, 199, 0.1)', color: 'var(--color-blue-primary)' } : {}}>
-                          <IconComp size={22} />
-                        </div>
-                        <ArrowRight size={18} className="action-arrow-icon" />
+              {caregiverEmergencyAlerts.length === 0 ? (
+                <div style={{ padding: '1.25rem', textAlign: 'center', color: 'var(--color-brand-tagline)', fontSize: '0.85rem' }}>
+                  No active emergency alerts recorded for linked patients.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.5rem' }}>
+                  {caregiverEmergencyAlerts.map((sos) => (
+                    <div key={sos._id} style={{ padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(220,38,38,0.06)', border: '1px solid #DC2626', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, color: '#DC2626', fontSize: '0.85rem' }}>
+                        <span>Patient: {sos.patientId?.fullName || 'Linked Patient'}</span>
+                        <span className="device-name-badge disconnected">{sos.status}</span>
                       </div>
-
-                      <div>
-                        <h4 className="action-card-title">{action.title}</h4>
-                        <p className="action-card-desc">{action.desc}</p>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-title)' }}>{sos.message}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.2rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--color-brand-tagline)' }}>Triggered: {new Date(sos.triggeredAt).toLocaleString()}</span>
+                        {sos.status === 'Active' && (
+                          <button
+                            type="button"
+                            className="btn-secondary-auth"
+                            onClick={() => handleAcknowledgeAlert(sos._id)}
+                            style={{ padding: '0.3rem 0.6rem', fontSize: '0.7rem', color: 'var(--color-green-primary)', borderColor: 'var(--color-green-primary)' }}
+                          >
+                            Acknowledge
+                          </button>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
             </section>
 
-            {/* RECENT ACTIVITY CARD (HONEST EMPTY STATE) */}
-            <section className="recent-activity-card" style={{ width: '100%' }}>
-              <div className="recent-activity-header">
-                <Info size={18} color="var(--color-blue-primary)" />
-                <h3>Recent Activity</h3>
+            {/* QUICK ACTIONS */}
+            <section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem', width: '100%' }}>
+              <div className="action-card" onClick={() => setCurrentView('appointments')} style={{ padding: '1rem', cursor: 'pointer' }}>
+                <div className="action-card-header">
+                  <div className="action-icon-box" style={{ background: 'rgba(234,88,12,0.12)', color: 'var(--color-orange-primary)' }}>
+                    <Calendar size={20} />
+                  </div>
+                  <ArrowRight size={16} className="action-arrow-icon" />
+                </div>
+                <div style={{ marginTop: '0.5rem' }}>
+                  <h3 className="action-card-title" style={{ fontSize: '0.95rem' }}>Appointments</h3>
+                  <p className="action-card-desc" style={{ fontSize: '0.775rem' }}>Schedule for patient</p>
+                </div>
               </div>
 
-              <div className="recent-activity-empty-state">
-                <p className="empty-state-title">No recent activity available.</p>
-                <p className="empty-state-desc">
-                  Patient activity will appear after backend integration.
-                </p>
-              </div>
-            </section>
-
-            {/* NOTIFICATIONS CARD (HONEST EMPTY STATE) */}
-            <section className="recent-activity-card" style={{ width: '100%' }}>
-              <div className="recent-activity-header">
-                <AlertTriangle size={18} color="var(--color-brand-tagline)" />
-                <h3>Notifications</h3>
-              </div>
-
-              <div className="recent-activity-empty-state">
-                <p className="empty-state-title">No notifications available.</p>
+              <div className="action-card" onClick={() => setIsLinkModalOpen(true)} style={{ padding: '1rem', cursor: 'pointer' }}>
+                <div className="action-card-header">
+                  <div className="action-icon-box" style={{ background: 'rgba(22,163,74,0.12)', color: 'var(--color-green-primary)' }}>
+                    <Link size={20} />
+                  </div>
+                  <ArrowRight size={16} className="action-arrow-icon" />
+                </div>
+                <div style={{ marginTop: '0.5rem' }}>
+                  <h3 className="action-card-title" style={{ fontSize: '0.95rem' }}>Link Patient</h3>
+                  <p className="action-card-desc" style={{ fontSize: '0.775rem' }}>Connect via registered email</p>
+                </div>
               </div>
             </section>
 
@@ -483,11 +796,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
 
       </div>
 
-      {/* Settings Bottom Sheet Component */}
-      <SettingsBottomSheet
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+      <SettingsBottomSheet isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 };

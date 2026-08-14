@@ -30,6 +30,8 @@ import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
 import patientService from '../services/patientService';
+import caregiverService from '../services/caregiverService';
+import authService from '../services/authService';
 
 // 20 Clean Material Design / Healthcare Icon Style Avatars (Encoded SVG Data URIs)
 const defaultAvatarLibrary = [
@@ -143,12 +145,13 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [tempSelectedAvatar, setTempSelectedAvatar] = useState(defaultAvatarLibrary[0]);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
+  const [activeSupportModal, setActiveSupportModal] = useState(null); // 'help' | 'privacy' | 'about' | null
 
   // File input refs for image capture / upload
   const fileUploadInputRef = useRef(null);
   const fileCaptureInputRef = useRef(null);
 
-  // Load patient profile from backendProfile prop or localStorage, defaulting missing fields to 'Not Available'
+  // Load patient profile from backendProfile prop or localStorage
   const [profileData, setProfileData] = useState(() => {
     const raw = backendProfile || {};
     try {
@@ -163,21 +166,105 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
         mobileNumber: merged.mobileNumber || 'Not Available',
         email: merged.email || 'Not Available',
         emergencyContact: merged.emergencyContact || 'Not Available',
+        assignedDoctorName: merged.assignedDoctorName || '',
+        assignedCaregiverName: merged.assignedCaregiverName || '',
       };
     } catch (e) {
       // ignore
     }
     return {
       fullName: raw.fullName || 'Not Available',
-      age: raw.age || 'Not Available',
+      age: raw.age ? (String(raw.age).includes('Years') ? raw.age : `${raw.age} Years`) : 'Not Available',
       gender: raw.gender || 'Not Available',
       aphasiaType: raw.aphasiaType || 'Not Available',
       preferredLanguage: raw.preferredLanguage || 'Not Available',
       mobileNumber: raw.mobileNumber || 'Not Available',
       email: raw.email || 'Not Available',
       emergencyContact: raw.emergencyContact || 'Not Available',
+      assignedDoctorName: raw.assignedDoctorName || '',
+      assignedCaregiverName: raw.assignedCaregiverName || '',
     };
   });
+
+  // Sync incoming backendProfile prop into profileData state whenever it updates
+  useEffect(() => {
+    if (backendProfile) {
+      setProfileData((prev) => ({
+        ...prev,
+        fullName: backendProfile.fullName || prev.fullName,
+        age: backendProfile.age ? (String(backendProfile.age).includes('Years') ? backendProfile.age : `${backendProfile.age} Years`) : prev.age,
+        gender: backendProfile.gender || prev.gender,
+        aphasiaType: backendProfile.aphasiaType || prev.aphasiaType,
+        preferredLanguage: backendProfile.preferredLanguage || prev.preferredLanguage,
+        mobileNumber: backendProfile.mobileNumber || prev.mobileNumber,
+        email: backendProfile.email || prev.email,
+        assignedDoctorName: backendProfile.assignedDoctorName || prev.assignedDoctorName,
+        assignedCaregiverName: backendProfile.assignedCaregiverName || prev.assignedCaregiverName,
+      }));
+    }
+  }, [backendProfile]);
+
+  // Robust Medical Team fetching on mount to guarantee real doctor & caregiver data displays even on page refresh
+  useEffect(() => {
+    const fetchFreshMedicalTeam = async () => {
+      try {
+        const session = authService.getActiveSession();
+        const userEmail = (session?.email || '').toLowerCase();
+        if (!userEmail) return;
+
+        const [patientsRes, caregiversRes] = await Promise.all([
+          patientService.getAllPatients().catch(() => ({ data: [] })),
+          caregiverService.getAllCaregivers().catch(() => ({ data: [] }))
+        ]);
+
+        const list = Array.isArray(patientsRes?.data)
+          ? patientsRes.data
+          : Array.isArray(patientsRes)
+          ? patientsRes
+          : [];
+
+        const cList = Array.isArray(caregiversRes?.data)
+          ? caregiversRes.data
+          : Array.isArray(caregiversRes)
+          ? caregiversRes
+          : [];
+
+        const match = list.find(
+          (p) => (p.email || p.userId?.email || '').toLowerCase() === userEmail
+        );
+
+        if (match) {
+          let docName = match.assignedDoctorId?.fullName ? match.assignedDoctorId.fullName : '';
+          let cgName = match.assignedCaregiverId?.fullName ? match.assignedCaregiverId.fullName : '';
+
+          if (!cgName) {
+            const matchedCg = cList.find((c) =>
+              Array.isArray(c.assignedPatients) &&
+              c.assignedPatients.some((ap) => (ap._id || ap) === match._id)
+            );
+            if (matchedCg) {
+              cgName = matchedCg.fullName;
+            }
+          }
+
+          setProfileData((prev) => ({
+            ...prev,
+            id: match._id,
+            fullName: match.fullName || prev.fullName,
+            age: match.age ? `${match.age} Years` : prev.age,
+            aphasiaType: match.aphasiaType || prev.aphasiaType,
+            email: match.email || match.userId?.email || prev.email,
+            assignedDoctorName: docName || prev.assignedDoctorName,
+            assignedCaregiverName: cgName || prev.assignedCaregiverName,
+          }));
+        }
+      } catch (err) {
+        console.error('Error fetching medical team in PatientProfileScreen:', err);
+      }
+    };
+
+    fetchFreshMedicalTeam();
+  }, []);
 
   // Avatar Image stored locally
   const [avatarDataUrl, setAvatarDataUrl] = useState(() => {
@@ -188,8 +275,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
     }
   });
 
-  // Clean uppercase first letter (NO parentheses, NO brackets)
-  const firstLetter = profileData.fullName ? profileData.fullName.trim().charAt(0).toUpperCase() : 'S';
+  const firstLetter = profileData.fullName ? profileData.fullName.trim().charAt(0).toUpperCase() : 'P';
 
   const handleInputChange = (field, value) => {
     setProfileData((prev) => ({ ...prev, [field]: value }));
@@ -254,7 +340,6 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
 
   const handleOpenAvatarPicker = () => {
     setIsAvatarOptionsOpen(false);
-    // Set initial temp selection to current avatar or first library item
     const match = defaultAvatarLibrary.find((a) => a.dataUrl === avatarDataUrl);
     setTempSelectedAvatar(match || defaultAvatarLibrary[0]);
     setIsAvatarPickerOpen(true);
@@ -289,7 +374,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
 
   return (
     <div className="app-viewport">
-      <div className="mobile-container profile-container">
+      <div className="mobile-container profile-container" style={{ maxWidth: '520px' }}>
         
         {/* Hidden File Inputs */}
         <input
@@ -421,9 +506,6 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
               >
                 Patient
               </span>
-              <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', marginTop: '0.35rem', fontWeight: 500 }}>
-                Patient ID: <span style={{ fontWeight: 700 }}>#VB-PAT-8402</span>
-              </p>
             </div>
 
             {/* Change Photo Button */}
@@ -494,7 +576,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
                     onChange={(e) => handleInputChange('age', e.target.value)}
                   />
                 ) : (
-                  <span className="profile-field-value">{profileData.age} Years</span>
+                  <span className="profile-field-value">{profileData.age}</span>
                 )}
               </div>
 
@@ -572,92 +654,12 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
               {/* Email Address (Read-Only) */}
               <div className="profile-field-group">
                 <span className="profile-field-label">Email Address</span>
-                {isEditing ? (
-                  <input
-                    type="email"
-                    className="form-input"
-                    value={profileData.email}
-                    readOnly
-                    disabled
-                    style={{ opacity: 0.7, cursor: 'not-allowed', background: 'rgba(0, 0, 0, 0.04)' }}
-                  />
-                ) : (
-                  <span className="profile-field-value">{profileData.email}</span>
-                )}
-              </div>
-
-              {/* Emergency Contact */}
-              <div className="profile-field-group">
-                <span className="profile-field-label">Emergency Contact</span>
-                {isEditing ? (
-                  <input
-                    type="tel"
-                    className="form-input"
-                    value={profileData.emergencyContact}
-                    onChange={(e) => handleInputChange('emergencyContact', e.target.value)}
-                  />
-                ) : (
-                  <span className="profile-field-value">{profileData.emergencyContact}</span>
-                )}
+                <span className="profile-field-value">{profileData.email}</span>
               </div>
             </div>
           </section>
 
-          {/* VOICE PROFILE SECTION */}
-          <section className="profile-section-card">
-            <h3 className="profile-section-title">Voice Profile</h3>
-
-            <div className="profile-info-grid">
-              <div className="profile-field-group">
-                <span className="profile-field-label">Voice Model Status</span>
-                <span className="profile-field-value">Not Created</span>
-              </div>
-
-              <div className="profile-field-group">
-                <span className="profile-field-label">Voice Samples</span>
-                <span className="profile-field-value">0 Uploaded</span>
-              </div>
-
-              <div className="profile-field-group">
-                <span className="profile-field-label">Training Status</span>
-                <span className="profile-field-value">Not Started</span>
-              </div>
-
-              <div className="profile-field-group">
-                <span className="profile-field-label">Last Training Date</span>
-                <span className="profile-field-value">Not Available</span>
-              </div>
-            </div>
-          </section>
-
-          {/* WEARABLE DEVICE SECTION */}
-          <section className="profile-section-card">
-            <h3 className="profile-section-title">Wearable Device</h3>
-
-            <div className="device-status-grid">
-              <div className="device-status-item">
-                <span className="device-label">Connection Status</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
-              </div>
-
-              <div className="device-status-item">
-                <span className="device-label">Battery</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
-              </div>
-
-              <div className="device-status-item">
-                <span className="device-label">EMG Signal</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Waiting for Device</span>
-              </div>
-
-              <div className="device-status-item">
-                <span className="device-label">Firmware Version</span>
-                <span className="device-val" style={{ color: 'var(--color-brand-tagline)' }}>Not Available</span>
-              </div>
-            </div>
-          </section>
-
-          {/* MEDICAL TEAM SECTION */}
+          {/* MEDICAL TEAM SECTION (DYNAMICALLY RESOLVED RELATIONSHIPS) */}
           <section className="profile-section-card">
             <h3 className="profile-section-title">Medical Team</h3>
 
@@ -668,8 +670,8 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
                 </div>
                 <div style={{ flex: 1 }}>
                   <span className="profile-field-label">Assigned Doctor</span>
-                  <span className="profile-field-value" style={{ color: 'var(--color-brand-tagline)', fontWeight: 600 }}>
-                    No doctor assigned yet.
+                  <span className="profile-field-value" style={{ color: profileData.assignedDoctorName ? 'var(--color-brand-title)' : 'var(--color-brand-tagline)', fontWeight: profileData.assignedDoctorName ? 700 : 600 }}>
+                    {profileData.assignedDoctorName || 'No doctor assigned yet.'}
                   </span>
                 </div>
               </div>
@@ -680,8 +682,8 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
                 </div>
                 <div style={{ flex: 1 }}>
                   <span className="profile-field-label">Linked Caregiver</span>
-                  <span className="profile-field-value" style={{ color: 'var(--color-brand-tagline)', fontWeight: 600 }}>
-                    No caregiver linked yet.
+                  <span className="profile-field-value" style={{ color: profileData.assignedCaregiverName ? 'var(--color-brand-title)' : 'var(--color-brand-tagline)', fontWeight: profileData.assignedCaregiverName ? 700 : 600 }}>
+                    {profileData.assignedCaregiverName || 'No caregiver linked yet.'}
                   </span>
                 </div>
               </div>
@@ -731,12 +733,16 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
             </div>
           </section>
 
-          {/* SUPPORT SECTION */}
+          {/* SUPPORT & INFO SECTION (INTERACTIVE MODALS) */}
           <section className="profile-section-card">
             <h3 className="profile-section-title">Support & Info</h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-              <div className="support-link-item">
+              <div
+                className="support-link-item"
+                onClick={() => setActiveSupportModal('help')}
+                style={{ cursor: 'pointer' }}
+              >
                 <HelpCircle size={18} color="var(--color-blue-primary)" />
                 <div style={{ flex: 1 }}>
                   <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-brand-title)' }}>Help & Support</span>
@@ -744,15 +750,23 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
                 </div>
               </div>
 
-              <div className="support-link-item">
+              <div
+                className="support-link-item"
+                onClick={() => setActiveSupportModal('privacy')}
+                style={{ cursor: 'pointer' }}
+              >
                 <Shield size={18} color="var(--color-blue-primary)" />
                 <div style={{ flex: 1 }}>
                   <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-brand-title)' }}>Privacy Policy</span>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)' }}>Your clinical data is protected locally.</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)' }}>Data privacy and prototype information</p>
                 </div>
               </div>
 
-              <div className="support-link-item">
+              <div
+                className="support-link-item"
+                onClick={() => setActiveSupportModal('about')}
+                style={{ cursor: 'pointer' }}
+              >
                 <Info size={18} color="var(--color-blue-primary)" />
                 <div style={{ flex: 1 }}>
                   <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-brand-title)' }}>About VoiceBack</span>
@@ -762,7 +776,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
             </div>
           </section>
 
-          {/* LOGOUT BUTTON AT BOTTOM */}
+          {/* LOGOUT BUTTON */}
           <div style={{ marginTop: '0.5rem', marginBottom: '1.5rem', width: '100%' }}>
             <button
               type="button"
@@ -776,6 +790,89 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
 
         </main>
       </div>
+
+      {/* SUPPORT & INFO INTERACTIVE MODALS */}
+      {activeSupportModal && (
+        <div className="settings-overlay" onClick={() => setActiveSupportModal(null)}>
+          <div className="settings-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', gap: '1.25rem' }}>
+            <div className="settings-sheet-header">
+              <h2 className="settings-sheet-title">
+                {activeSupportModal === 'help' && 'Help & Support'}
+                {activeSupportModal === 'privacy' && 'Privacy & Data Policy'}
+                {activeSupportModal === 'about' && 'About VoiceBack'}
+              </h2>
+              <button
+                type="button"
+                className="btn-close-sheet"
+                onClick={() => setActiveSupportModal(null)}
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.9rem', color: 'var(--color-brand-title)' }}>
+              {activeSupportModal === 'help' && (
+                <>
+                  <p style={{ margin: 0, lineHeight: 1.5 }}>
+                    VoiceBack is an assistive communication system for speech and language rehabilitation.
+                  </p>
+                  <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.08)', border: '1px solid var(--border-color)' }}>
+                    <strong>Support Contact:</strong>
+                    <div style={{ marginTop: '0.25rem', color: 'var(--color-blue-primary)', fontWeight: 700 }}>
+                      support@voiceback.health
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary-auth"
+                    onClick={() => window.location.href = 'mailto:support@voiceback.health'}
+                    style={{ marginTop: '0.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    <span>Send Email Support</span>
+                  </button>
+                </>
+              )}
+
+              {activeSupportModal === 'privacy' && (
+                <>
+                  <p style={{ margin: 0, lineHeight: 1.5 }}>
+                    VoiceBack processes user information strictly to support daily communication and clinical care management.
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.85rem' }}>
+                    <li>Patient profile records, aphasia type, and clinical notes are saved in the application database for active session management.</li>
+                    <li>Doctor assignments and caregiver links enable clinical scheduling and emergency SOS alert coordination.</li>
+                    <li>Speech synthesis and recognition requests process phrase text to assist user communication.</li>
+                  </ul>
+                </>
+              )}
+
+              {activeSupportModal === 'about' && (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>VoiceBack Assistive Communication</h3>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', fontWeight: 700 }}>Version 0.3.0 (Prototype Build)</span>
+                  </div>
+                  <p style={{ margin: 0, lineHeight: 1.5, fontSize: '0.875rem' }}>
+                    VoiceBack is an augmentative and alternative communication platform designed to empower individuals with speech and language impairments.
+                  </p>
+                  <div style={{ padding: '0.75rem', borderRadius: '10px', background: 'rgba(0,0,0,0.03)', border: '1px solid var(--border-color)', fontSize: '0.825rem' }}>
+                    <strong>Supported Languages:</strong> English, Kannada, Hindi
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="btn-secondary-auth"
+              onClick={() => setActiveSupportModal(null)}
+              style={{ width: '100%', marginTop: '0.25rem' }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* PROFILE IMAGE OPTIONS BOTTOM SHEET */}
       {isAvatarOptionsOpen && (
@@ -793,78 +890,54 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-              {/* 📷 Take Photo */}
               <button
                 type="button"
                 className="drawer-menu-item"
-                onClick={() => {
-                  setIsAvatarOptionsOpen(false);
-                  if (fileCaptureInputRef.current) fileCaptureInputRef.current.click();
-                }}
+                onClick={() => fileCaptureInputRef.current?.click()}
               >
-                <Camera size={20} color="var(--color-blue-primary)" />
-                <span>📷 Take Photo</span>
+                <Camera size={19} />
+                <span>Take Photo</span>
               </button>
 
-              {/* 🖼 Upload Photo */}
               <button
                 type="button"
                 className="drawer-menu-item"
-                onClick={() => {
-                  setIsAvatarOptionsOpen(false);
-                  if (fileUploadInputRef.current) fileUploadInputRef.current.click();
-                }}
+                onClick={() => fileUploadInputRef.current?.click()}
               >
-                <Upload size={20} color="var(--color-blue-primary)" />
-                <span>🖼 Upload Photo</span>
+                <Upload size={19} />
+                <span>Upload from Gallery</span>
               </button>
 
-              {/* 🎭 Choose Avatar */}
               <button
                 type="button"
                 className="drawer-menu-item"
                 onClick={handleOpenAvatarPicker}
               >
-                <Palette size={20} color="var(--color-blue-primary)" />
-                <span>🎭 Choose Avatar</span>
+                <Palette size={19} />
+                <span>Choose Medical Avatar</span>
               </button>
 
-              {/* 🗑 Remove Photo */}
               {avatarDataUrl && (
                 <button
                   type="button"
                   className="drawer-menu-item danger"
                   onClick={handleRemovePhoto}
                 >
-                  <Trash2 size={20} />
-                  <span>🗑 Remove Photo</span>
+                  <Trash2 size={19} />
+                  <span>Remove Photo</span>
                 </button>
               )}
             </div>
-
-            {/* ❌ Cancel */}
-            <button
-              type="button"
-              className="btn-secondary-auth"
-              onClick={() => setIsAvatarOptionsOpen(false)}
-              style={{ marginTop: '0.5rem', width: '100%' }}
-            >
-              <span>Cancel</span>
-            </button>
           </div>
         </div>
       )}
 
-      {/* MATERIAL DESIGN AVATAR PICKER MODAL DIALOG (20 Healthcare Material Icons Grid + Selection Card & Apply/Cancel) */}
+      {/* AVATAR PICKER MODAL */}
       {isAvatarPickerOpen && (
         <div className="settings-overlay" onClick={() => setIsAvatarPickerOpen(false)}>
-          <div
-            className="settings-sheet"
-            onClick={(e) => e.stopPropagation()}
-            style={{ gap: '1rem', maxWidth: '440px' }}
-          >
+          <div className="settings-sheet" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', gap: '1.25rem' }}>
             <div className="settings-sheet-header">
-              <h2 className="settings-sheet-title">Choose an Avatar</h2>
+              <h2 className="settings-sheet-title">Select Medical Avatar</h2>
               <button
                 type="button"
                 className="btn-close-sheet"
@@ -874,133 +947,44 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
               </button>
             </div>
 
-            {/* Selected Avatar Preview Header */}
-            {tempSelectedAvatar && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.85rem',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '14px',
-                  background: 'rgba(2, 132, 199, 0.06)',
-                  border: '1px solid var(--border-color)',
-                }}
-              >
-                <div
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: '50%',
-                    overflow: 'hidden',
-                    border: '2px solid var(--color-blue-primary)',
-                  }}
-                >
-                  <img
-                    src={tempSelectedAvatar.dataUrl}
-                    alt={tempSelectedAvatar.name}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--color-blue-primary)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Selected Avatar
-                  </span>
-                  <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                    {tempSelectedAvatar.name}
-                  </h4>
-                </div>
-              </div>
-            )}
-
-            {/* 20 Material Icons Responsive Grid */}
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(5, 1fr)',
-                gap: '0.75rem',
-                maxHeight: '300px',
-                overflowY: 'auto',
-                padding: '0.25rem',
-              }}
-            >
-              {defaultAvatarLibrary.map((avatar) => {
-                const isSelected = tempSelectedAvatar && tempSelectedAvatar.id === avatar.id;
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.85rem', maxHeight: '300px', overflowY: 'auto', padding: '0.5rem' }}>
+              {defaultAvatarLibrary.map((item) => {
+                const isSel = tempSelectedAvatar?.id === item.id;
                 return (
-                  <button
-                    key={avatar.id}
-                    type="button"
-                    title={avatar.name}
-                    onClick={() => setTempSelectedAvatar(avatar)}
+                  <div
+                    key={item.id}
+                    onClick={() => setTempSelectedAvatar(item)}
                     style={{
-                      position: 'relative',
-                      background: 'transparent',
-                      border: isSelected ? '3px solid var(--color-blue-primary)' : '2px solid var(--border-color)',
                       borderRadius: '50%',
-                      padding: 0,
-                      width: '58px',
-                      height: '58px',
+                      padding: '4px',
+                      border: isSel ? '3px solid var(--color-blue-primary)' : '2px solid transparent',
                       cursor: 'pointer',
-                      overflow: 'hidden',
-                      boxShadow: isSelected ? '0 0 0 3px rgba(2, 132, 199, 0.25)' : 'none',
-                      transition: 'all 0.2s ease',
-                      margin: '0 auto',
+                      position: 'relative'
                     }}
                   >
-                    <img
-                      src={avatar.dataUrl}
-                      alt={avatar.name}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                    {isSelected && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          bottom: 2,
-                          right: 2,
-                          width: 18,
-                          height: 18,
-                          borderRadius: '50%',
-                          background: 'var(--color-blue-primary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Check size={12} color="#FFFFFF" strokeWidth={3} />
+                    <img src={item.dataUrl} alt={item.name} style={{ width: '100%', height: 'auto', borderRadius: '50%' }} />
+                    {isSel && (
+                      <div style={{ position: 'absolute', bottom: 0, right: 0, background: 'var(--color-blue-primary)', borderRadius: '50%', color: '#FFF', padding: 2 }}>
+                        <CheckCircle2 size={14} />
                       </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
 
-            {/* Apply & Cancel Buttons */}
-            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', width: '100%' }}>
-              <button
-                type="button"
-                className="btn-secondary-auth"
-                onClick={() => setIsAvatarPickerOpen(false)}
-                style={{ flex: 1 }}
-              >
-                <span>❌ Cancel</span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button type="button" className="btn-secondary-auth" onClick={() => setIsAvatarPickerOpen(false)} style={{ flex: 1 }}>
+                Cancel
               </button>
-
-              <button
-                type="button"
-                className="btn-continue"
-                onClick={handleApplyAvatar}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
-              >
-                <Check size={18} />
-                <span>✔ Apply</span>
+              <button type="button" className="btn-primary-auth" onClick={handleApplyAvatar} style={{ flex: 1 }}>
+                Apply Avatar
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Settings Bottom Sheet Component */}
       <SettingsBottomSheet
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

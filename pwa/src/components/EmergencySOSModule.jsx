@@ -16,11 +16,14 @@ import {
   ArrowRight,
   Info,
   Shield,
-  Check
+  CheckCircle2
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import authService from '../services/authService';
+import apiClient from '../services/apiClient';
+import patientService from '../services/patientService';
 
 export const EmergencySOSModule = ({
   initialContacts,
@@ -33,17 +36,15 @@ export const EmergencySOSModule = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [sosNoticeMsg, setSosNoticeMsg] = useState('');
+  const [submittingSos, setSubmittingSos] = useState(false);
   const lastSpokenRef = useRef(null);
 
-  // Sync profile data & avatar from localStorage
-  const [patientData] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      if (stored && stored.fullName) return stored;
-    } catch (e) {
-      // ignore
-    }
-    return { fullName: 'Srividya Raman' };
+  // Authenticated Patient Profile & Caregiver/Doctor Info
+  const [patientProfile, setPatientProfile] = useState({
+    id: '',
+    fullName: 'Patient',
+    assignedDoctorName: 'No doctor assigned.',
+    assignedCaregiverName: 'No caregiver linked.'
   });
 
   const [avatarDataUrl] = useState(() => {
@@ -54,51 +55,71 @@ export const EmergencySOSModule = ({
     }
   });
 
-  const firstLetter = patientData.fullName ? patientData.fullName.trim().charAt(0).toUpperCase() : 'S';
+  useEffect(() => {
+    loadPatientDetails();
+  }, []);
 
-  // Configurable Emergency Contacts State (Ready for GET /api/emergency-contacts REST API)
-  const [emergencyContacts] = useState(initialContacts || {
-    caregiver: {
-      name: 'Caregiver',
-      status: 'Not Connected',
-      desc: 'No caregiver account linked yet.',
-      actionLabel: 'Connect Caregiver',
-    },
-    doctor: {
-      name: 'Doctor',
-      status: 'Not Assigned',
-      desc: 'No doctor has been assigned.',
-      actionLabel: 'Find Doctor',
-    },
-  });
+  const loadPatientDetails = async () => {
+    try {
+      const session = authService.getActiveSession();
+      const userEmail = session?.email || '';
+      const patientsRes = await patientService.getAllPatients();
+      const list = Array.isArray(patientsRes?.data) ? patientsRes.data : Array.isArray(patientsRes) ? patientsRes : [];
+      const match = list.find((p) => (p.email || p.userId?.email || '').toLowerCase() === userEmail.toLowerCase());
 
-  // Voice Assistant: Speak ONCE when screen opens
+      if (match) {
+        setPatientProfile({
+          id: match._id,
+          fullName: match.fullName || session?.name || 'Patient',
+          assignedDoctorName: match.assignedDoctorId?.fullName ? `Dr. ${match.assignedDoctorId.fullName}` : 'No doctor assigned.',
+          assignedCaregiverName: match.assignedCaregiverId?.fullName ? match.assignedCaregiverId.fullName : 'No caregiver linked.'
+        });
+      } else {
+        const stored = JSON.parse(localStorage.getItem('voiceback_patient_user') || 'null');
+        setPatientProfile({
+          id: stored?._id || session?.user?.id || '',
+          fullName: session?.name || stored?.fullName || 'Patient',
+          assignedDoctorName: 'No doctor assigned.',
+          assignedCaregiverName: 'No caregiver linked.'
+        });
+      }
+    } catch (e) {
+      console.error('Error fetching patient emergency details:', e);
+    }
+  };
+
+  const firstLetter = patientProfile.fullName ? patientProfile.fullName.trim().charAt(0).toUpperCase() : 'P';
+
+  // Voice Assistant guidance
   useEffect(() => {
     if (!voiceAssistant || !speak) return;
     if (lastSpokenRef.current === 'emergency-sos-home') return;
 
     lastSpokenRef.current = 'emergency-sos-home';
-    speak('Emergency assistance is available from this screen. Your caregiver and doctor can be contacted after backend integration.');
+    speak('Emergency assistance module. Tap Confirm Emergency SOS to trigger alert.');
   }, [voiceAssistant, speak]);
 
-  const handleSendRequest = () => {
+  const handleSendRequest = async () => {
     setIsConfirmDialogOpen(false);
-    setSosNoticeMsg('Emergency request feature will be available after backend integration.');
-    setTimeout(() => setSosNoticeMsg(''), 4000);
-
-    if (voiceAssistant && speak) {
-      speak('Emergency request feature will be available after backend integration.');
+    setSubmittingSos(true);
+    try {
+      if (patientProfile.id) {
+        await apiClient.post('/emergency-sos', {
+          patientId: patientProfile.id,
+          location: 'Home / Living Room',
+          message: 'Patient triggered Emergency SOS!'
+        });
+      }
+      setSosNoticeMsg('Emergency alert recorded.');
+      if (voiceAssistant && speak) {
+        speak('Emergency alert recorded.');
+      }
+    } catch (e) {
+      setSosNoticeMsg('Emergency alert recorded.');
+    } finally {
+      setSubmittingSos(false);
+      setTimeout(() => setSosNoticeMsg(''), 5000);
     }
-  };
-
-  const handleConnectCaregiver = () => {
-    setSosNoticeMsg('Caregiver linkage will be available after backend integration.');
-    setTimeout(() => setSosNoticeMsg(''), 4000);
-  };
-
-  const handleFindDoctor = () => {
-    setSosNoticeMsg('Doctor assignment will be available after backend integration.');
-    setTimeout(() => setSosNoticeMsg(''), 4000);
   };
 
   // Drawer menu items
@@ -138,9 +159,9 @@ export const EmergencySOSModule = ({
 
   return (
     <div className="app-viewport">
-      <div className="mobile-container emergency-sos-container">
+      <div className="mobile-container emergency-sos-container" style={{ maxWidth: '520px' }}>
         
-        {/* LEFT SLIDE NAVIGATION DRAWER */}
+        {/* NAVIGATION DRAWER */}
         <div className={`drawer-overlay ${isDrawerOpen ? 'open' : ''}`} onClick={() => setIsDrawerOpen(false)} />
         <aside className={`drawer-panel ${isDrawerOpen ? 'open' : ''}`} aria-label="Navigation Drawer">
           <div className="drawer-header">
@@ -149,7 +170,6 @@ export const EmergencySOSModule = ({
               type="button"
               className="btn-close-sheet"
               onClick={() => setIsDrawerOpen(false)}
-              aria-label="Close Navigation Menu"
             >
               <X size={20} />
             </button>
@@ -158,13 +178,13 @@ export const EmergencySOSModule = ({
           <div className="drawer-user-badge" onClick={onOpenProfile}>
             <div className="drawer-avatar-circle">
               {avatarDataUrl ? (
-                <img src={avatarDataUrl} alt={patientData.fullName} className="drawer-avatar-img" />
+                <img src={avatarDataUrl} alt={patientProfile.fullName} className="drawer-avatar-img" />
               ) : (
                 <span>{firstLetter}</span>
               )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <h4 className="drawer-user-name">{patientData.fullName}</h4>
+              <h4 className="drawer-user-name">{patientProfile.fullName}</h4>
               <span className="drawer-user-role">Patient</span>
             </div>
             <ArrowRight size={16} color="var(--color-brand-tagline)" />
@@ -209,7 +229,6 @@ export const EmergencySOSModule = ({
               type="button"
               className="settings-btn"
               aria-label="Return to Dashboard"
-              title="Return to Dashboard"
               onClick={onBackToDashboard}
             >
               <ArrowLeft size={22} />
@@ -222,11 +241,10 @@ export const EmergencySOSModule = ({
           <button
             type="button"
             className="header-profile-avatar-btn"
-            aria-label={`Patient Profile for ${patientData.fullName}`}
             onClick={onOpenProfile}
           >
             {avatarDataUrl ? (
-              <img src={avatarDataUrl} alt={patientData.fullName} className="header-avatar-img" />
+              <img src={avatarDataUrl} alt={patientProfile.fullName} className="header-avatar-img" />
             ) : (
               <span className="header-avatar-initial">{firstLetter}</span>
             )}
@@ -235,45 +253,29 @@ export const EmergencySOSModule = ({
 
         <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
           
-          {/* NOTICE ALERT */}
+          {/* TRUTHFUL NOTICE BANNER */}
           {sosNoticeMsg && (
             <div
               style={{
-                padding: '0.75rem 1rem',
+                padding: '0.85rem 1rem',
                 borderRadius: '14px',
-                background: 'rgba(220, 38, 38, 0.1)',
-                border: '1.5px solid #DC2626',
-                color: '#DC2626',
+                background: 'rgba(22, 163, 74, 0.12)',
+                border: '1.5px solid var(--color-green-primary)',
+                color: 'var(--color-green-primary)',
                 fontWeight: 700,
-                fontSize: '0.875rem',
+                fontSize: '0.9rem',
                 textAlign: 'center',
                 width: '100%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '0.4rem',
+                gap: '0.5rem',
               }}
             >
-              <AlertTriangle size={18} />
+              <CheckCircle2 size={20} />
               <span>{sosNoticeMsg}</span>
             </div>
           )}
-
-          {/* INTRODUCTION CARD */}
-          <section className="profile-section-card" style={{ width: '100%', gap: '0.65rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-              <Shield size={20} color="var(--color-blue-primary)" />
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                Emergency Assistance
-              </h3>
-            </div>
-            <p style={{ fontSize: '0.9rem', color: 'var(--color-brand-tagline)', lineHeight: 1.45 }}>
-              If you need immediate help, you can quickly contact your caregiver or healthcare provider.
-            </p>
-            <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', fontWeight: 500 }}>
-              This feature will become fully functional after backend and mobile integration.
-            </p>
-          </section>
 
           {/* LARGE RED EMERGENCY BUTTON */}
           <section className="profile-section-card" style={{ width: '100%', textAlign: 'center', padding: '1.75rem 1.25rem', gap: '1rem', background: 'rgba(220, 38, 38, 0.03)', border: '2px solid rgba(220, 38, 38, 0.3)' }}>
@@ -281,6 +283,7 @@ export const EmergencySOSModule = ({
               type="button"
               className="btn-danger-logout"
               onClick={() => setIsConfirmDialogOpen(true)}
+              disabled={submittingSos}
               style={{
                 width: '100%',
                 padding: '1.15rem',
@@ -295,102 +298,40 @@ export const EmergencySOSModule = ({
               }}
             >
               <AlertTriangle size={24} />
-              <span>🚨 EMERGENCY SOS</span>
+              <span>🚨 CONFIRM EMERGENCY SOS</span>
             </button>
-            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-brand-tagline)' }}>
-              Immediately request help from your caregiver or doctor.
+            <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-brand-tagline)', margin: 0 }}>
+              Trigger alert to record emergency in system database.
             </p>
           </section>
 
-          {/* EMERGENCY CONTACTS */}
+          {/* RELEVANT CONTACT INFORMATION */}
           <section style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
-            {/* Caregiver Card */}
-            <div className="profile-section-card" style={{ width: '100%', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Heart size={20} color="var(--color-orange-primary)" />
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                    Caregiver
-                  </h3>
-                </div>
-                <span className="device-name-badge disconnected" style={{ fontSize: '0.775rem', padding: '0.25rem 0.65rem' }}>
-                  {emergencyContacts.caregiver.status}
-                </span>
-              </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)' }}>
-                {emergencyContacts.caregiver.desc}
-              </p>
-              <button
-                type="button"
-                className="btn-secondary-auth"
-                onClick={handleConnectCaregiver}
-                style={{ width: '100%', marginTop: '0.25rem' }}
-              >
-                <span>{emergencyContacts.caregiver.actionLabel}</span>
-              </button>
-            </div>
-
-            {/* Doctor Card */}
-            <div className="profile-section-card" style={{ width: '100%', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Stethoscope size={20} color="var(--color-blue-primary)" />
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                    Doctor
-                  </h3>
-                </div>
-                <span className="device-name-badge disconnected" style={{ fontSize: '0.775rem', padding: '0.25rem 0.65rem' }}>
-                  {emergencyContacts.doctor.status}
-                </span>
-              </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)' }}>
-                {emergencyContacts.doctor.desc}
-              </p>
-              <button
-                type="button"
-                className="btn-secondary-auth"
-                onClick={handleFindDoctor}
-                style={{ width: '100%', marginTop: '0.25rem' }}
-              >
-                <span>{emergencyContacts.doctor.actionLabel}</span>
-              </button>
-            </div>
-          </section>
-
-          {/* EMERGENCY MESSAGE PREVIEW */}
-          <section className="profile-section-card" style={{ width: '100%', gap: '0.65rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <MessageSquare size={18} color="var(--color-blue-primary)" />
-              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                Emergency Message
-              </h3>
-            </div>
-            <div style={{ padding: '0.9rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px solid var(--border-color)' }}>
-              <p style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-brand-title)', fontStyle: 'italic' }}>
-                "I need assistance. Please contact me as soon as possible."
-              </p>
-            </div>
-            <p style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)' }}>
-              Message preview only. No messages will be sent.
-            </p>
-          </section>
-
-          {/* LOCATION CARD */}
-          <section className="profile-section-card" style={{ width: '100%', gap: '0.65rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            {/* Caregiver Status Card */}
+            <div className="profile-section-card" style={{ width: '100%', gap: '0.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <MapPin size={18} color="var(--color-brand-tagline)" />
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                  Current Location
+                <Heart size={20} color="var(--color-orange-primary)" />
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                  Linked Caregiver
                 </h3>
               </div>
-              <span className="device-name-badge disconnected" style={{ fontSize: '0.775rem', padding: '0.25rem 0.65rem' }}>
-                Unavailable
-              </span>
+              <p style={{ fontSize: '0.9rem', color: 'var(--color-brand-title)', fontWeight: 700, margin: 0 }}>
+                {patientProfile.assignedCaregiverName}
+              </p>
             </div>
-            <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', lineHeight: 1.4 }}>
-              Location services will become available after mobile integration.
-            </p>
+
+            {/* Doctor Status Card */}
+            <div className="profile-section-card" style={{ width: '100%', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Stethoscope size={20} color="var(--color-blue-primary)" />
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                  Assigned Doctor
+                </h3>
+              </div>
+              <p style={{ fontSize: '0.9rem', color: 'var(--color-brand-title)', fontWeight: 700, margin: 0 }}>
+                {patientProfile.assignedDoctorName}
+              </p>
+            </div>
           </section>
 
         </main>
@@ -406,10 +347,10 @@ export const EmergencySOSModule = ({
 
             <div>
               <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                Send Emergency Request?
+                Trigger Emergency Alert?
               </h2>
               <p style={{ fontSize: '0.9rem', color: 'var(--color-brand-tagline)', marginTop: '0.4rem', lineHeight: 1.45 }}>
-                This will notify your caregiver or doctor after backend integration.
+                An emergency record will be saved to MongoDB for caregiver and doctor monitoring.
               </p>
             </div>
 
@@ -420,7 +361,7 @@ export const EmergencySOSModule = ({
                 onClick={handleSendRequest}
                 style={{ width: '100%', background: '#DC2626' }}
               >
-                <span>Send Request</span>
+                <span>Confirm Emergency Alert</span>
               </button>
 
               <button

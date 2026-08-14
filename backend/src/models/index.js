@@ -1,6 +1,6 @@
 /**
  * Mongoose Models Index
- * Exports all 9 VoiceBack database models
+ * Exports all VoiceBack database models
  */
 
 const UserLogin = require('./UserLogin');
@@ -12,6 +12,7 @@ const EMGProfile = require('./EMGProfile');
 const TherapyProgress = require('./TherapyProgress');
 const CommunicationHistory = require('./CommunicationHistory');
 const Appointment = require('./Appointment');
+const EmergencySOS = require('./EmergencySOS');
 
 module.exports = {
   UserLogin,
@@ -22,5 +23,6 @@ module.exports = {
   EMGProfile,
   TherapyProgress,
   CommunicationHistory,
-  Appointment
+  Appointment,
+  EmergencySOS
 };

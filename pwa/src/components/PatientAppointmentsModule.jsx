@@ -5,43 +5,49 @@ import {
   Clock,
   User,
   Stethoscope,
-  PlusCircle,
   History,
-  CheckCircle2,
   Home,
   Settings,
   LogOut,
   ArrowRight,
   Info,
   X,
-  Plus
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import appointmentService from '../services/appointmentService';
+
+import authService from '../services/authService';
 
 export const PatientAppointmentsModule = ({
-  initialAppointments,
   onBackToDashboard,
   onOpenProfile,
   onLogout
 }) => {
   const { t, voiceAssistant, speak } = useSettings();
-  const [activeTab, setActiveTab] = useState('upcoming'); // 'upcoming' | 'history' | 'request'
+  const [activeTab, setActiveTab] = useState('upcoming'); // 'upcoming' | 'history'
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [requestNotice, setRequestNotice] = useState('');
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
   const lastSpokenRef = useRef(null);
 
-  // Sync profile data & avatar from localStorage
+  // Sync authenticated patient profile from authService / session
   const [patientData] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      if (stored && stored.fullName) return stored;
-    } catch (e) {
-      // ignore
-    }
-    return { fullName: 'Srividya Raman' };
+    const session = authService.getActiveSession();
+    const sessionUser = session?.user;
+    const stored = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('voiceback_patient_user') || 'null') || JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
+      } catch (e) {
+        return null;
+      }
+    })();
+    const name = sessionUser?.fullName || sessionUser?.profile?.fullName || stored?.fullName || session?.email || 'Patient';
+    return { fullName: name };
   });
 
   const [avatarDataUrl] = useState(() => {
@@ -54,36 +60,73 @@ export const PatientAppointmentsModule = ({
 
   const firstLetter = patientData.fullName ? patientData.fullName.trim().charAt(0).toUpperCase() : 'S';
 
-  // Dynamic appointments state ready for GET /api/appointments REST API response
-  const [upcomingList] = useState(initialAppointments?.upcoming || []);
-  const [historyList] = useState(initialAppointments?.history || []);
+  // Fetch real appointments from backend
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAppointments = async () => {
+      setLoading(true);
+      try {
+        const data = await appointmentService.getAppointments();
+        if (isMounted) {
+          setAppointments(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error('Error fetching patient appointments:', err);
+        if (isMounted) setAppointments([]);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    fetchAppointments();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
-  // Voice Assistant: Speak once per screen / tab
+  // Voice Assistant guidance
   useEffect(() => {
     if (!voiceAssistant || !speak) return;
-
     if (activeTab === 'upcoming' && lastSpokenRef.current !== 'upcoming') {
       lastSpokenRef.current = 'upcoming';
       speak('Upcoming appointments. View your scheduled consultations.');
     } else if (activeTab === 'history' && lastSpokenRef.current !== 'history') {
       lastSpokenRef.current = 'history';
       speak('Appointment history.');
-    } else if (activeTab === 'request' && lastSpokenRef.current !== 'request') {
-      lastSpokenRef.current = 'request';
-      speak('Request a new appointment with your healthcare provider.');
     }
   }, [activeTab, voiceAssistant, speak]);
 
-  const handleRequestSubmit = (e) => {
-    e.preventDefault();
-    setRequestNotice('Appointment request feature will be active after backend and clinic scheduling integration.');
-    setTimeout(() => setRequestNotice(''), 4000);
-    if (voiceAssistant && speak) {
-      speak('Appointment request feature will be active after backend integration.');
+  const upcomingList = appointments.filter(
+    (app) => app.status === 'Scheduled'
+  );
+  const historyList = appointments.filter(
+    (app) => app.status === 'Completed' || app.status === 'Cancelled'
+  );
+
+  const getStatusBadge = (status) => {
+    if (status === 'Scheduled') {
+      return (
+        <span className="device-name-badge connected" style={{ background: 'rgba(2, 132, 199, 0.1)', color: 'var(--color-blue-primary)', border: '1px solid var(--color-blue-primary)' }}>
+          {t('statusScheduled')}
+        </span>
+      );
     }
+    if (status === 'Completed') {
+      return (
+        <span className="device-name-badge connected" style={{ background: 'rgba(22, 163, 74, 0.1)', color: 'var(--color-green-primary)', border: '1px solid var(--color-green-primary)' }}>
+          {t('statusCompleted')}
+        </span>
+      );
+    }
+    if (status === 'Cancelled') {
+      return (
+        <span className="device-name-badge disconnected" style={{ background: 'rgba(220, 38, 38, 0.1)', color: '#DC2626', border: '1px solid #DC2626' }}>
+          {t('statusCancelled')}
+        </span>
+      );
+    }
+    return <span className="device-name-badge disconnected">{status}</span>;
   };
 
-  // Drawer menu items
   const drawerItems = [
     {
       id: 'dashboard',
@@ -94,7 +137,7 @@ export const PatientAppointmentsModule = ({
     },
     {
       id: 'appointments',
-      label: 'Appointments',
+      label: t('readOnlyPatientAppointmentTitle'),
       icon: Calendar,
       action: () => {
         setActiveTab('upcoming');
@@ -111,7 +154,7 @@ export const PatientAppointmentsModule = ({
     },
     {
       id: 'settings',
-      label: 'Settings',
+      label: t('settings'),
       icon: Settings,
       action: () => {
         setIsDrawerOpen(false);
@@ -125,7 +168,7 @@ export const PatientAppointmentsModule = ({
     <div className="app-viewport">
       <div className="mobile-container appointments-container">
         
-        {/* LEFT SLIDE NAVIGATION DRAWER */}
+        {/* NAVIGATION DRAWER */}
         <div className={`drawer-overlay ${isDrawerOpen ? 'open' : ''}`} onClick={() => setIsDrawerOpen(false)} />
         <aside className={`drawer-panel ${isDrawerOpen ? 'open' : ''}`} aria-label="Navigation Drawer">
           <div className="drawer-header">
@@ -150,7 +193,7 @@ export const PatientAppointmentsModule = ({
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <h4 className="drawer-user-name">{patientData.fullName}</h4>
-              <span className="drawer-user-role">Patient</span>
+              <span className="drawer-user-role">{t('patient')}</span>
             </div>
             <ArrowRight size={16} color="var(--color-brand-tagline)" />
           </div>
@@ -200,7 +243,7 @@ export const PatientAppointmentsModule = ({
               <ArrowLeft size={22} />
             </button>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-              Appointments
+              {t('readOnlyPatientAppointmentTitle')}
             </h1>
           </div>
 
@@ -220,31 +263,27 @@ export const PatientAppointmentsModule = ({
 
         <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem', width: '100%' }}>
           
-          {/* NOTICE ALERT */}
-          {requestNotice && (
-            <div
-              style={{
-                padding: '0.75rem 1rem',
-                borderRadius: '14px',
-                background: 'rgba(2, 132, 199, 0.1)',
-                border: '1.5px solid var(--color-blue-primary)',
-                color: 'var(--color-blue-primary)',
-                fontWeight: 700,
-                fontSize: '0.875rem',
-                textAlign: 'center',
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '0.4rem',
-              }}
-            >
-              <Info size={18} />
-              <span>{requestNotice}</span>
-            </div>
-          )}
+          {/* READ ONLY NOTICE BANNER */}
+          <div
+            style={{
+              padding: '0.85rem 1rem',
+              borderRadius: '14px',
+              background: 'rgba(2, 132, 199, 0.08)',
+              border: '1.5px solid var(--color-blue-primary)',
+              color: 'var(--color-blue-primary)',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              lineHeight: 1.4
+            }}
+          >
+            <Info size={20} style={{ flexShrink: 0 }} />
+            <span>{t('readOnlyPatientNotice')}</span>
+          </div>
 
-          {/* SEGMENTED TAB SWITCHER */}
+          {/* SEGMENTED TAB SWITCHER (NO BOOKING/REQUEST TAB) */}
           <div className="segmented-group" style={{ width: '100%' }}>
             <button
               type="button"
@@ -252,7 +291,7 @@ export const PatientAppointmentsModule = ({
               onClick={() => setActiveTab('upcoming')}
             >
               <Calendar size={15} />
-              <span>Upcoming</span>
+              <span>Upcoming ({upcomingList.length})</span>
             </button>
 
             <button
@@ -261,66 +300,90 @@ export const PatientAppointmentsModule = ({
               onClick={() => setActiveTab('history')}
             >
               <History size={15} />
-              <span>History</span>
-            </button>
-
-            <button
-              type="button"
-              className={`segmented-btn ${activeTab === 'request' ? 'active' : ''}`}
-              onClick={() => setActiveTab('request')}
-            >
-              <PlusCircle size={15} />
-              <span>Request</span>
+              <span>History ({historyList.length})</span>
             </button>
           </div>
 
           {/* TAB 1: UPCOMING APPOINTMENTS */}
           {activeTab === 'upcoming' && (
             <section className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 className="profile-section-title" style={{ margin: 0 }}>Upcoming Appointments</h3>
-                <span className="device-name-badge disconnected" style={{ fontSize: '0.775rem' }}>
-                  0 Scheduled
-                </span>
-              </div>
+              <h3 className="profile-section-title" style={{ margin: 0 }}>
+                {t('statusScheduled')}
+              </h3>
 
-              {upcomingList.length === 0 ? (
+              {loading ? (
+                <p style={{ textAlign: 'center', padding: '1rem', color: 'var(--color-brand-tagline)' }}>
+                  Loading appointments...
+                </p>
+              ) : upcomingList.length === 0 ? (
                 <div className="recent-activity-empty-state" style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
                   <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(2, 132, 199, 0.1)', color: 'var(--color-blue-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto' }}>
                     <Calendar size={28} />
                   </div>
                   <p className="empty-state-title" style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                    No upcoming appointments scheduled.
-                  </p>
-                  <p className="empty-state-desc" style={{ marginTop: '0.35rem', lineHeight: 1.45 }}>
-                    Your upcoming appointments with your healthcare provider will appear here after backend integration.
+                    {t('noAppointmentsFound')}
                   </p>
                 </div>
-              ) : null}
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {upcomingList.map((app) => (
+                    <div
+                      key={app._id}
+                      style={{
+                        padding: '1rem',
+                        borderRadius: '14px',
+                        background: 'var(--color-bg-card, #FFFFFF)',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Stethoscope size={18} color="var(--color-blue-primary)" />
+                          <h4 style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--color-brand-title)', margin: 0 }}>
+                            {app.doctorId?.fullName || 'Doctor Consultation'}
+                          </h4>
+                        </div>
+                        {getStatusBadge(app.status)}
+                      </div>
 
-              <button
-                type="button"
-                className="btn-continue"
-                onClick={() => setActiveTab('request')}
-                style={{ width: '100%', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-              >
-                <Plus size={18} />
-                <span>Request Appointment</span>
-              </button>
+                      {app.doctorId?.specialization && (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', fontWeight: 500 }}>
+                          {app.doctorId.specialization} • {app.doctorId.hospitalAffiliation}
+                        </span>
+                      )}
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--color-brand-title)', fontWeight: 600, marginTop: '0.2rem' }}>
+                        <Clock size={16} color="var(--color-blue-primary)" />
+                        <span>{new Date(app.appointmentDate).toLocaleString()}</span>
+                      </div>
+
+                      {app.clinicalNotes && (
+                        <div style={{ marginTop: '0.3rem', padding: '0.5rem 0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.03)', fontSize: '0.825rem', color: 'var(--color-brand-tagline)' }}>
+                          <strong>{t('reasonForAppointment')}:</strong> {app.clinicalNotes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
           {/* TAB 2: APPOINTMENT HISTORY */}
           {activeTab === 'history' && (
             <section className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <h3 className="profile-section-title" style={{ margin: 0 }}>Appointment History</h3>
-                <span className="device-name-badge disconnected" style={{ fontSize: '0.775rem' }}>
-                  0 Records
-                </span>
-              </div>
+              <h3 className="profile-section-title" style={{ margin: 0 }}>
+                Appointment History
+              </h3>
 
-              {historyList.length === 0 ? (
+              {loading ? (
+                <p style={{ textAlign: 'center', padding: '1rem', color: 'var(--color-brand-tagline)' }}>
+                  Loading history...
+                </p>
+              ) : historyList.length === 0 ? (
                 <div className="recent-activity-empty-state" style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
                   <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(2, 132, 199, 0.1)', color: 'var(--color-blue-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 0.75rem auto' }}>
                     <History size={28} />
@@ -328,64 +391,46 @@ export const PatientAppointmentsModule = ({
                   <p className="empty-state-title" style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
                     No past appointments found.
                   </p>
-                  <p className="empty-state-desc" style={{ marginTop: '0.35rem', lineHeight: 1.45 }}>
-                    Completed and past consultation records will be archived here.
-                  </p>
                 </div>
-              ) : null}
-            </section>
-          )}
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {historyList.map((app) => (
+                    <div
+                      key={app._id}
+                      style={{
+                        padding: '1rem',
+                        borderRadius: '14px',
+                        background: 'var(--color-bg-card, #FFFFFF)',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Stethoscope size={18} color="var(--color-blue-primary)" />
+                          <h4 style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--color-brand-title)', margin: 0 }}>
+                            {app.doctorId?.fullName || 'Doctor Consultation'}
+                          </h4>
+                        </div>
+                        {getStatusBadge(app.status)}
+                      </div>
 
-          {/* TAB 3: REQUEST APPOINTMENT */}
-          {activeTab === 'request' && (
-            <section className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
-              <h3 className="profile-section-title">Request Appointment</h3>
-              <p style={{ fontSize: '0.875rem', color: 'var(--color-brand-tagline)', lineHeight: 1.45 }}>
-                Submit an appointment request for a speech-language or neurological consultation.
-              </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--color-brand-title)', fontWeight: 600 }}>
+                        <Clock size={16} color="var(--color-blue-primary)" />
+                        <span>{new Date(app.appointmentDate).toLocaleString()}</span>
+                      </div>
 
-              <form onSubmit={handleRequestSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
-                <div className="profile-field-group">
-                  <span className="profile-field-label">Healthcare Provider</span>
-                  <select className="form-input select-input" defaultValue="Assigned Doctor">
-                    <option value="Assigned Doctor">Assigned Doctor / Speech Therapist</option>
-                    <option value="General Clinical Consultation">General Clinical Consultation</option>
-                  </select>
+                      {app.clinicalNotes && (
+                        <div style={{ marginTop: '0.2rem', fontSize: '0.825rem', color: 'var(--color-brand-tagline)' }}>
+                          <strong>{t('reasonForAppointment')}:</strong> {app.clinicalNotes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-
-                <div className="profile-field-group">
-                  <span className="profile-field-label">Preferred Time Window</span>
-                  <select className="form-input select-input" defaultValue="Morning">
-                    <option value="Morning">Morning (9:00 AM – 12:00 PM)</option>
-                    <option value="Afternoon">Afternoon (1:00 PM – 4:00 PM)</option>
-                    <option value="Evening">Evening (4:00 PM – 6:00 PM)</option>
-                  </select>
-                </div>
-
-                <div className="profile-field-group">
-                  <span className="profile-field-label">Reason for Consultation</span>
-                  <textarea
-                    className="form-input"
-                    rows="3"
-                    placeholder="Describe any speech difficulties or symptoms..."
-                    style={{ resize: 'none' }}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="btn-continue"
-                  style={{ width: '100%', marginTop: '0.5rem' }}
-                >
-                  <span>Submit Appointment Request</span>
-                </button>
-              </form>
-
-              <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px dashed var(--border-color)', textAlign: 'center' }}>
-                <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', fontWeight: 500 }}>
-                  Appointment request system will become functional after backend and clinic scheduling integration.
-                </p>
-              </div>
+              )}
             </section>
           )}
 

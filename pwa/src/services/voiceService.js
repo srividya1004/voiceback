@@ -50,6 +50,21 @@ export const voiceService = {
     return response.data;
   },
   /**
+   * Transcribe recorded patient audio using ElevenLabs Scribe v2
+   * @param {FormData} formData - Contains 'audioSample'
+   * @returns {Promise<{ success: boolean, data: { text: string } }>}
+   */
+  transcribeSpeech: async (formData) => {
+    const response = await apiClient.post('/voice-profiles/transcribe', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 60000,
+    });
+    return response.data;
+  },
+
+  /**
    * Check whether Web Speech API (SpeechSynthesis) is available in browser
    * @returns {boolean}
    */
@@ -59,3 +74,4 @@ export const voiceService = {
 };
 
 export default voiceService;
+

@@ -27,6 +27,11 @@ export const doctorService = {
     const response = await apiClient.put(`/doctors/${id}`, updateData);
     return response.data;
   },
+
+  update: async (id, updateData) => {
+    const response = await apiClient.put(`/doctors/${id}`, updateData);
+    return response.data;
+  },
 };
 
 export default doctorService;

@@ -31,9 +31,11 @@ const connectDB = async () => {
     console.log('✅ MongoDB Connected');
     return conn;
   } catch (error) {
-    console.error('❌ MongoDB Connection Error:', error.message);
-    process.exit(1);
+    console.warn('⚠️ MongoDB Connection Warning:', error.message);
+    // Log warning instead of process.exit(1) so Express server continues running
+    throw error;
   }
 };
+
 
 module.exports = connectDB;

@@ -96,7 +96,7 @@ const createInstantVoiceClone = async ({ voiceName, audioFilePath }) => {
  * @param {String} params.emotion - Delivery style ('neutral', 'calm', 'urgent', 'happy')
  * @returns {Promise<Buffer>} Audio MP3 binary buffer
  */
-const generateSpeech = async ({ voiceId, text, emotion }) => {
+const generateSpeech = async ({ voiceId, text, language, emotion }) => {
   const apiKey = config.elevenLabsApiKey || process.env.ELEVENLABS_API_KEY;
   const modelId = config.elevenLabsTtsModel || process.env.ELEVENLABS_TTS_MODEL || 'eleven_v3';
 
@@ -104,9 +104,7 @@ const generateSpeech = async ({ voiceId, text, emotion }) => {
     throw new Error('ELEVENLABS_API_KEY is not configured in backend environment variables.');
   }
 
-  if (!voiceId) {
-    throw new Error('Patient voice profile does not have a configured ElevenLabs voice_id.');
-  }
+  const targetVoiceId = voiceId || process.env.ELEVENLABS_DEFAULT_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 
   if (!text || !text.trim()) {
     throw new Error('Text prompt is required for voice synthesis.');
@@ -117,7 +115,8 @@ const generateSpeech = async ({ voiceId, text, emotion }) => {
 
   try {
     const response = await axios.post(
-      `${ELEVENLABS_BASE_URL}/text-to-speech/${voiceId}`,
+      `${ELEVENLABS_BASE_URL}/text-to-speech/${targetVoiceId}`,
+
       {
         text: expressiveText,
         model_id: modelId,
@@ -157,7 +156,65 @@ const generateSpeech = async ({ voiceId, text, emotion }) => {
   }
 };
 
+/**
+ * Transcribe recorded patient audio using ElevenLabs Scribe v2 Speech-to-Text
+ * @param {Object} params
+ * @param {String} params.audioFilePath - Path to temporary recorded audio file on disk
+ * @returns {Promise<String>} Recognized text transcript
+ */
+const transcribeSpeech = async ({ audioFilePath }) => {
+  const apiKey = config.elevenLabsApiKey || process.env.ELEVENLABS_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('ELEVENLABS_API_KEY is not configured in backend environment variables.');
+  }
+
+  if (!audioFilePath || !fs.existsSync(audioFilePath)) {
+    throw new Error('Audio recording file is missing or unreadable.');
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(audioFilePath));
+    formData.append('model_id', 'scribe_v2');
+
+    console.log(`🎙️ ElevenLabs Scribe v2 STT API Request starting for file: ${audioFilePath}`);
+
+    const response = await axios.post(`${ELEVENLABS_BASE_URL}/speech-to-text`, formData, {
+      headers: {
+        ...formData.getHeaders(),
+        'xi-api-key': apiKey,
+      },
+      timeout: 60000, // 60s timeout for audio transcription
+    });
+
+    if (response.data && typeof response.data.text === 'string') {
+      const transcript = response.data.text.trim();
+      console.log(`✅ ElevenLabs Scribe v2 STT Success: "${transcript}"`);
+      return transcript;
+    } else {
+      throw new Error('ElevenLabs Scribe v2 STT API did not return a valid transcript.');
+    }
+  } catch (error) {
+    const errorDetails = error.response?.data?.detail?.message || error.response?.data?.message || error.message;
+    console.error('ElevenLabs Scribe v2 STT API Error:', errorDetails);
+    throw new Error(`Speech recognition failed: ${errorDetails}`);
+  } finally {
+    // PATIENT AUDIO PRIVACY PROTECTION: Immediately delete temporary audio file from disk
+    try {
+      if (fs.existsSync(audioFilePath)) {
+        fs.unlinkSync(audioFilePath);
+        console.log(`🔒 Privacy Cleanup: Deleted temporary recorded audio file (${audioFilePath})`);
+      }
+    } catch (cleanupErr) {
+      console.warn('Warning: Failed to cleanup temporary audio file:', cleanupErr.message);
+    }
+  }
+};
+
 module.exports = {
   createInstantVoiceClone,
   generateSpeech,
+  transcribeSpeech,
 };
+

@@ -20,6 +20,7 @@ import {
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
+import authService from '../services/authService';
 
 export const PatientReportsModule = ({
   initialReportsData,
@@ -32,15 +33,19 @@ export const PatientReportsModule = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const lastSpokenRef = useRef(null);
 
-  // Sync profile data & avatar from localStorage
+  // Sync profile data & avatar from session/localStorage
   const [patientData] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
-      if (stored && stored.fullName) return stored;
-    } catch (e) {
-      // ignore
-    }
-    return { fullName: 'Srividya Raman' };
+    const session = authService.getActiveSession();
+    const sessionUser = session?.user;
+    const stored = (() => {
+      try {
+        return JSON.parse(localStorage.getItem('voiceback_patient_user') || 'null') || JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
+      } catch (e) {
+        return null;
+      }
+    })();
+    const name = sessionUser?.fullName || sessionUser?.profile?.fullName || stored?.fullName || session?.email || 'Patient';
+    return { fullName: name };
   });
 
   const [avatarDataUrl] = useState(() => {

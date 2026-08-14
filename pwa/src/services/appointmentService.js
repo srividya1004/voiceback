@@ -18,6 +18,11 @@ export const appointmentService = {
     const response = await apiClient.post('/appointments', payload);
     return response.data;
   },
+
+  updateAppointment: async (id, payload) => {
+    const response = await apiClient.put(`/appointments/${id}`, payload);
+    return response.data;
+  },
 };
 
 export default appointmentService;

@@ -3,7 +3,7 @@
  * Contains business logic and database operations for UserLogin authentication records
  */
 
-const { UserLogin } = require('../models');
+const { UserLogin, Patient, Doctor, Caregiver } = require('../models');
 const { validateObjectId } = require('../utils/validationHelper');
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
@@ -95,10 +95,35 @@ const deleteUserLogin = async (id) => {
 };
 
 /**
+ * Get current authenticated user details along with role profile
+ */
+const getMe = async (userId) => {
+  validateObjectId(userId, 'UserLogin');
+  const user = await UserLogin.findById(userId).select('-passwordHash');
+  if (!user) {
+    throw new Error(`User not found`);
+  }
+  let profile = null;
+  if (user.role === 'Doctor') {
+    profile = await Doctor.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
+  } else if (user.role === 'Patient') {
+    profile = await Patient.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
+  } else if (user.role === 'Caregiver') {
+    profile = await Caregiver.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
+  }
+  return {
+    id: user._id,
+    email: user.email,
+    role: user.role,
+    fullName: profile ? profile.fullName : '',
+    profile: profile ? profile.toObject() : null
+  };
+};
+
+/**
  * Login User
  */
 const loginUser = async (email, password) => {
-
   // Find user by email
   const user = await UserLogin.findOne({ email });
 
@@ -111,6 +136,16 @@ const loginUser = async (email, password) => {
 
   if (!isMatch) {
     throw new Error("Incorrect password. Please try again.");
+  }
+
+  // Find linked profile
+  let profile = null;
+  if (user.role === 'Doctor') {
+    profile = await Doctor.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
+  } else if (user.role === 'Patient') {
+    profile = await Patient.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
+  } else if (user.role === 'Caregiver') {
+    profile = await Caregiver.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
   }
 
   // Generate JWT Token
@@ -131,11 +166,12 @@ const loginUser = async (email, password) => {
     user: {
       id: user._id,
       email: user.email,
-      role: user.role
+      role: user.role,
+      fullName: profile ? profile.fullName : '',
+      profile: profile ? profile.toObject() : null
     }
   };
 };
-
 
 module.exports = {
   create: createUserLogin,
@@ -148,6 +184,6 @@ module.exports = {
   getUserLoginById,
   updateUserLogin,
   deleteUserLogin,
-  loginUser
+  loginUser,
+  getMe
 };
-
