@@ -19,10 +19,11 @@ venv/
 *.onnx
 *.pt
 emg-ai/data/
-
+emg-ai/data/gaddy/
+emg-ai/data/*.tar.gz
+emg-ai/data/*.zip
+emg-ai/models/checkpoints/
 
 # OS files
 .DS_Store
 Thumbs.db
-
-emg-ai/data/
