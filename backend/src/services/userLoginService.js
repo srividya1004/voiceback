@@ -9,14 +9,88 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 /**
- * Create a new UserLogin record
+ * Helper to resolve or auto-create single authoritative profile for a user
+ */
+const resolveOrCreateProfile = async (user) => {
+  let profile = null;
+  const normalizedEmail = (user.email || '').trim().toLowerCase();
+
+  if (user.role === 'Doctor') {
+    profile = await Doctor.findOne({ $or: [{ userId: user._id }, { email: normalizedEmail }] });
+    if (!profile) {
+      profile = await Doctor.create({
+        userId: user._id,
+        fullName: normalizedEmail.split('@')[0],
+        specialization: 'Speech-Language Pathologist & Neurologist',
+        hospitalAffiliation: 'AIIMS Clinical Rehabilitation Center',
+        licenseNumber: `LIC-${Math.floor(1000 + Math.random() * 9000)}`,
+        email: normalizedEmail
+      });
+    } else {
+      if (!profile.userId || profile.userId.toString() !== user._id.toString() || profile.email !== normalizedEmail) {
+        profile.userId = user._id;
+        profile.email = normalizedEmail;
+        await profile.save();
+      }
+    }
+  } else if (user.role === 'Patient') {
+    profile = await Patient.findOne({ $or: [{ userId: user._id }, { email: normalizedEmail }] });
+    if (!profile) {
+      profile = await Patient.create({
+        userId: user._id,
+        fullName: normalizedEmail.split('@')[0],
+        age: 45,
+        aphasiaType: "Broca's",
+        email: normalizedEmail
+      });
+    } else {
+      if (!profile.userId || profile.userId.toString() !== user._id.toString() || profile.email !== normalizedEmail) {
+        profile.userId = user._id;
+        profile.email = normalizedEmail;
+        await profile.save();
+      }
+    }
+  } else if (user.role === 'Caregiver') {
+    profile = await Caregiver.findOne({ $or: [{ userId: user._id }, { email: normalizedEmail }] });
+    if (!profile) {
+      profile = await Caregiver.create({
+        userId: user._id,
+        fullName: normalizedEmail.split('@')[0],
+        phone: '9876543210',
+        relationshipToPatient: 'Caregiver',
+        email: normalizedEmail
+      });
+    } else {
+      if (!profile.userId || profile.userId.toString() !== user._id.toString() || profile.email !== normalizedEmail) {
+        profile.userId = user._id;
+        profile.email = normalizedEmail;
+        await profile.save();
+      }
+    }
+  }
+
+  return profile;
+};
+
+/**
+ * Create a new UserLogin record (or return existing if email already registered)
  * @param {Object} userData - UserLogin input payload
- * @returns {Promise<Object>} Created UserLogin document (without passwordHash)
+ * @returns {Promise<Object>} Created/Existing UserLogin document (without passwordHash)
  */
 const createUserLogin = async (userData) => {
+    const normalizedEmail = (userData.email || '').trim().toLowerCase();
+    
+    // Check if account already exists
+    const existing = await UserLogin.findOne({ email: normalizedEmail });
+    if (existing) {
+      const result = existing.toObject();
+      delete result.passwordHash;
+      return result;
+    }
+
     // Hash the password before saving
     const hashedPassword = await bcrypt.hash(userData.passwordHash, 10);
-
+    userData.email = normalizedEmail;
     userData.passwordHash = hashedPassword;
 
     const userLogin = await UserLogin.create(userData);
@@ -103,14 +177,9 @@ const getMe = async (userId) => {
   if (!user) {
     throw new Error(`User not found`);
   }
-  let profile = null;
-  if (user.role === 'Doctor') {
-    profile = await Doctor.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
-  } else if (user.role === 'Patient') {
-    profile = await Patient.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
-  } else if (user.role === 'Caregiver') {
-    profile = await Caregiver.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
-  }
+  
+  const profile = await resolveOrCreateProfile(user);
+
   return {
     id: user._id,
     email: user.email,
@@ -124,8 +193,10 @@ const getMe = async (userId) => {
  * Login User
  */
 const loginUser = async (email, password) => {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  
   // Find user by email
-  const user = await UserLogin.findOne({ email });
+  const user = await UserLogin.findOne({ email: normalizedEmail });
 
   if (!user) {
     throw new Error("No account found. Please register first.");
@@ -138,15 +209,8 @@ const loginUser = async (email, password) => {
     throw new Error("Incorrect password. Please try again.");
   }
 
-  // Find linked profile
-  let profile = null;
-  if (user.role === 'Doctor') {
-    profile = await Doctor.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
-  } else if (user.role === 'Patient') {
-    profile = await Patient.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
-  } else if (user.role === 'Caregiver') {
-    profile = await Caregiver.findOne({ $or: [{ userId: user._id }, { email: user.email }] });
-  }
+  // Resolve or create linked profile
+  const profile = await resolveOrCreateProfile(user);
 
   // Generate JWT Token
   const token = jwt.sign(
@@ -155,7 +219,7 @@ const loginUser = async (email, password) => {
       email: user.email,
       role: user.role
     },
-    process.env.JWT_SECRET,
+    process.env.JWT_SECRET || 'voiceback_secret_key',
     {
       expiresIn: "7d"
     }
@@ -167,7 +231,7 @@ const loginUser = async (email, password) => {
       id: user._id,
       email: user.email,
       role: user.role,
-      fullName: profile ? profile.fullName : '',
+      fullName: profile ? profile.fullName : user.email.split('@')[0],
       profile: profile ? profile.toObject() : null
     }
   };

@@ -7,9 +7,32 @@ const { Patient, Doctor } = require('../models');
 const { validateObjectId } = require('../utils/validationHelper');
 
 /**
- * Create a new Patient record
+ * Create a new Patient record (Find-or-create / Upsert)
  */
 const createPatient = async (patientData) => {
+  const normalizedEmail = patientData.email ? patientData.email.trim().toLowerCase() : '';
+
+  const existing = await Patient.findOne({
+    $or: [
+      ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+      ...(patientData.userId ? [{ userId: patientData.userId }] : [])
+    ]
+  });
+
+  if (existing) {
+    if (patientData.userId && !existing.userId) existing.userId = patientData.userId;
+    if (patientData.fullName) existing.fullName = patientData.fullName;
+    if (patientData.age) existing.age = patientData.age;
+    if (patientData.aphasiaType) existing.aphasiaType = patientData.aphasiaType;
+    if (normalizedEmail) existing.email = normalizedEmail;
+    await existing.save();
+    return existing;
+  }
+
+  if (normalizedEmail) {
+    patientData.email = normalizedEmail;
+  }
+
   const patient = await Patient.create(patientData);
   return patient;
 };

@@ -43,6 +43,12 @@ const patientSchema = new mongoose.Schema(
         message: '{VALUE} is not a recognized aphasia type'
       }
     },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address']
+    },
     assignedDoctorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Doctor',
@@ -58,6 +64,9 @@ const patientSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+patientSchema.index({ email: 1 }, { unique: true, sparse: true });
+patientSchema.index({ userId: 1 }, { unique: true, sparse: true });
 
 const Patient = mongoose.model('Patient', patientSchema);
 

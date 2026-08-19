@@ -55,7 +55,7 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
 
   const [doctorProfile, setDoctorProfile] = useState({
     fullName: initialDoctorName,
-    doctorId: sessionUser?.profile?._id || storedDoc?._id || sessionUser?.id || '',
+    doctorId: sessionUser?.profile?._id || storedDoc?._id || '',
     specialization: sessionUser?.profile?.specialization || storedDoc?.specialization || 'Speech-Language Pathologist & Neurologist',
     hospital: sessionUser?.profile?.hospitalAffiliation || storedDoc?.hospitalAffiliation || 'Clinical Rehabilitation Center',
     email: sessionUser?.email || storedDoc?.email || '',
@@ -111,15 +111,19 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
       const currentEmail = (session?.email || '').trim().toLowerCase();
       const currentUserId = sessionUser?.id;
 
-      const matchedDoctor = doctorsList.find((d) => {
+      let matchedDoctor = doctorsList.find((d) => {
         const docEmail = (d.email || '').trim().toLowerCase();
         const docUserId = d.userId?._id || d.userId;
         return (currentEmail && docEmail === currentEmail) || (currentUserId && docUserId === currentUserId);
       });
 
+      if (!matchedDoctor && sessionUser?.profile?._id) {
+        matchedDoctor = sessionUser.profile;
+      }
+
       if (matchedDoctor) {
         setDoctorProfile({
-          fullName: matchedDoctor.fullName,
+          fullName: matchedDoctor.fullName || initialDoctorName,
           doctorId: matchedDoctor._id,
           specialization: matchedDoctor.specialization || 'Speech-Language Pathologist & Neurologist',
           hospital: matchedDoctor.hospitalAffiliation || 'Clinical Rehabilitation Center',

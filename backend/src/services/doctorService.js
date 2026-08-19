@@ -7,9 +7,34 @@ const { Doctor, Patient, UserLogin } = require('../models');
 const { validateObjectId } = require('../utils/validationHelper');
 
 /**
- * Create a new Doctor record
+ * Create a new Doctor record (Find-or-create / Upsert)
  */
 const createDoctor = async (doctorData) => {
+  const normalizedEmail = doctorData.email ? doctorData.email.trim().toLowerCase() : '';
+  
+  const existing = await Doctor.findOne({
+    $or: [
+      ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+      ...(doctorData.userId ? [{ userId: doctorData.userId }] : [])
+    ]
+  });
+
+  if (existing) {
+    if (doctorData.userId && !existing.userId) existing.userId = doctorData.userId;
+    if (doctorData.fullName) existing.fullName = doctorData.fullName;
+    if (doctorData.specialization) existing.specialization = doctorData.specialization;
+    if (doctorData.hospitalAffiliation) existing.hospitalAffiliation = doctorData.hospitalAffiliation;
+    if (doctorData.licenseNumber) existing.licenseNumber = doctorData.licenseNumber;
+    if (normalizedEmail) existing.email = normalizedEmail;
+    if (doctorData.phone) existing.phone = doctorData.phone;
+    await existing.save();
+    return existing;
+  }
+
+  if (normalizedEmail) {
+    doctorData.email = normalizedEmail;
+  }
+
   const doctor = await Doctor.create(doctorData);
   return doctor;
 };
@@ -69,10 +94,7 @@ const assignPatientByEmail = async (doctorId, emailInput) => {
     throw new Error('No patient found with this email.');
   }
 
-  if (matches.length > 1) {
-    throw new Error('Multiple accounts found. Cannot link automatically.');
-  }
-
+  // Pick the authoritative match (earliest or linked to userId)
   const patient = matches[0];
 
   // Update Patient.assignedDoctorId

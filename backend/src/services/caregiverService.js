@@ -7,9 +7,32 @@ const { Caregiver, Patient, UserLogin } = require('../models');
 const { validateObjectId } = require('../utils/validationHelper');
 
 /**
- * Create a new Caregiver record
+ * Create a new Caregiver record (Find-or-create / Upsert)
  */
 const createCaregiver = async (caregiverData) => {
+  const normalizedEmail = caregiverData.email ? caregiverData.email.trim().toLowerCase() : '';
+
+  const existing = await Caregiver.findOne({
+    $or: [
+      ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+      ...(caregiverData.userId ? [{ userId: caregiverData.userId }] : [])
+    ]
+  });
+
+  if (existing) {
+    if (caregiverData.userId && !existing.userId) existing.userId = caregiverData.userId;
+    if (caregiverData.fullName) existing.fullName = caregiverData.fullName;
+    if (caregiverData.phone) existing.phone = caregiverData.phone;
+    if (caregiverData.relationshipToPatient) existing.relationshipToPatient = caregiverData.relationshipToPatient;
+    if (normalizedEmail) existing.email = normalizedEmail;
+    await existing.save();
+    return existing;
+  }
+
+  if (normalizedEmail) {
+    caregiverData.email = normalizedEmail;
+  }
+
   const caregiver = await Caregiver.create(caregiverData);
   return caregiver;
 };
@@ -80,10 +103,7 @@ const linkPatientByEmail = async (caregiverId, emailInput) => {
     throw new Error('No patient found with this email.');
   }
 
-  if (matches.length > 1) {
-    throw new Error('Multiple accounts found. Cannot link automatically.');
-  }
-
+  // Pick authoritative patient match
   const patient = matches[0];
 
   // 3. Verify single caregiver assignment

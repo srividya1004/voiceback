@@ -6,13 +6,36 @@ const mongoose = require('mongoose');
 const dns = require('dns');
 const config = require('./index');
 
-// Set DNS order to ipv4first and set public DNS servers to resolve MongoDB Atlas SRV records properly on Windows
+// Ensure reliable DNS resolution for MongoDB Atlas SRV records
 try {
-  dns.setDefaultResultOrder('ipv4first');
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch (err) {
-  // Ignore DNS configuration errors if setServers is not supported in environment
+  const currentServers = dns.getServers();
+  if (currentServers.length === 0 || currentServers.includes('127.0.0.1')) {
+    dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+  }
+} catch (e) {
+  // Fallback ignored if custom DNS fail
 }
+
+/**
+ * Safe connection diagnostics logger (never prints credentials or secrets)
+ */
+const logDiagnostics = (mongoUri) => {
+  const isUriConfigured = Boolean(mongoUri);
+  let isHostnameConfigured = false;
+
+  if (mongoUri) {
+    try {
+      const match = mongoUri.match(/@([^/?]+)/);
+      isHostnameConfigured = Boolean(match && match[1]);
+    } catch (e) {
+      isHostnameConfigured = false;
+    }
+  }
+
+  console.log('--- MongoDB Connection Diagnostics ---');
+  console.log(`  - URI Configured:      ${isUriConfigured ? 'YES' : 'NO'}`);
+  console.log(`  - Hostname Configured: ${isHostnameConfigured ? 'YES' : 'NO'}`);
+};
 
 /**
  * Connect to MongoDB Atlas using Mongoose
@@ -21,21 +44,26 @@ try {
 const connectDB = async () => {
   const mongoUri = config.mongoUri || process.env.MONGODB_URI;
 
+  logDiagnostics(mongoUri);
+
   if (!mongoUri) {
     console.error('❌ MongoDB Connection Error: MONGODB_URI is not defined in environment variables.');
     process.exit(1);
   }
 
+  console.log('⏳ MongoDB Connection Attempt Started...');
+
   try {
-    const conn = await mongoose.connect(mongoUri);
-    console.log('✅ MongoDB Connected');
+    const conn = await mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 45000
+    });
+    console.log('✅ MongoDB Atlas Connected Successfully');
     return conn;
   } catch (error) {
-    console.warn('⚠️ MongoDB Connection Warning:', error.message);
-    // Log warning instead of process.exit(1) so Express server continues running
+    console.error('❌ MongoDB Connection Failed:', error.message);
     throw error;
   }
 };
-
 
 module.exports = connectDB;

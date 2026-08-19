@@ -104,15 +104,20 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
       const list = Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
       const currentEmail = (session?.email || '').trim().toLowerCase();
       const currentUserId = sessionUser?.id;
-      const match = list.find((c) => {
+      let match = list.find((c) => {
         const cEmail = (c.email || '').trim().toLowerCase();
         const cUserId = c.userId?._id || c.userId;
         return (currentEmail && cEmail === currentEmail) || (currentUserId && cUserId === currentUserId);
       });
+
+      if (!match && sessionUser?.profile?._id) {
+        match = sessionUser.profile;
+      }
+
       if (match) {
         setCaregiverProfile({
           id: match._id,
-          fullName: match.fullName,
+          fullName: match.fullName || initialCaregiverName,
           relationship: match.relationshipToPatient || 'Caregiver',
           email: match.email || currentEmail,
           mobileNumber: match.phone || '',

@@ -3,6 +3,7 @@
  */
 
 const http = require('http');
+const mongoose = require('mongoose');
 const connectDB = require('../src/config/database');
 const app = require('../src/app');
 
@@ -45,8 +46,16 @@ const runRouteTest = async () => {
   let server;
 
   try {
-    console.log('🔄 Connecting to MongoDB Atlas...');
-    await connectDB();
+    console.log('🔄 Connecting to MongoDB...');
+    try {
+      await connectDB();
+    } catch (dbErr) {
+      console.warn('⚠️ Atlas connection unavailable (IP Whitelist). Starting local MongoMemoryServer for tests...');
+      const { MongoMemoryServer } = require('mongodb-memory-server');
+      const mongod = await MongoMemoryServer.create();
+      await mongoose.connect(mongod.getUri());
+      console.log('✅ Connected to local MongoMemoryServer!');
+    }
 
     server = app.listen(TEST_PORT);
     console.log(`🚀 Test Server started on port ${TEST_PORT}\n`);
