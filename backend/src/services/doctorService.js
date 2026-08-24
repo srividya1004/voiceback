@@ -114,7 +114,7 @@ const updateDoctor = async (id, updateData) => {
   const doctor = await Doctor.findByIdAndUpdate(id, updateData, {
     new: true,
     runValidators: true
-  });
+  }).populate('userId', 'email role');
 
   if (!doctor) {
     throw new Error(`Doctor with ID ${id} not found`);
@@ -124,7 +124,7 @@ const updateDoctor = async (id, updateData) => {
 };
 
 /**
- * Delete a Doctor record by ObjectId
+ * Delete a Doctor record by ObjectId with generic cascade cleanup
  */
 const deleteDoctor = async (id) => {
   validateObjectId(id, 'Doctor');
@@ -134,6 +134,12 @@ const deleteDoctor = async (id) => {
   if (!doctor) {
     throw new Error(`Doctor with ID ${id} not found`);
   }
+
+  // Generic Cascade Cleanup: Nullify assignedDoctorId on all linked Patients
+  await Patient.updateMany(
+    { assignedDoctorId: id },
+    { $set: { assignedDoctorId: null } }
+  );
 
   return doctor;
 };

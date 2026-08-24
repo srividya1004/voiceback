@@ -49,6 +49,26 @@ const patientSchema = new mongoose.Schema(
       lowercase: true,
       match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address']
     },
+    phone: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    gender: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    preferredLanguage: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    emergencyContact: {
+      type: String,
+      trim: true,
+      default: null
+    },
     assignedDoctorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Doctor',

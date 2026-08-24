@@ -204,6 +204,10 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
         throw new Error('Doctor ID not found.');
       }
       const res = await doctorService.update(doctorProfile.doctorId, editProfileForm);
+      const updatedDoc = res?.data || res;
+      if (updatedDoc) {
+        authService.updateActiveSessionProfile(updatedDoc);
+      }
       setProfileStatusMsg({ type: 'success', text: 'Doctor profile updated successfully!' });
       await loadDoctorIdentity();
       setTimeout(() => setIsEditProfileOpen(false), 1500);

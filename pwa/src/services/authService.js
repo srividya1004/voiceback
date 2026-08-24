@@ -109,6 +109,11 @@ export const authService = {
         fullName,
         age: Number(patientData.age) || 45,
         aphasiaType: selectedAphasia,
+        gender: patientData.gender || null,
+        preferredLanguage: patientData.preferredLanguage || null,
+        phone: patientData.mobileNumber || patientData.phone || null,
+        email: normalizedEmail,
+        emergencyContact: patientData.emergencyContact || null
       });
 
       const profileObj = profRes.data || profRes;
@@ -369,6 +374,34 @@ export const authService = {
   getCurrentUser: () => {
     const session = authService.getActiveSession();
     return session ? session.user : null;
+  },
+
+  updateActiveSessionProfile: (updatedProfile) => {
+    try {
+      const rawSession = localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION);
+      if (!rawSession) return;
+      const session = JSON.parse(rawSession);
+      if (!session) return;
+      const fullName = updatedProfile.fullName || session.fullName;
+      session.fullName = fullName;
+      if (session.user) {
+        session.user.fullName = fullName;
+        session.user.profile = { ...(session.user.profile || {}), ...updatedProfile };
+      }
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, JSON.stringify(session));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_OBJECT, JSON.stringify(session.user));
+      localStorage.setItem('voiceback_current_user', JSON.stringify(session.user));
+      const role = (session.role || '').toLowerCase();
+      if (role === 'patient') {
+        localStorage.setItem('voiceback_patient_user', JSON.stringify(updatedProfile));
+      } else if (role === 'doctor') {
+        localStorage.setItem('voiceback_doctor_user', JSON.stringify(updatedProfile));
+      } else if (role === 'caregiver') {
+        localStorage.setItem('voiceback_caregiver_user', JSON.stringify(updatedProfile));
+      }
+    } catch (e) {
+      // ignore
+    }
   },
 
   // Logout & Clear Session

@@ -163,7 +163,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
         gender: merged.gender || 'Not Available',
         aphasiaType: merged.aphasiaType || 'Not Available',
         preferredLanguage: merged.preferredLanguage || 'Not Available',
-        mobileNumber: merged.mobileNumber || 'Not Available',
+        mobileNumber: merged.phone || merged.mobileNumber || 'Not Available',
         email: merged.email || 'Not Available',
         emergencyContact: merged.emergencyContact || 'Not Available',
         assignedDoctorName: merged.assignedDoctorName || '',
@@ -178,7 +178,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
       gender: raw.gender || 'Not Available',
       aphasiaType: raw.aphasiaType || 'Not Available',
       preferredLanguage: raw.preferredLanguage || 'Not Available',
-      mobileNumber: raw.mobileNumber || 'Not Available',
+      mobileNumber: raw.phone || raw.mobileNumber || 'Not Available',
       email: raw.email || 'Not Available',
       emergencyContact: raw.emergencyContact || 'Not Available',
       assignedDoctorName: raw.assignedDoctorName || '',
@@ -191,13 +191,15 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
     if (backendProfile) {
       setProfileData((prev) => ({
         ...prev,
+        id: backendProfile.id || backendProfile._id || prev.id,
         fullName: backendProfile.fullName || prev.fullName,
         age: backendProfile.age ? (String(backendProfile.age).includes('Years') ? backendProfile.age : `${backendProfile.age} Years`) : prev.age,
         gender: backendProfile.gender || prev.gender,
         aphasiaType: backendProfile.aphasiaType || prev.aphasiaType,
         preferredLanguage: backendProfile.preferredLanguage || prev.preferredLanguage,
-        mobileNumber: backendProfile.mobileNumber || prev.mobileNumber,
+        mobileNumber: backendProfile.phone || backendProfile.mobileNumber || prev.mobileNumber,
         email: backendProfile.email || prev.email,
+        emergencyContact: backendProfile.emergencyContact || prev.emergencyContact,
         assignedDoctorName: backendProfile.assignedDoctorName || prev.assignedDoctorName,
         assignedCaregiverName: backendProfile.assignedCaregiverName || prev.assignedCaregiverName,
       }));
@@ -210,7 +212,8 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
       try {
         const session = authService.getActiveSession();
         const userEmail = (session?.email || '').toLowerCase();
-        if (!userEmail) return;
+        const currentUserId = session?.user?.id;
+        if (!userEmail && !currentUserId) return;
 
         const [patientsRes, caregiversRes] = await Promise.all([
           patientService.getAllPatients().catch(() => ({ data: [] })),
@@ -229,9 +232,10 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
           ? caregiversRes
           : [];
 
-        const match = list.find(
-          (p) => (p.email || p.userId?.email || '').toLowerCase() === userEmail
-        );
+        const match = list.find((p) => {
+          const pUserId = p.userId?._id || p.userId;
+          return (currentUserId && pUserId === currentUserId) || ((p.email || p.userId?.email || '').toLowerCase() === userEmail);
+        });
 
         if (match) {
           let docName = match.assignedDoctorId?.fullName ? match.assignedDoctorId.fullName : '';
@@ -253,7 +257,11 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
             fullName: match.fullName || prev.fullName,
             age: match.age ? `${match.age} Years` : prev.age,
             aphasiaType: match.aphasiaType || prev.aphasiaType,
+            gender: match.gender || prev.gender,
+            preferredLanguage: match.preferredLanguage || prev.preferredLanguage,
+            mobileNumber: match.phone || prev.mobileNumber,
             email: match.email || match.userId?.email || prev.email,
+            emergencyContact: match.emergencyContact || prev.emergencyContact,
             assignedDoctorName: docName || prev.assignedDoctorName,
             assignedCaregiverName: cgName || prev.assignedCaregiverName,
           }));
@@ -283,20 +291,39 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
 
   const handleSaveProfile = async () => {
     try {
-      if (backendProfile && backendProfile.id) {
-        await patientService.updatePatient(backendProfile.id, {
+      const targetId = profileData.id || backendProfile?.id || backendProfile?._id;
+      let updatedRecord = null;
+      if (targetId) {
+        const updatePayload = {
           fullName: profileData.fullName,
           age: parseInt(profileData.age, 10) || undefined,
           aphasiaType: profileData.aphasiaType !== 'Not Available' ? profileData.aphasiaType : undefined,
-          preferredLanguage: profileData.preferredLanguage,
-          mobileNumber: profileData.mobileNumber,
-          emergencyContact: profileData.emergencyContact,
-        });
+          gender: profileData.gender !== 'Not Available' ? profileData.gender : undefined,
+          preferredLanguage: profileData.preferredLanguage !== 'Not Available' ? profileData.preferredLanguage : undefined,
+          phone: profileData.mobileNumber !== 'Not Available' ? profileData.mobileNumber : undefined,
+          emergencyContact: profileData.emergencyContact !== 'Not Available' ? profileData.emergencyContact : undefined,
+        };
+        const res = await patientService.updatePatient(targetId, updatePayload);
+        updatedRecord = res?.data || res;
       }
 
-      const storedUser = JSON.parse(localStorage.getItem('voiceback_current_user') || '{}');
-      const updatedUser = { ...storedUser, ...profileData };
-      localStorage.setItem('voiceback_current_user', JSON.stringify(updatedUser));
+      if (updatedRecord) {
+        setProfileData((prev) => ({
+          ...prev,
+          fullName: updatedRecord.fullName || prev.fullName,
+          age: updatedRecord.age ? `${updatedRecord.age} Years` : prev.age,
+          aphasiaType: updatedRecord.aphasiaType || prev.aphasiaType,
+          gender: updatedRecord.gender || prev.gender,
+          preferredLanguage: updatedRecord.preferredLanguage || prev.preferredLanguage,
+          mobileNumber: updatedRecord.phone || prev.mobileNumber,
+          emergencyContact: updatedRecord.emergencyContact || prev.emergencyContact,
+        }));
+        authService.updateActiveSessionProfile(updatedRecord);
+      } else {
+        const storedUser = JSON.parse(localStorage.getItem('voiceback_current_user') || '{}');
+        const updatedUser = { ...storedUser, ...profileData };
+        authService.updateActiveSessionProfile(updatedUser);
+      }
 
       setSaveSuccessMsg('Profile updated successfully!');
       setTimeout(() => setSaveSuccessMsg(''), 3000);

@@ -3,7 +3,7 @@
  * Contains business logic and database operations for Patient clinical profiles
  */
 
-const { Patient, Doctor } = require('../models');
+const { Patient, Doctor, Caregiver, UserLogin } = require('../models');
 const { validateObjectId } = require('../utils/validationHelper');
 
 /**
@@ -24,6 +24,10 @@ const createPatient = async (patientData) => {
     if (patientData.fullName) existing.fullName = patientData.fullName;
     if (patientData.age) existing.age = patientData.age;
     if (patientData.aphasiaType) existing.aphasiaType = patientData.aphasiaType;
+    if (patientData.gender) existing.gender = patientData.gender;
+    if (patientData.preferredLanguage) existing.preferredLanguage = patientData.preferredLanguage;
+    if (patientData.phone) existing.phone = patientData.phone;
+    if (patientData.emergencyContact) existing.emergencyContact = patientData.emergencyContact;
     if (normalizedEmail) existing.email = normalizedEmail;
     await existing.save();
     return existing;
@@ -67,7 +71,7 @@ const getPatientById = async (id) => {
 };
 
 /**
- * Assign a doctor to a patient
+ * Assign a doctor to a patient with bidirectional synchronization
  */
 const assignDoctor = async (patientId, doctorId) => {
   validateObjectId(patientId, 'Patient');
@@ -95,6 +99,107 @@ const assignDoctor = async (patientId, doctorId) => {
 };
 
 /**
+ * Assign or change caregiver for a patient with bidirectional synchronization
+ */
+const assignCaregiver = async (patientId, caregiverId) => {
+  validateObjectId(patientId, 'Patient');
+  validateObjectId(caregiverId, 'Caregiver');
+
+  const caregiver = await Caregiver.findById(caregiverId);
+  if (!caregiver) {
+    throw new Error(`Caregiver with ID ${caregiverId} not found`);
+  }
+
+  const patient = await Patient.findById(patientId);
+  if (!patient) {
+    throw new Error(`Patient with ID ${patientId} not found`);
+  }
+
+  // Generic Orphan & Reassignment handling: Pull from old caregiver if switching
+  if (patient.assignedCaregiverId && patient.assignedCaregiverId.toString() !== caregiverId.toString()) {
+    const existingCaregiver = await Caregiver.findById(patient.assignedCaregiverId);
+    if (existingCaregiver) {
+      await Caregiver.findByIdAndUpdate(existingCaregiver._id, {
+        $pull: { assignedPatients: patient._id }
+      });
+    }
+  }
+
+  // Update Caregiver assignedPatients array
+  await Caregiver.findByIdAndUpdate(caregiver._id, {
+    $addToSet: { assignedPatients: patient._id }
+  });
+
+  // Update Patient assignedCaregiverId
+  const updatedPatient = await Patient.findByIdAndUpdate(
+    patient._id,
+    { assignedCaregiverId: caregiver._id },
+    { new: true, runValidators: true }
+  )
+    .populate('userId', 'email role')
+    .populate('assignedDoctorId', 'fullName specialization licenseNumber hospitalAffiliation email phone')
+    .populate('assignedCaregiverId', 'fullName phone relationshipToPatient email');
+
+  return updatedPatient;
+};
+
+/**
+ * Assign Doctor by registered email (initiated by Patient)
+ */
+const assignDoctorByEmail = async (patientId, doctorEmailInput) => {
+  validateObjectId(patientId, 'Patient');
+  if (!doctorEmailInput || typeof doctorEmailInput !== 'string') {
+    throw new Error('Please enter a valid doctor email address.');
+  }
+
+  const normalizedEmail = doctorEmailInput.trim().toLowerCase();
+  const userLogins = await UserLogin.find({ email: normalizedEmail, role: 'Doctor' });
+  const userLoginIds = userLogins.map(u => u._id);
+
+  const doctors = await Doctor.find({
+    $or: [
+      { email: normalizedEmail },
+      { userId: { $in: userLoginIds } }
+    ]
+  });
+
+  if (doctors.length === 0) {
+    throw new Error('No doctor found with this email address.');
+  }
+
+  const doctor = doctors[0];
+  return await assignDoctor(patientId, doctor._id);
+};
+
+/**
+ * Assign Caregiver by registered email (initiated by Patient)
+ */
+const assignCaregiverByEmail = async (patientId, caregiverEmailInput) => {
+  validateObjectId(patientId, 'Patient');
+  if (!caregiverEmailInput || typeof caregiverEmailInput !== 'string') {
+    throw new Error('Please enter a valid caregiver email address.');
+  }
+
+  const normalizedEmail = caregiverEmailInput.trim().toLowerCase();
+  const userLogins = await UserLogin.find({ email: normalizedEmail, role: 'Caregiver' });
+  const userLoginIds = userLogins.map(u => u._id);
+
+  const caregivers = await Caregiver.find({
+    $or: [
+      { email: normalizedEmail },
+      { userId: { $in: userLoginIds } }
+    ]
+  });
+
+  if (caregivers.length === 0) {
+    throw new Error('No caregiver found with this email address.');
+  }
+
+  const caregiver = caregivers[0];
+  return await assignCaregiver(patientId, caregiver._id);
+};
+
+/**
  * Update a Patient record by ObjectId
  */
 const updatePatient = async (id, updateData) => {
@@ -103,7 +208,10 @@ const updatePatient = async (id, updateData) => {
   const patient = await Patient.findByIdAndUpdate(id, updateData, {
     new: true,
     runValidators: true
-  });
+  })
+    .populate('userId', 'email role')
+    .populate('assignedDoctorId', 'fullName specialization licenseNumber hospitalAffiliation email phone')
+    .populate('assignedCaregiverId', 'fullName phone relationshipToPatient email');
 
   if (!patient) {
     throw new Error(`Patient with ID ${id} not found`);
@@ -113,7 +221,7 @@ const updatePatient = async (id, updateData) => {
 };
 
 /**
- * Delete a Patient record by ObjectId
+ * Delete a Patient record by ObjectId with generic cascade cleanup
  */
 const deletePatient = async (id) => {
   validateObjectId(id, 'Patient');
@@ -124,6 +232,12 @@ const deletePatient = async (id) => {
     throw new Error(`Patient with ID ${id} not found`);
   }
 
+  // Generic Cascade Cleanup: Pull patient ID from all Caregiver assignedPatients arrays
+  await Caregiver.updateMany(
+    { assignedPatients: id },
+    { $pull: { assignedPatients: id } }
+  );
+
   return patient;
 };
 
@@ -132,6 +246,9 @@ module.exports = {
   getAll: getAllPatients,
   getById: getPatientById,
   assignDoctor,
+  assignCaregiver,
+  assignDoctorByEmail,
+  assignCaregiverByEmail,
   update: updatePatient,
   delete: deletePatient,
   createPatient,

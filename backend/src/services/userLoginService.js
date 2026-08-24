@@ -16,7 +16,10 @@ const resolveOrCreateProfile = async (user) => {
   const normalizedEmail = (user.email || '').trim().toLowerCase();
 
   if (user.role === 'Doctor') {
-    profile = await Doctor.findOne({ $or: [{ userId: user._id }, { email: normalizedEmail }] });
+    profile = await Doctor.findOne({ userId: user._id });
+    if (!profile && normalizedEmail) {
+      profile = await Doctor.findOne({ email: normalizedEmail });
+    }
     if (!profile) {
       profile = await Doctor.create({
         userId: user._id,
@@ -26,15 +29,20 @@ const resolveOrCreateProfile = async (user) => {
         licenseNumber: `LIC-${Math.floor(1000 + Math.random() * 9000)}`,
         email: normalizedEmail
       });
-    } else {
-      if (!profile.userId || profile.userId.toString() !== user._id.toString() || profile.email !== normalizedEmail) {
-        profile.userId = user._id;
-        profile.email = normalizedEmail;
-        await profile.save();
-      }
+    } else if (!profile.userId || profile.userId.toString() !== user._id.toString()) {
+      profile.userId = user._id;
+      if (normalizedEmail && !profile.email) profile.email = normalizedEmail;
+      await profile.save();
     }
   } else if (user.role === 'Patient') {
-    profile = await Patient.findOne({ $or: [{ userId: user._id }, { email: normalizedEmail }] });
+    profile = await Patient.findOne({ userId: user._id })
+      .populate('assignedDoctorId', 'fullName specialization licenseNumber hospitalAffiliation email phone')
+      .populate('assignedCaregiverId', 'fullName phone relationshipToPatient email');
+    if (!profile && normalizedEmail) {
+      profile = await Patient.findOne({ email: normalizedEmail })
+        .populate('assignedDoctorId', 'fullName specialization licenseNumber hospitalAffiliation email phone')
+        .populate('assignedCaregiverId', 'fullName phone relationshipToPatient email');
+    }
     if (!profile) {
       profile = await Patient.create({
         userId: user._id,
@@ -43,15 +51,27 @@ const resolveOrCreateProfile = async (user) => {
         aphasiaType: "Broca's",
         email: normalizedEmail
       });
-    } else {
-      if (!profile.userId || profile.userId.toString() !== user._id.toString() || profile.email !== normalizedEmail) {
-        profile.userId = user._id;
-        profile.email = normalizedEmail;
-        await profile.save();
-      }
+      profile = await Patient.findById(profile._id)
+        .populate('assignedDoctorId', 'fullName specialization licenseNumber hospitalAffiliation email phone')
+        .populate('assignedCaregiverId', 'fullName phone relationshipToPatient email');
+    } else if (!profile.userId || profile.userId.toString() !== user._id.toString()) {
+      profile.userId = user._id;
+      if (normalizedEmail && !profile.email) profile.email = normalizedEmail;
+      await profile.save();
     }
   } else if (user.role === 'Caregiver') {
-    profile = await Caregiver.findOne({ $or: [{ userId: user._id }, { email: normalizedEmail }] });
+    profile = await Caregiver.findOne({ userId: user._id })
+      .populate({
+        path: 'assignedPatients',
+        populate: { path: 'assignedDoctorId', select: 'fullName specialization licenseNumber hospitalAffiliation email phone' }
+      });
+    if (!profile && normalizedEmail) {
+      profile = await Caregiver.findOne({ email: normalizedEmail })
+        .populate({
+          path: 'assignedPatients',
+          populate: { path: 'assignedDoctorId', select: 'fullName specialization licenseNumber hospitalAffiliation email phone' }
+        });
+    }
     if (!profile) {
       profile = await Caregiver.create({
         userId: user._id,
@@ -60,12 +80,15 @@ const resolveOrCreateProfile = async (user) => {
         relationshipToPatient: 'Caregiver',
         email: normalizedEmail
       });
-    } else {
-      if (!profile.userId || profile.userId.toString() !== user._id.toString() || profile.email !== normalizedEmail) {
-        profile.userId = user._id;
-        profile.email = normalizedEmail;
-        await profile.save();
-      }
+      profile = await Caregiver.findById(profile._id)
+        .populate({
+          path: 'assignedPatients',
+          populate: { path: 'assignedDoctorId', select: 'fullName specialization licenseNumber hospitalAffiliation email phone' }
+        });
+    } else if (!profile.userId || profile.userId.toString() !== user._id.toString()) {
+      profile.userId = user._id;
+      if (normalizedEmail && !profile.email) profile.email = normalizedEmail;
+      await profile.save();
     }
   }
 

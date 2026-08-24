@@ -43,6 +43,7 @@ import VoiceCloningModule from './VoiceCloningModule';
 import PatientReportsModule from './PatientReportsModule';
 import EmergencySOSModule from './EmergencySOSModule';
 import PatientAppointmentsModule from './PatientAppointmentsModule';
+import DynamicCommunicationModule from './DynamicCommunicationModule';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 import patientService from '../services/patientService';
@@ -90,6 +91,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const [therapyProgress, setTherapyProgress] = useState([]);
   const [voiceProfiles, setVoiceProfiles] = useState([]);
   const [deviceStatus, setDeviceStatus] = useState(() => deviceService.getDeviceStatus());
+  const [activeCaregiverQuestion, setActiveCaregiverQuestion] = useState('How are you feeling today?');
 
   useEffect(() => {
     const unsubscribe = deviceService.subscribe((status) => {
@@ -135,9 +137,11 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           ? caregiversRes
           : [];
 
-        const match = list.find(
-          (p) => (p.email || p.userId?.email || '').toLowerCase() === userEmail.toLowerCase()
-        );
+        const currentUserId = session?.user?.id;
+        const match = list.find((p) => {
+          const pUserId = p.userId?._id || p.userId;
+          return (currentUserId && pUserId === currentUserId) || ((p.email || p.userId?.email || '').toLowerCase() === userEmail.toLowerCase());
+        });
 
         if (isMounted) {
           if (match) {
@@ -155,12 +159,14 @@ export const PatientDashboardScreen = ({ onLogout }) => {
 
             setProfileData({
               id: match._id,
-              fullName: match.fullName || session?.name || 'Not Available',
+              fullName: match.fullName || session?.fullName || 'Not Available',
               email: match.email || session?.email || userEmail || 'Not Available',
               gender: match.gender || 'Not Available',
-              age: match.age ? `${match.age} Years` : 'Not Available',
+              age: match.age ? (String(match.age).includes('Years') ? match.age : `${match.age} Years`) : 'Not Available',
               preferredLanguage: match.preferredLanguage || 'Not Available',
               aphasiaType: match.aphasiaType || 'Not Available',
+              mobileNumber: match.phone || match.mobileNumber || 'Not Available',
+              emergencyContact: match.emergencyContact || 'Not Available',
               assignedDoctorName: match.assignedDoctorId?.fullName ? `Dr. ${match.assignedDoctorId.fullName}` : '',
               assignedCaregiverName: linkedCgName,
               role: 'Patient',
@@ -168,7 +174,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           } else {
             // Fallback to active session information if backend record is pending
             setProfileData({
-              fullName: session?.name || (userEmail ? userEmail.split('@')[0] : 'Not Available'),
+              fullName: session?.fullName || (userEmail ? userEmail.split('@')[0] : 'Not Available'),
               email: userEmail || 'Not Available',
               gender: 'Not Available',
               age: 'Not Available',
@@ -931,7 +937,18 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           )}
 
 
-          {/* 3. TWO LARGE CATEGORY SELECTION CONTROLS: BASIC & PEOPLE */}
+          {/* 3. DYNAMIC CONTEXT-AWARE COMMUNICATION MODULE (PHASE C) */}
+          <DynamicCommunicationModule
+            patientId={profileData?.id || profileData?._id}
+            currentQuestion={activeCaregiverQuestion}
+            initialLanguage={language || 'en'}
+            onSelectOption={(result) => {
+              console.log('[PatientDashboard] Dynamic intent selected:', result);
+              setActiveOutputPhrase(result.responseText);
+            }}
+          />
+
+          {/* 4. TWO LARGE CATEGORY SELECTION CONTROLS: BASIC & PEOPLE */}
           <section style={{ width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.65rem' }}>
               <Sparkles size={16} color="var(--color-blue-primary)" />

@@ -21,7 +21,7 @@ const communicationHistorySchema = new mongoose.Schema(
       required: [true, 'Attempt type is required'],
       trim: true,
       enum: {
-        values: ['Silent', 'Whispered', 'Weak', 'Unclear'],
+        values: ['Silent', 'Whispered', 'Weak', 'Unclear', 'ContextSelect', 'EMGInference'],
         message: '{VALUE} is not a valid speech attempt type'
       }
     },
@@ -35,6 +35,21 @@ const communicationHistorySchema = new mongoose.Schema(
       required: [true, 'Confidence score is required'],
       min: [0, 'Confidence score cannot be less than 0'],
       max: [1.0, 'Confidence score cannot exceed 1.0']
+    },
+    semanticIntent: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    language: {
+      type: String,
+      enum: ['en', 'kn', 'hi'],
+      default: 'en'
+    },
+    caregiverQuestion: {
+      type: String,
+      trim: true,
+      default: ''
     }
   },
   {
