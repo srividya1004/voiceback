@@ -27,3 +27,10 @@ emg-ai/models/checkpoints/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local database snapshots
+backend/backups/
+
+# Firmware development backups
+firmware/code_bkup/
+firmware/test_assets/
