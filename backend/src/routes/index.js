@@ -16,6 +16,7 @@ const therapyProgressRoutes = require('./therapyProgressRoutes');
 const communicationHistoryRoutes = require('./communicationHistoryRoutes');
 const appointmentRoutes = require('./appointmentRoutes');
 const emergencySOSRoutes = require('./emergencySOSRoutes');
+const contextRoutes = require('./contextRoutes');
 
 // Mount entity routes
 router.use('/patients', patientRoutes);
@@ -28,5 +29,6 @@ router.use('/therapy-progress', therapyProgressRoutes);
 router.use('/communication-history', communicationHistoryRoutes);
 router.use('/appointments', appointmentRoutes);
 router.use('/emergency-sos', emergencySOSRoutes);
+router.use('/context', contextRoutes);
 
 module.exports = router;

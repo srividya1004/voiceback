@@ -4,6 +4,7 @@ import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
+import voiceService from '../services/voiceService';
 import avatarImg from '../assets/healthcare_avatar.png';
 
 export const PatientIntroScreen = ({ onComplete, noticeMessage }) => {
@@ -16,62 +17,19 @@ export const PatientIntroScreen = ({ onComplete, noticeMessage }) => {
     const welcomeText = t('welcomeMessage');
     if (!welcomeText) return;
 
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(welcomeText);
-      
-      let targetLocale = 'en-IN';
-      if (language === 'hindi') {
-        targetLocale = 'hi-IN';
-      } else if (language === 'kannada') {
-        targetLocale = 'kn-IN';
-      } else {
-        targetLocale = 'en-IN';
-      }
-
-      utterance.lang = targetLocale;
-      utterance.pitch = 1.05;
-      utterance.rate = 0.92;
-
-      const assignVoiceAndSpeak = () => {
-        try {
-          const voices = window.speechSynthesis.getVoices();
-          if (voices && voices.length > 0) {
-            const targetPrefix = language === 'hindi' ? 'hi' : language === 'kannada' ? 'kn' : 'en';
-            const matchedVoice = voices.find((v) => v.lang.toLowerCase().includes(targetPrefix));
-            if (matchedVoice) {
-              utterance.voice = matchedVoice;
-            }
-          }
-        } catch (e) {
-          // ignore
-        }
-
-        utterance.onstart = () => setIsSpeaking(true);
-        utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
-
-        setIsSpeaking(true);
-        window.speechSynthesis.speak(utterance);
-      };
-
-      if (window.speechSynthesis.getVoices().length > 0) {
-        assignVoiceAndSpeak();
-      } else {
-        window.speechSynthesis.onvoiceschanged = () => {
-          assignVoiceAndSpeak();
-          window.speechSynthesis.onvoiceschanged = null;
-        };
-        setTimeout(() => {
-          if (!window.speechSynthesis.speaking) {
-            assignVoiceAndSpeak();
-          }
-        }, 200);
-      }
-    }
+    setIsSpeaking(true);
+    voiceService.speakNativeTTS(welcomeText, {
+      language: language === 'hindi' ? 'Hindi' : language === 'kannada' ? 'Kannada' : 'English',
+      rate: 0.95,
+      pitch: 1.05,
+    }).then(() => {
+      setIsSpeaking(false);
+    }).catch(() => {
+      setIsSpeaking(false);
+    });
 
     return () => {
-      if ('speechSynthesis' in window) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
       setIsSpeaking(false);

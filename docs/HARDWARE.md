@@ -29,11 +29,6 @@ The hardware architecture relies on accessible, low-power modules integrated int
 - **Role:** GATT Server (`VoiceBack-Neckband`).
 - **Telemetry Protocol:** JSON format packets notified over Characteristic `beb5483e-36e1-4688-b7f5-ea07361b26a8` at 50Hz interval (20ms).
 
-### Battery & Power Subsystem
-- **Battery:** 3.7V 800mAh Rechargeable Lithium-Polymer (Li-Po) Single Cell.
-- **Power Management IC (PMIC):** TP4056 Micro-USB / USB-C Lithium Battery Charger Module with protection circuit.
-- **Power Switch:** SPST mechanical toggle switch breaking `OUT+` rail to ESP32 `VIN` / `5V`.
-
 ### Speaker & Audio Subsystem
 - **Audio Amplifier:** MAX98357A I2S Class-D Mono Audio Amplifier Module (3.2W output into 4Ω).
 - **Gain Setting:** Wired to GND (12dB gain) or 3.3V (6dB gain).
@@ -46,14 +41,14 @@ The hardware architecture relies on accessible, low-power modules integrated int
 ```mermaid
 graph TD
     subgraph Sensors & Conditioning
-        E1[sEMG Electrodes] --> E2[AD620 Instrumentation Amp]
-        E2 -- VOUT (Analog) --> MCU[ESP32 Dev Board GPIO34]
+        E1[sEMG Electrodes] --> E2[BioAmp EXG Pill]
+        E2 -- OUT (Analog) --> MCU[ESP32 Dev Board GPIO34]
     end
 
     subgraph Audio Playback
-        MCU -- BCLK (GPIO4) --> AMP[MAX98357A I2S Amp]
-        MCU -- LRC/WS (GPIO5) --> AMP
-        MCU -- DIN/DOUT (GPIO6) --> AMP
+        MCU -- BCLK (GPIO26) --> AMP[MAX98357A I2S Amp]
+        MCU -- LRC/WS (GPIO25) --> AMP
+        MCU -- DIN/DOUT (GPIO22) --> AMP
         AMP --> SPK[4 Ohm 3W Speaker]
     end
 
@@ -68,7 +63,7 @@ graph TD
 
 | Hardware Module | Module Pin Name | ESP32 GPIO Pin | Connection Type & Function |
 | :--- | :--- | :--- | :--- |
-| **AD620 EMG Sensor** | `VOUT` | `GPIO34` | Analog input (ADC1_CH6 - Input only pin) |
+| **BioAmp EXG Pill** | `OUT` | `GPIO34` | Analog input (ADC1_CH6 - Input only pin) |
 | | `VCC` | `3.3V` / `5V` | System positive power supply rail |
 | | `GND` | `GND` | Common system ground rail |
 | **MAX98357A I2S Amp** | `BCLK` | `GPIO4` | I2S Bit Clock output |

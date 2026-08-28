@@ -212,9 +212,39 @@ const transcribeSpeech = async ({ audioFilePath }) => {
   }
 };
 
+const ELEVENLABS_PREMADE_VOICES = {
+  male: {
+    child: 'IKne3meq5aSn9XLyUdCD',
+    young: 'pNInz6obpgDQGcFmaJgB',
+    adult: 'N2lLrqByC0P4MmqE2WXM',
+    senior: 'JBFqnCBsd6RMkjVDRZzb',
+  },
+  female: {
+    child: '21m00Tcm4TlvDq8ikWAM',
+    young: 'EXAVITQu4vr4xnSDxMaL',
+    adult: 'XB0fDUnXU5powFXDhCwa',
+    senior: 'cgSgspJ2msm6clMCkdW9',
+  }
+};
+
+/**
+ * Resolve target voice ID based on patient profile (IVC custom voice -> age/gender matching standard pool -> default)
+ */
+const resolveProfileVoiceId = ({ customVoiceId, gender = 'female', ageGroup = 'adult' }) => {
+  if (customVoiceId && typeof customVoiceId === 'string' && customVoiceId.trim()) {
+    return customVoiceId.trim();
+  }
+  const normGender = (gender || 'female').toLowerCase().includes('male') && !gender.toLowerCase().includes('female') ? 'male' : 'female';
+  const normAge = (ageGroup || 'adult').toLowerCase();
+  const pool = ELEVENLABS_PREMADE_VOICES[normGender] || ELEVENLABS_PREMADE_VOICES.female;
+  return pool[normAge] || pool.adult || 'EXAVITQu4vr4xnSDxMaL';
+};
+
 module.exports = {
   createInstantVoiceClone,
   generateSpeech,
   transcribeSpeech,
+  resolveProfileVoiceId,
+  ELEVENLABS_PREMADE_VOICES,
 };
 

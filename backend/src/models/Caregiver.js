@@ -48,6 +48,9 @@ const caregiverSchema = new mongoose.Schema(
   }
 );
 
+caregiverSchema.index({ email: 1 }, { unique: true, sparse: true });
+caregiverSchema.index({ userId: 1 }, { unique: true, sparse: true });
+
 const Caregiver = mongoose.model('Caregiver', caregiverSchema);
 
 module.exports = Caregiver;

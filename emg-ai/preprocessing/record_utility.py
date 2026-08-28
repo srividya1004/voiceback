@@ -62,6 +62,60 @@ def extract_112_features(raw_emg, sampling_rate=1000, frame_len_ms=27, frame_ste
     return features_out
 
 
+def extract_1channel_features(raw_emg_1ch, sampling_rate=500, frame_len_ms=50, frame_step_ms=20):
+    """
+    Extracts 14-dimensional sEMG feature frames from 1-channel raw BioAmp EXG Pill signal array.
+    - 1 channel (single-ended throat sEMG from ESP32 GPIO34)
+    - 5 Time-Domain features (MAV, ZC, SSC, WL, RMS)
+    - 9 STFT frequency magnitude bins (16-pt Real FFT)
+    Total per channel = 14 features -> 1 * 14 = 14 features per temporal frame.
+    Input raw_emg_1ch: (T, 1) or (T,) NumPy array or Python list.
+    Returns: (num_frames, 14) float32 NumPy array.
+    """
+    if not isinstance(raw_emg_1ch, np.ndarray):
+        raw_emg_1ch = np.array(raw_emg_1ch, dtype=np.float32)
+
+    if len(raw_emg_1ch.shape) == 1:
+        raw_emg_1ch = raw_emg_1ch.reshape(-1, 1)
+    elif len(raw_emg_1ch.shape) != 2 or raw_emg_1ch.shape[1] != 1:
+        raise ValueError(f"Expected 1-channel EMG signal (T, 1) or (T,), got shape {raw_emg_1ch.shape}")
+
+    T = raw_emg_1ch.shape[0]
+    frame_len = int(sampling_rate * frame_len_ms / 1000)   # 25 samples @ 500 Hz
+    frame_step = int(sampling_rate * frame_step_ms / 1000) # 10 samples @ 500 Hz
+
+    if T < frame_len:
+        num_frames = 1
+    else:
+        num_frames = (T - frame_len) // frame_step + 1
+
+    features_out = np.zeros((num_frames, 14), dtype=np.float32)
+
+    for i in range(num_frames):
+        start = i * frame_step
+        end = start + frame_len
+        sig = raw_emg_1ch[start:end, 0]
+
+        if len(sig) < frame_len:
+            pad_len = frame_len - len(sig)
+            sig = np.pad(sig, (0, pad_len), mode='edge')
+
+        # 5 Time Domain features
+        mav = np.mean(np.abs(sig))
+        zc = np.sum(np.diff(np.sign(sig) != 0))
+        ssc = np.sum(np.diff(np.sign(np.diff(sig))) != 0)
+        wl = np.sum(np.abs(np.diff(sig)))
+        rms = np.sqrt(np.mean(sig ** 2))
+
+        # 9 STFT frequency domain magnitude bins (16-pt FFT)
+        stft_mags = np.abs(np.fft.rfft(sig, n=16))
+
+        ch_feats = [mav, zc, ssc, wl, rms] + stft_mags.tolist()
+        features_out[i, :] = ch_feats
+
+    return features_out
+
+
 def save_real_emg_sample(
     participant_id,
     phrase,

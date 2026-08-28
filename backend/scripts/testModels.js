@@ -3,6 +3,7 @@
  * against MongoDB Atlas.
  */
 
+const mongoose = require('mongoose');
 const connectDB = require('../src/config/database');
 const {
   UserLogin,
@@ -18,8 +19,16 @@ const {
 
 const runTest = async () => {
   try {
-    console.log('🔄 Connecting to MongoDB Atlas...');
-    await connectDB();
+    console.log('🔄 Connecting to MongoDB...');
+    try {
+      await connectDB();
+    } catch (dbErr) {
+      console.warn('⚠️ Atlas connection unavailable (IP Whitelist). Starting local MongoMemoryServer for tests...');
+      const { MongoMemoryServer } = require('mongodb-memory-server');
+      const mongod = await MongoMemoryServer.create();
+      await mongoose.connect(mongod.getUri());
+      console.log('✅ Connected to local MongoMemoryServer!');
+    }
 
     console.log('\n--- 1. Testing UserLogin Model ---');
     const testUser = await UserLogin.create({

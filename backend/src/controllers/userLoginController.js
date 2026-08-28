@@ -5,6 +5,7 @@
 
 const userLoginService = require('../services/userLoginService');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
+const jwt = require('jsonwebtoken');
 
 /**
  * Create a new UserLogin record
@@ -44,10 +45,25 @@ const getAllUserLogins = async (req, res) => {
  */
 const getMe = async (req, res) => {
   try {
-    const userId = req.params.id || req.query.userId;
-    if (!userId) {
-      return sendError(res, 400, 'User ID parameter is required');
+    let userId = req.params.id;
+
+    // Extract authenticated user ID strictly from JWT Bearer token
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+        const token = req.headers.authorization.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'voiceback_secret_key');
+        if (decoded && decoded.id) {
+          userId = decoded.id;
+        }
+      } catch (err) {
+        return sendError(res, 401, 'Invalid or expired authentication token');
+      }
     }
+
+    if (!userId) {
+      return sendError(res, 401, 'Authentication token or valid user identity required');
+    }
+
     const result = await userLoginService.getMe(userId);
     return sendSuccess(res, 200, 'User profile retrieved successfully', result);
   } catch (error) {

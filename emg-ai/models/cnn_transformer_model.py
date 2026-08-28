@@ -39,9 +39,10 @@ if HAS_TORCH:
         """
         Sinusoidal Positional Encoding to inject sequence order info into Transformer representations.
         """
-        def __init__(self, d_model=128, max_len=2000, dropout=0.1):
+        def __init__(self, d_model=128, max_len=5000, dropout=0.1):
             super(PositionalEncoding, self).__init__()
             self.dropout = nn.Dropout(p=dropout)
+            self.d_model = d_model
 
             pe = torch.zeros(max_len, d_model)
             position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -58,6 +59,14 @@ if HAS_TORCH:
             x: Tensor of shape (B, T, d_model)
             """
             T = x.size(1)
+            if T > self.pe.size(1):
+                max_len = max(T, self.pe.size(1) * 2)
+                pe = torch.zeros(max_len, self.d_model, device=x.device)
+                position = torch.arange(0, max_len, dtype=torch.float, device=x.device).unsqueeze(1)
+                div_term = torch.exp(torch.arange(0, self.d_model, 2, device=x.device).float() * (-math.log(10000.0) / self.d_model))
+                pe[:, 0::2] = torch.sin(position * div_term)
+                pe[:, 1::2] = torch.cos(position * div_term)
+                self.pe = pe.unsqueeze(0)
             x = x + self.pe[:, :T, :]
             return self.dropout(x)
 

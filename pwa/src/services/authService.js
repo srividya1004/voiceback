@@ -102,13 +102,18 @@ export const authService = {
       ];
       const selectedAphasia = validAphasiaTypes.includes(patientData.aphasiaType)
         ? patientData.aphasiaType
-        : "Broca's";
+        : (patientData.aphasiaType || null);
 
       const profRes = await patientService.createPatientProfile({
         userId: userLogin._id,
         fullName,
-        age: Number(patientData.age) || 45,
+        age: patientData.age ? Number(patientData.age) : null,
         aphasiaType: selectedAphasia,
+        gender: patientData.gender || null,
+        preferredLanguage: patientData.preferredLanguage || null,
+        phone: patientData.mobileNumber || patientData.phone || null,
+        email: normalizedEmail,
+        emergencyContact: patientData.emergencyContact || null
       });
 
       const profileObj = profRes.data || profRes;
@@ -119,20 +124,8 @@ export const authService = {
 
       return { success: true, user: { email: normalizedEmail, role: 'patient', fullName, profile: profileObj } };
     } catch (apiError) {
-      console.warn('Backend API registration failed, falling back to local storage:', apiError.message);
-      const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.PATIENT_ACCOUNT) || '[]');
-      const newRecord = {
-        fullName,
-        email: normalizedEmail,
-        password: patientData.password || '',
-        role: 'patient',
-      };
-      const updated = [...existing.filter((u) => (u.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
-      localStorage.setItem(STORAGE_KEYS.PATIENT_ACCOUNT, JSON.stringify(updated));
-      localStorage.setItem('voiceback_patient_user', JSON.stringify(newRecord));
-      authService.setLastRegisteredEmail('patient', normalizedEmail);
-      authService.setPatientRegistered();
-      return { success: true, user: newRecord };
+      console.warn('Backend API registration error:', apiError.message);
+      return { success: false, error: apiError.message || 'Registration failed. If account exists, please log in.' };
     }
   },
 
@@ -152,11 +145,11 @@ export const authService = {
       const docRes = await doctorService.createDoctorProfile({
         userId: userLogin._id,
         fullName,
-        specialization: doctorData.specialization || 'Neurologist',
-        hospitalAffiliation: doctorData.hospital || doctorData.hospitalName || 'AIIMS Clinical Rehabilitation Center',
-        licenseNumber: doctorData.licenseNumber || `LIC-${Math.floor(1000 + Math.random() * 9000)}`,
+        specialization: doctorData.specialization || null,
+        hospitalAffiliation: doctorData.hospital || doctorData.hospitalName || null,
+        licenseNumber: doctorData.licenseNumber || null,
         email: normalizedEmail,
-        phone: doctorData.mobileNumber || '',
+        phone: doctorData.mobileNumber || null,
       });
 
       const docObj = docRes.data || docRes;
@@ -165,19 +158,8 @@ export const authService = {
       authService.setLastRegisteredEmail('doctor', normalizedEmail);
       return { success: true, user: { email: normalizedEmail, role: 'doctor', fullName, profile: docObj } };
     } catch (apiError) {
-      console.warn('Backend API doctor registration failed, falling back to local storage:', apiError.message);
-      const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.DOCTOR_ACCOUNT) || '[]');
-      const newRecord = {
-        fullName,
-        email: normalizedEmail,
-        password: doctorData.password || '',
-        role: 'doctor',
-      };
-      const updated = [...existing.filter((d) => (d.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
-      localStorage.setItem(STORAGE_KEYS.DOCTOR_ACCOUNT, JSON.stringify(updated));
-      localStorage.setItem('voiceback_doctor_user', JSON.stringify(newRecord));
-      authService.setLastRegisteredEmail('doctor', normalizedEmail);
-      return { success: true, user: newRecord };
+      console.warn('Backend API doctor registration error:', apiError.message);
+      return { success: false, error: apiError.message || 'Doctor registration failed. If account exists, please log in.' };
     }
   },
 
@@ -197,8 +179,8 @@ export const authService = {
       const cgRes = await caregiverService.createCaregiverProfile({
         userId: userLogin._id,
         fullName,
-        phone: caregiverData.mobileNumber || '9876543210',
-        relationshipToPatient: caregiverData.relationship || 'Caregiver',
+        phone: caregiverData.mobileNumber || caregiverData.phone || null,
+        relationshipToPatient: caregiverData.relationship || caregiverData.relationshipToPatient || null,
         email: normalizedEmail,
       });
 
@@ -208,19 +190,8 @@ export const authService = {
       authService.setLastRegisteredEmail('caregiver', normalizedEmail);
       return { success: true, user: { email: normalizedEmail, role: 'caregiver', fullName, profile: cgObj } };
     } catch (apiError) {
-      console.warn('Backend API caregiver registration failed, falling back to local storage:', apiError.message);
-      const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.CAREGIVER_ACCOUNT) || '[]');
-      const newRecord = {
-        fullName,
-        email: normalizedEmail,
-        password: caregiverData.password || '',
-        role: 'caregiver',
-      };
-      const updated = [...existing.filter((c) => (c.email || '').trim().toLowerCase() !== normalizedEmail), newRecord];
-      localStorage.setItem(STORAGE_KEYS.CAREGIVER_ACCOUNT, JSON.stringify(updated));
-      localStorage.setItem('voiceback_caregiver_user', JSON.stringify(newRecord));
-      authService.setLastRegisteredEmail('caregiver', normalizedEmail);
-      return { success: true, user: newRecord };
+      console.warn('Backend API caregiver registration error:', apiError.message);
+      return { success: false, error: apiError.message || 'Caregiver registration failed. If account exists, please log in.' };
     }
   },
 
@@ -244,7 +215,8 @@ export const authService = {
       const { token, user } = response.data.data;
       const backendRole = (user.role || targetRole).toLowerCase();
       const profile = user.profile || null;
-      const userFullName = user.fullName || profile?.fullName || normalizedEmail.split('@')[0];
+      const profileMissing = Boolean(user.profileMissing || !profile);
+      const userFullName = user.fullName || profile?.fullName || '';
 
       // Store auth session object with real full name and profile
       const authSession = {
@@ -252,6 +224,7 @@ export const authService = {
         role: backendRole,
         email: user.email,
         fullName: userFullName,
+        profileMissing,
         isAuthenticated: true,
         user: {
           id: user.id || user._id,
@@ -259,6 +232,7 @@ export const authService = {
           role: backendRole,
           fullName: userFullName,
           profile: profile,
+          profileMissing,
         },
       };
 
@@ -369,6 +343,34 @@ export const authService = {
   getCurrentUser: () => {
     const session = authService.getActiveSession();
     return session ? session.user : null;
+  },
+
+  updateActiveSessionProfile: (updatedProfile) => {
+    try {
+      const rawSession = localStorage.getItem(STORAGE_KEYS.ACTIVE_SESSION);
+      if (!rawSession) return;
+      const session = JSON.parse(rawSession);
+      if (!session) return;
+      const fullName = updatedProfile.fullName || session.fullName;
+      session.fullName = fullName;
+      if (session.user) {
+        session.user.fullName = fullName;
+        session.user.profile = { ...(session.user.profile || {}), ...updatedProfile };
+      }
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, JSON.stringify(session));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_OBJECT, JSON.stringify(session.user));
+      localStorage.setItem('voiceback_current_user', JSON.stringify(session.user));
+      const role = (session.role || '').toLowerCase();
+      if (role === 'patient') {
+        localStorage.setItem('voiceback_patient_user', JSON.stringify(updatedProfile));
+      } else if (role === 'doctor') {
+        localStorage.setItem('voiceback_doctor_user', JSON.stringify(updatedProfile));
+      } else if (role === 'caregiver') {
+        localStorage.setItem('voiceback_caregiver_user', JSON.stringify(updatedProfile));
+      }
+    } catch (e) {
+      // ignore
+    }
   },
 
   // Logout & Clear Session

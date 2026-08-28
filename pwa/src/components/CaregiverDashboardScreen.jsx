@@ -21,16 +21,22 @@ import {
   CheckCircle2,
   AlertCircle,
   ShieldCheck,
-  Edit3
+  Edit3,
+  MessageSquare,
+  Send,
+  Sparkles
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
+import { SpeechInputTrigger } from './SpeechInputTrigger';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 import appointmentService from '../services/appointmentService';
 import patientService from '../services/patientService';
 import doctorService from '../services/doctorService';
 import caregiverService from '../services/caregiverService';
+import contextService from '../services/contextService';
+import voiceService from '../services/voiceService';
 import apiClient from '../services/apiClient';
 
 export const CaregiverDashboardScreen = ({ onLogout }) => {
@@ -38,6 +44,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
+  const [activeVoiceProvider, setActiveVoiceProvider] = useState('');
 
   // Appointment Booking & Relationship State
   const [appointmentsList, setAppointmentsList] = useState([]);
@@ -53,6 +60,57 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
   const [reasonForAppointment, setReasonForAppointment] = useState('');
   const [bookingStatusMsg, setBookingStatusMsg] = useState(null);
   const [submittingBooking, setSubmittingBooking] = useState(false);
+
+  // Dynamic Context Question Generator State (Phase C)
+  const [caregiverQuestionInput, setCaregiverQuestionInput] = useState('');
+  const [questionLanguage, setQuestionLanguage] = useState('en');
+  const [generatedOptions, setGeneratedOptions] = useState([]);
+  const [generatingOptionsLoading, setGeneratingOptionsLoading] = useState(false);
+  const [questionStatusMsg, setQuestionStatusMsg] = useState(null);
+
+  const handleAskQuestionSubmit = async (e) => {
+    e.preventDefault();
+    if (!caregiverQuestionInput.trim()) return;
+    setGeneratingOptionsLoading(true);
+    setQuestionStatusMsg(null);
+    try {
+      const data = await contextService.generateOptions({
+        caregiverQuestion: caregiverQuestionInput.trim(),
+        language: questionLanguage
+      });
+      setGeneratedOptions(data.options || []);
+      setQuestionStatusMsg({
+        type: 'success',
+        text: `Dynamic options generated (${data.options?.length || 0} options)`
+      });
+    } catch (err) {
+      setQuestionStatusMsg({ type: 'error', text: 'Failed to generate options.' });
+    } finally {
+      setGeneratingOptionsLoading(false);
+    }
+  };
+
+  const handleCaregiverSpeechTranscript = async (transcriptText) => {
+    if (!transcriptText || !transcriptText.trim()) return;
+    setCaregiverQuestionInput(transcriptText.trim());
+    setGeneratingOptionsLoading(true);
+    setQuestionStatusMsg(null);
+    try {
+      const data = await contextService.generateOptions({
+        caregiverQuestion: transcriptText.trim(),
+        language: questionLanguage
+      });
+      setGeneratedOptions(data.options || []);
+      setQuestionStatusMsg({
+        type: 'success',
+        text: `Live speech recognized: "${transcriptText.trim()}" -> Generated ${data.options?.length || 0} options`
+      });
+    } catch (err) {
+      setQuestionStatusMsg({ type: 'error', text: 'Failed to generate options from live speech.' });
+    } finally {
+      setGeneratingOptionsLoading(false);
+    }
+  };
 
   // Link Patient Modal State
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
@@ -86,7 +144,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
   const [caregiverProfile, setCaregiverProfile] = useState({
     id: sessionUser?.profile?._id || storedCg?._id || '',
     fullName: initialCaregiverName,
-    relationship: sessionUser?.profile?.relationshipToPatient || storedCg?.relationshipToPatient || storedCg?.relationship || 'Caregiver',
+    relationship: sessionUser?.profile?.relationshipToPatient || storedCg?.relationshipToPatient || storedCg?.relationship || '',
     email: sessionUser?.email || storedCg?.email || '',
     mobileNumber: sessionUser?.profile?.phone || storedCg?.phone || storedCg?.mobileNumber || '',
     assignedPatients: sessionUser?.profile?.assignedPatients || storedCg?.assignedPatients || []
@@ -104,16 +162,21 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
       const list = Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
       const currentEmail = (session?.email || '').trim().toLowerCase();
       const currentUserId = sessionUser?.id;
-      const match = list.find((c) => {
+      let match = list.find((c) => {
         const cEmail = (c.email || '').trim().toLowerCase();
         const cUserId = c.userId?._id || c.userId;
         return (currentEmail && cEmail === currentEmail) || (currentUserId && cUserId === currentUserId);
       });
+
+      if (!match && sessionUser?.profile?._id) {
+        match = sessionUser.profile;
+      }
+
       if (match) {
         setCaregiverProfile({
           id: match._id,
-          fullName: match.fullName,
-          relationship: match.relationshipToPatient || 'Caregiver',
+          fullName: match.fullName || initialCaregiverName,
+          relationship: match.relationshipToPatient || '',
           email: match.email || currentEmail,
           mobileNumber: match.phone || '',
           assignedPatients: match.assignedPatients || []
@@ -121,7 +184,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
         setEditProfileForm({
           fullName: match.fullName || '',
           phone: match.phone || '',
-          relationshipToPatient: match.relationshipToPatient || 'Caregiver'
+          relationshipToPatient: match.relationshipToPatient || ''
         });
       }
     } catch (err) {
@@ -222,7 +285,11 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
     setSubmittingProfile(true);
     try {
       if (!caregiverProfile.id) throw new Error('Caregiver ID not found.');
-      await caregiverService.update(caregiverProfile.id, editProfileForm);
+      const res = await caregiverService.update(caregiverProfile.id, editProfileForm);
+      const updatedCg = res?.data || res;
+      if (updatedCg) {
+        authService.updateActiveSessionProfile(updatedCg);
+      }
       setProfileStatusMsg({ type: 'success', text: 'Caregiver profile updated successfully!' });
       await loadCaregiverIdentity();
       setTimeout(() => setIsEditProfileOpen(false), 1500);
@@ -714,6 +781,130 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
                       <span className="device-name-badge connected" style={{ fontSize: '0.7rem' }}>Linked</span>
                     </div>
                   ))}
+                </div>
+              )}
+            </section>
+
+            {/* DYNAMIC CONTEXT-AWARE COMMUNICATION (PHASE C) */}
+            <section className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <MessageSquare size={20} color="var(--color-orange-primary)" />
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                  Ask Patient Arbitrary Question
+                </h2>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', margin: 0 }}>
+                Type any conversational question. The LLM Context Engine dynamically generates short patient response options attached to semantic intents.
+              </p>
+
+              {/* LIVE CAREGIVER SPEECH INPUT TRIGGER */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 0.85rem', borderRadius: '10px', background: 'rgba(234, 88, 12, 0.05)', border: '1px solid rgba(234, 88, 12, 0.2)' }}>
+                <SpeechInputTrigger
+                  onTranscriptReceived={handleCaregiverSpeechTranscript}
+                  buttonLabel="Speak Question"
+                  style={{ background: 'var(--color-orange-primary)' }}
+                />
+                <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-title)', fontWeight: 600 }}>
+                  Speak question naturally (Live STT &rarr; Context Engine)
+                </span>
+              </div>
+
+              <form onSubmit={handleAskQuestionSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Did you eat lunch? or How are you feeling today?"
+                    value={caregiverQuestionInput}
+                    onChange={(e) => setCaregiverQuestionInput(e.target.value)}
+                    required
+                    style={{ flex: 1 }}
+                  />
+                  <select
+                    className="form-input select-input"
+                    value={questionLanguage}
+                    onChange={(e) => setQuestionLanguage(e.target.value)}
+                    style={{ width: '110px' }}
+                  >
+                    <option value="en">English</option>
+                    <option value="kn">ಕನ್ನಡ</option>
+                    <option value="hi">हिंदी</option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-primary-auth"
+                  disabled={generatingOptionsLoading}
+                  style={{ background: 'var(--color-orange-primary)', width: '100%' }}
+                >
+                  {generatingOptionsLoading ? 'Generating Options...' : 'Generate Dynamic Patient Options'}
+                </button>
+              </form>
+
+              {questionStatusMsg && (
+                <div
+                  style={{
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: '10px',
+                    fontSize: '0.825rem',
+                    fontWeight: 600,
+                    background: questionStatusMsg.type === 'success' ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)',
+                    color: questionStatusMsg.type === 'success' ? 'var(--color-green-primary)' : '#DC2626'
+                  }}
+                >
+                  {questionStatusMsg.text}
+                </div>
+              )}
+
+              {/* GENERATED OPTIONS PREVIEW */}
+              {generatedOptions.length > 0 && (
+                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-brand-title)' }}>
+                      Generated Options Preview (Click to Listen in Patient's Voice):
+                    </span>
+                    {activeVoiceProvider && (
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '6px', background: 'rgba(234,88,12,0.12)', color: 'var(--color-orange-primary)', fontWeight: 700 }}>
+                        {activeVoiceProvider}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {generatedOptions.map((opt) => (
+                      <div
+                        key={opt.id}
+                        onClick={async () => {
+                          const langMap = { en: 'English', kn: 'Kannada', hi: 'Hindi' };
+                          const speechResult = await voiceService.playSynthesizedAudio({
+                            patientId: 'demo_patient_id',
+                            text: opt.text,
+                            language: langMap[questionLanguage] || 'English',
+                            emotion: 'neutral'
+                          });
+                          if (speechResult?.provider) {
+                            setActiveVoiceProvider(speechResult.provider);
+                          }
+                        }}
+                        style={{
+                          padding: '0.6rem 0.85rem',
+                          borderRadius: '8px',
+                          background: 'rgba(0,0,0,0.03)',
+                          border: '1px solid var(--border-color)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>{opt.text}</span>
+                        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--color-orange-primary)', fontWeight: 700 }}>
+                          Intent: {opt.intent}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </section>

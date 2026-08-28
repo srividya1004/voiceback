@@ -55,9 +55,9 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
 
   const [doctorProfile, setDoctorProfile] = useState({
     fullName: initialDoctorName,
-    doctorId: sessionUser?.profile?._id || storedDoc?._id || sessionUser?.id || '',
-    specialization: sessionUser?.profile?.specialization || storedDoc?.specialization || 'Speech-Language Pathologist & Neurologist',
-    hospital: sessionUser?.profile?.hospitalAffiliation || storedDoc?.hospitalAffiliation || 'Clinical Rehabilitation Center',
+    doctorId: sessionUser?.profile?._id || storedDoc?._id || '',
+    specialization: sessionUser?.profile?.specialization || storedDoc?.specialization || '',
+    hospital: sessionUser?.profile?.hospitalAffiliation || storedDoc?.hospitalAffiliation || '',
     email: sessionUser?.email || storedDoc?.email || '',
     phone: sessionUser?.profile?.phone || storedDoc?.phone || '',
   });
@@ -111,18 +111,22 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
       const currentEmail = (session?.email || '').trim().toLowerCase();
       const currentUserId = sessionUser?.id;
 
-      const matchedDoctor = doctorsList.find((d) => {
+      let matchedDoctor = doctorsList.find((d) => {
         const docEmail = (d.email || '').trim().toLowerCase();
         const docUserId = d.userId?._id || d.userId;
         return (currentEmail && docEmail === currentEmail) || (currentUserId && docUserId === currentUserId);
       });
 
+      if (!matchedDoctor && sessionUser?.profile?._id) {
+        matchedDoctor = sessionUser.profile;
+      }
+
       if (matchedDoctor) {
         setDoctorProfile({
-          fullName: matchedDoctor.fullName,
+          fullName: matchedDoctor.fullName || initialDoctorName,
           doctorId: matchedDoctor._id,
-          specialization: matchedDoctor.specialization || 'Speech-Language Pathologist & Neurologist',
-          hospital: matchedDoctor.hospitalAffiliation || 'Clinical Rehabilitation Center',
+          specialization: matchedDoctor.specialization || '',
+          hospital: matchedDoctor.hospitalAffiliation || '',
           email: matchedDoctor.email || currentEmail,
           phone: matchedDoctor.phone || '',
         });
@@ -200,6 +204,10 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
         throw new Error('Doctor ID not found.');
       }
       const res = await doctorService.update(doctorProfile.doctorId, editProfileForm);
+      const updatedDoc = res?.data || res;
+      if (updatedDoc) {
+        authService.updateActiveSessionProfile(updatedDoc);
+      }
       setProfileStatusMsg({ type: 'success', text: 'Doctor profile updated successfully!' });
       await loadDoctorIdentity();
       setTimeout(() => setIsEditProfileOpen(false), 1500);

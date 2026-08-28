@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getTranslation } from '../i18n/translations';
+import voiceService from '../services/voiceService';
 
 const SETTINGS_STORAGE_KEY = 'voiceback_settings';
 
@@ -107,36 +108,9 @@ export const SettingsProvider = ({ children }) => {
     }
 
     const targetLang = overrideLang || language;
-
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-
-      let locale = 'en-IN';
-      if (targetLang === 'hindi') {
-        locale = 'hi-IN';
-      } else if (targetLang === 'kannada') {
-        locale = 'kn-IN';
-      } else {
-        locale = 'en-IN';
-      }
-
-      try {
-        const voices = window.speechSynthesis.getVoices();
-        if (voices && voices.length > 0) {
-          const targetPrefix = targetLang === 'hindi' ? 'hi' : targetLang === 'kannada' ? 'kn' : 'en';
-          const matchedVoice = voices.find((v) => v.lang.toLowerCase().includes(targetPrefix));
-          if (matchedVoice) {
-            utterance.voice = matchedVoice;
-          }
-        }
-      } catch (e) {
-        console.warn('Voice lookup error:', e);
-      }
-
-      utterance.lang = locale;
-      window.speechSynthesis.speak(utterance);
-    }
+    voiceService.speakNativeTTS(text, { language: targetLang }).catch((e) => {
+      console.warn('⚠️ Voice Assistant TTS playback error:', e);
+    });
   };
 
   const setLanguage = (newLang) => {

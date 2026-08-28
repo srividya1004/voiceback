@@ -6,12 +6,12 @@ This module contains the complete **ESP32 C++/Arduino firmware project** for the
 
 | Hardware Module | Module Pin | ESP32 GPIO Pin | Function |
 | :--- | :--- | :--- | :--- |
-| **AD620 EMG Sensor** | `VOUT` (Analog) | `GPIO34` (ADC1_CH6) | High-gain differential neck EMG input |
-| | `VCC` | `3.3V` / `5V` | System power |
+| **BioAmp EXG Pill** | `OUT` (Analog) | `GPIO34` (ADC1_CH6) | High-gain surface neck EMG input |
+| | `VCC` | `3.3V` | System power (3.3V VREG) |
 | | `GND` | `GND` | System ground |
-| **MAX98357A I2S Amp** | `BCLK` | `GPIO4` | Bit Clock |
-| | `LRC` / `WS` | `GPIO5` | Left/Right Word Select Clock |
-| | `DIN` / `DOUT`| `GPIO6` | Serial PCM Audio Data |
+| **MAX98357A I2S Amp** | `BCLK` | `GPIO26` | Bit Clock |
+| | `LRC` / `WS` | `GPIO25` | Left/Right Word Select Clock |
+| | `DIN` / `DOUT`| `GPIO22` | Serial PCM Audio Data |
 | | `GAIN` | `GND` (12dB) / `3.3V` (6dB) | Gain control |
 | | `VIN` | `3.3V` / `5V` | Amp power rail |
 | **TP4056 Charger** | `BAT+` / `BAT-` | Battery Terminal | 3.7V 800mAh Li-Po Cell |
@@ -26,7 +26,7 @@ firmware/
 ├── platformio.ini         # PlatformIO build configuration & library dependencies
 ├── include/
 │   ├── config.h           # Pin definitions, BLE UUIDs, sampling rate, EMA alpha
-│   ├── emg_sensor.h       # AD620 EMG acquisition & EMA filter interface
+│   ├── emg_sensor.h       # BioAmp EXG Pill EMG acquisition & EMA filter interface
 │   ├── ble_service.h      # NimBLE GATT server & EMG telemetry manager
 │   └── audio_driver.h     # MAX98357A I2S DAC audio driver interface
 ├── src/
@@ -61,7 +61,7 @@ firmware/
 1. Open the `firmware/` directory in VS Code with PlatformIO extension installed.
 2. Connect your ESP32 board via USB.
 3. Run `PlatformIO: Build` and `PlatformIO: Upload`.
-4. Open Serial Monitor at **115200 baud** to view real-time AD620 raw telemetry and filter graphs (`>AD620_Raw:...,Filtered:...`).
+4. Open Serial Monitor at **115200 baud** to view real-time BioAmp EXG raw telemetry and filter graphs (`>BioAmp_Raw:...,Filtered:...`).
 
 ### Method 2: Using Arduino IDE
 1. Copy files in `include/` and `src/` into a single sketch folder named `firmware.ino`.

@@ -54,6 +54,9 @@ const doctorSchema = new mongoose.Schema(
   }
 );
 
+doctorSchema.index({ email: 1 }, { unique: true, sparse: true });
+doctorSchema.index({ userId: 1 }, { unique: true, sparse: true });
+
 const Doctor = mongoose.model('Doctor', doctorSchema);
 
 module.exports = Doctor;

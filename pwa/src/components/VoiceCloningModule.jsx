@@ -127,88 +127,21 @@ export const VoiceCloningModule = ({
   }, []);
 
   // Local Demo SpeechSynthesis Fallback (Web Speech API)
-  const speakLocalDemo = (text, emotion) => {
-    if (!('speechSynthesis' in window)) {
-      setErrorMessage('SpeechSynthesis API is not supported by your browser.');
-      setIsSynthesizing(false);
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-
-    // Find best available English browser voice
+  const speakLocalDemo = async (text, emotion) => {
+    setIsSynthesizing(true);
     try {
-      const availableVoices = window.speechSynthesis.getVoices();
-      if (availableVoices && availableVoices.length > 0) {
-        const preferredVoice = availableVoices.find((v) => {
-          const name = v.name.toLowerCase();
-          const lang = v.lang.toLowerCase();
-          return lang.startsWith('en') && (
-            name.includes('natural') ||
-            name.includes('google') ||
-            name.includes('online') ||
-            name.includes('enhanced') ||
-            name.includes('jenny') ||
-            name.includes('david') ||
-            name.includes('zira') ||
-            name.includes('samantha') ||
-            name.includes('alex')
-          );
-        }) || availableVoices.find((v) => v.lang.toLowerCase().startsWith('en')) || availableVoices[0];
-
-        if (preferredVoice) {
-          utterance.voice = preferredVoice;
-          utterance.lang = preferredVoice.lang || 'en-US';
-        } else {
-          utterance.lang = 'en-US';
-        }
+      const result = await voiceService.speakNativeTTS(text, { emotion, language: 'English' });
+      if (result?.success) {
+        setSuccessMessage(`Speech synthesized using ${result.provider}.`);
       } else {
-        utterance.lang = 'en-US';
+        setErrorMessage('Local speech synthesis encountered an issue.');
       }
     } catch (e) {
-      console.warn('Browser voice lookup notice:', e);
-      utterance.lang = 'en-US';
-    }
-
-    // Expressive Delivery modulation via Pitch & Rate controls for Local Demo Mode
-    switch (emotion) {
-      case 'calm':
-        utterance.rate = 0.85;
-        utterance.pitch = 0.9;
-        break;
-      case 'urgent':
-        utterance.rate = 1.2;
-        utterance.pitch = 1.15;
-        break;
-      case 'happy':
-        utterance.rate = 1.05;
-        utterance.pitch = 1.1;
-        break;
-      case 'neutral':
-      default:
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        break;
-    }
-
-    utterance.onstart = () => {
-      setIsSynthesizing(true);
-    };
-
-    utterance.onend = () => {
-      setIsSynthesizing(false);
-      setSuccessMessage('Speech synthesized using Local Demo Voice (Browser SpeechSynthesis).');
-    };
-
-    utterance.onerror = (e) => {
       console.error('Local Speech Synthesis Error:', e);
-      setIsSynthesizing(false);
       setErrorMessage('Local speech synthesis encountered an issue.');
-    };
-
-    window.speechSynthesis.speak(utterance);
+    } finally {
+      setIsSynthesizing(false);
+    }
   };
 
   // Voice Assistant greeting

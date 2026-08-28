@@ -77,6 +77,31 @@ const assignDoctor = async (req, res) => {
 };
 
 /**
+ * Assign a caregiver to a patient
+ * @route PUT /api/patients/:id/assign-caregiver
+ */
+const assignCaregiver = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { caregiverId, email } = req.body;
+    let updated;
+    if (caregiverId) {
+      updated = await patientService.assignCaregiver(id, caregiverId);
+    } else if (email) {
+      updated = await patientService.assignCaregiverByEmail(id, email);
+    } else {
+      return sendError(res, 400, 'Caregiver ID or registered email is required');
+    }
+    return sendSuccess(res, 200, 'Caregiver assigned to patient successfully', updated);
+  } catch (error) {
+    if (error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
+    return sendError(res, 400, error.message);
+  }
+};
+
+/**
  * Update a Patient record by ObjectId
  * @route PUT /api/patients/:id
  */
@@ -121,11 +146,13 @@ module.exports = {
   getAll: getAllPatients,
   getById: getPatientById,
   assignDoctor,
+  assignCaregiver,
   update: updatePatient,
   delete: deletePatient,
   createPatient,
   getAllPatients,
   getPatientById,
+  assignCaregiver,
   updatePatient,
   deletePatient
 };

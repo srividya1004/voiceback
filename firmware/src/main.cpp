@@ -1,75 +1,210 @@
 /**
- * VoiceBack Smart Neckband - Modular Prototype Firmware Main Entry Point
- * 
- * Hardware Architecture:
- * - AD620 Analog EMG Sensor Module (GPIO34 / ADC1_CH6)
- * - ESP32 Development Board (ESP-WROOM-32, built-in BLE 5.0 & Wi-Fi)
- * - MAX98357A I2S Class-D Audio Amplifier (BCLK: GPIO4, LRC: GPIO5, DOUT: GPIO6)
- * - 4 Ohm 3W Speaker
- * - TP4056 USB Charger + 3.7V Li-Po Battery + Power Switch
+ * VoiceBack Smart Neckband - Main Firmware
+ *
+ * Hardware:
+ * - BioAmp EXG Pill EMG -> GPIO34
+ * - ESP32
+ * - MAX98357A I2S Amplifier
+ *   BCLK -> GPIO26
+ *   LRC  -> GPIO25
+ *   DIN  -> GPIO22
+ * - Physical Speaker
  */
 
 #include <Arduino.h>
 #include "config.h"
 #include "emg_sensor.h"
 #include "ble_service.h"
+#include "wifi_ap_service.h"
 #include "audio_driver.h"
 
-// System Module Instances
-EMGSensor emgSensor(AD620_ANALOG_PIN, EMA_ALPHA);
+// ============================================================
+// SYSTEM MODULES
+// ============================================================
+
+EMGSensor emgSensor(BIOAMP_ANALOG_PIN, EMA_ALPHA);
+
 BLEServiceManager bleManager;
+
+WiFiAPServiceManager wifiAPManager;
+
 AudioDriver audioDriver(I2S_NUM_0);
 
-// Loop timing
-unsigned long lastSampleTime = 0;
+// ============================================================
+// TIMING
+// ============================================================
+
+
+
+unsigned long lastAdcSampleMicros = 0;
+unsigned long lastBleNotifyMillis = 0;
+static EMGData latestEMGData;
+
+// ============================================================
+// SETUP
+// ============================================================
 
 void setup() {
-    // 1. Initialize Serial Communications for Debugging
+
+    // --------------------------------------------------------
+    // 1. SERIAL
+    // --------------------------------------------------------
+
     Serial.begin(SERIAL_BAUD_RATE);
-    while (!Serial && millis() < 2000); // Brief wait for USB CDC
-    Serial.println("\n==================================================");
-    Serial.println("   VoiceBack Smart Neckband Prototype Firmware    ");
+
+    delay(10000);
+
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println();
     Serial.println("==================================================");
+    Serial.println("   VoiceBack Smart Neckband Prototype Firmware");
+    Serial.println("==================================================");
+#endif
 
-    // 2. Initialize AD620 EMG Sensor & Calibrate Baseline
-    Serial.println("[Init] Initializing AD620 EMG Sensor on GPIO34...");
+    // --------------------------------------------------------
+    // 2. EMG SENSOR
+    // --------------------------------------------------------
+
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println("[Init] Initializing BioAmp EXG Pill...");
+#endif
+
     emgSensor.begin();
-    emgSensor.calibrateBaseline(50);
 
-    // 3. Initialize BLE Telemetry & GATT Server
-    Serial.println("[Init] Initializing BLE GATT Server...");
+    emgSensor.calibrateBaseline(500);
+
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println("[Init] EMG sensor ready.");
+#endif
+
+    // --------------------------------------------------------
+    // 3. BLE
+    // --------------------------------------------------------
+
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println("[Init] Initializing BLE...");
+#endif
+
     bleManager.begin();
 
-    // 4. Initialize MAX98357A I2S Audio Interface
-    Serial.println("[Init] Initializing MAX98357A I2S Audio Driver...");
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println("[Init] BLE ready.");
+#endif
+
+    // --------------------------------------------------------
+    // 4. WIFI
+    // --------------------------------------------------------
+
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println("[Init] Initializing WiFi Access Point...");
+#endif
+
+    wifiAPManager.begin();
+
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println("[Init] WiFi ready.");
+#endif
+
+    // --------------------------------------------------------
+    // 5. PHYSICAL AUDIO
+    // --------------------------------------------------------
+
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println("[Init] Initializing MAX98357A audio...");
+#endif
+
     if (audioDriver.begin()) {
-        // Play short 440Hz startup chime (300ms) to indicate hardware readiness
-        audioDriver.playTestTone(440, 300);
+        audioDriver.stop();
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+        Serial.println("[Audio] MAX98357A initialized & silent.");
+#endif
+    } else {
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+        Serial.println("[Audio ERROR] MAX98357A initialization FAILED.");
+#endif
     }
 
-    Serial.println("[Init] All subsystems initialized successfully. Entering loop.\n");
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+    Serial.println();
+    Serial.println("[Init] All subsystems initialized. Entering main loop.");
+    Serial.println();
+#endif
 }
 
+
+// ============================================================
+// LOOP
+// ============================================================
+
 void loop() {
+
+    unsigned long currentMicros = micros();
     unsigned long currentMillis = millis();
 
-    // 1. Maintain BLE connection state & handle auto-advertising
-    bleManager.updateConnectionState();
 
-    // 2. Fixed-interval EMG Sampling Loop (50 Hz / 20ms)
-    if (currentMillis - lastSampleTime >= SAMPLE_INTERVAL_MS) {
-        lastSampleTime = currentMillis;
+    // --------------------------------------------------------
+    // BLE CONNECTION STATUS
+    // --------------------------------------------------------
 
-        // Acquire analog reading and apply EMA filter
-        EMGData emg = emgSensor.readData();
+    static bool lastBleState = false;
+    bool currentBleState = bleManager.isConnected();
 
-        // Send JSON data packet over BLE notify characteristic if connected
-        if (bleManager.isConnected()) {
-            bleManager.sendEMGData(emg.rawAnalog, emg.filteredVal, emg.voltageVolts);
+    if (currentBleState != lastBleState) {
+        lastBleState = currentBleState;
+#if (EMG_DEBUG_MODE == DEBUG_NORMAL)
+        Serial.printf(
+            "\n[BLE State Changed] Status: %s\n\n",
+            currentBleState
+                ? "CONNECTED (Streaming Active)"
+                : "DISCONNECTED (Advertising...)"
+        );
+#endif
+    }
+
+
+    // --------------------------------------------------------
+    // HIGH-SPEED EMG ADC SAMPLING - 500 Hz (every 2000 us)
+    // --------------------------------------------------------
+
+    if (currentMicros - lastAdcSampleMicros >= EMG_SAMPLE_INTERVAL_US) {
+        lastAdcSampleMicros = currentMicros;
+
+        // Read high-speed raw ADC & process envelope
+        latestEMGData = emgSensor.readData();
+
+#if (EMG_DEBUG_MODE == DEBUG_RAW_EMG)
+        // Arduino Serial Plotter stream: exactly ONE numeric raw ADC value per line
+        Serial.println(latestEMGData.rawAnalog);
+#elif (EMG_DEBUG_MODE == DEBUG_NORMAL)
+        if (latestEMGData.isSaturated) {
+            static unsigned long lastSatWarn = 0;
+            if (currentMillis - lastSatWarn >= 10000) {
+                lastSatWarn = currentMillis;
+                Serial.println("[EMG WARNING] ADC SATURATION DETECTED (GPIO34 >= 4090)");
+            }
         }
+#endif
+    }
 
-        // Print telemetry output to Serial Monitor for plot debugging
-        Serial.printf(">AD620_Raw:%d,Filtered:%.2f,Voltage:%.3fV,MAV:%.2f\n",
-                      emg.rawAnalog, emg.filteredVal, emg.voltageVolts, emg.mav);
+
+    // --------------------------------------------------------
+    // BLE TELEMETRY TRANSMISSION - 50 Hz (every 20 ms)
+    // --------------------------------------------------------
+
+    if (currentMillis - lastBleNotifyMillis >= BLE_NOTIFY_INTERVAL_MS) {
+        lastBleNotifyMillis = currentMillis;
+
+        // Send latest sampled EMG data over BLE & WiFi
+        bleManager.queueEMGData(
+            latestEMGData.rawAnalog,
+            latestEMGData.filteredVal,
+            latestEMGData.voltageVolts
+        );
+
+        wifiAPManager.queueEMGData(
+            latestEMGData.rawAnalog,
+            latestEMGData.filteredVal,
+            latestEMGData.voltageVolts
+        );
     }
 }

@@ -4,7 +4,7 @@ import axios from 'axios';
  * VoiceBack Centralized Axios HTTP Client
  * Configured with VITE_API_URL, default headers, and JWT Bearer authorization interceptors.
  */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

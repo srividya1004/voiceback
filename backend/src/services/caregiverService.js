@@ -7,9 +7,32 @@ const { Caregiver, Patient, UserLogin } = require('../models');
 const { validateObjectId } = require('../utils/validationHelper');
 
 /**
- * Create a new Caregiver record
+ * Create a new Caregiver record (Find-or-create / Upsert)
  */
 const createCaregiver = async (caregiverData) => {
+  const normalizedEmail = caregiverData.email ? caregiverData.email.trim().toLowerCase() : '';
+
+  const existing = await Caregiver.findOne({
+    $or: [
+      ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+      ...(caregiverData.userId ? [{ userId: caregiverData.userId }] : [])
+    ]
+  });
+
+  if (existing) {
+    if (caregiverData.userId && !existing.userId) existing.userId = caregiverData.userId;
+    if (caregiverData.fullName) existing.fullName = caregiverData.fullName;
+    if (caregiverData.phone) existing.phone = caregiverData.phone;
+    if (caregiverData.relationshipToPatient) existing.relationshipToPatient = caregiverData.relationshipToPatient;
+    if (normalizedEmail) existing.email = normalizedEmail;
+    await existing.save();
+    return existing;
+  }
+
+  if (normalizedEmail) {
+    caregiverData.email = normalizedEmail;
+  }
+
   const caregiver = await Caregiver.create(caregiverData);
   return caregiver;
 };
@@ -80,18 +103,22 @@ const linkPatientByEmail = async (caregiverId, emailInput) => {
     throw new Error('No patient found with this email.');
   }
 
-  if (matches.length > 1) {
-    throw new Error('Multiple accounts found. Cannot link automatically.');
-  }
-
+  // Pick authoritative patient match
   const patient = matches[0];
 
-  // 3. Verify single caregiver assignment
+  // 3. Generic Orphan Check & Reassignment Logic
   if (patient.assignedCaregiverId && patient.assignedCaregiverId.toString() !== caregiverId.toString()) {
-    throw new Error('Patient is already linked to another caregiver.');
+    const existingCaregiver = await Caregiver.findById(patient.assignedCaregiverId);
+    if (existingCaregiver) {
+      // Patient is linked to an active caregiver -> pull patient from previous caregiver's array to allow clean reassignment
+      await Caregiver.findByIdAndUpdate(existingCaregiver._id, {
+        $pull: { assignedPatients: patient._id }
+      });
+    }
+    // If existingCaregiver was null (orphaned reference), we bypass smoothly and allow reassignment!
   }
 
-  // 4. Atomically update relationship on both records
+  // 4. Atomically update relationship bidirectionally on both records
   await Caregiver.findByIdAndUpdate(caregiverId, {
     $addToSet: { assignedPatients: patient._id }
   });
@@ -117,7 +144,12 @@ const updateCaregiver = async (id, updateData) => {
   const caregiver = await Caregiver.findByIdAndUpdate(id, updateData, {
     new: true,
     runValidators: true
-  });
+  })
+    .populate('userId', 'email role')
+    .populate({
+      path: 'assignedPatients',
+      populate: { path: 'assignedDoctorId', select: 'fullName specialization licenseNumber hospitalAffiliation email phone' }
+    });
 
   if (!caregiver) {
     throw new Error(`Caregiver with ID ${id} not found`);
@@ -127,7 +159,7 @@ const updateCaregiver = async (id, updateData) => {
 };
 
 /**
- * Delete a Caregiver record by ObjectId
+ * Delete a Caregiver record by ObjectId with generic cascade cleanup
  */
 const deleteCaregiver = async (id) => {
   validateObjectId(id, 'Caregiver');
@@ -137,6 +169,12 @@ const deleteCaregiver = async (id) => {
   if (!caregiver) {
     throw new Error(`Caregiver with ID ${id} not found`);
   }
+
+  // Generic Cascade Cleanup: Nullify assignedCaregiverId on all linked Patients
+  await Patient.updateMany(
+    { assignedCaregiverId: id },
+    { $set: { assignedCaregiverId: null } }
+  );
 
   return caregiver;
 };

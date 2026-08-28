@@ -43,6 +43,8 @@ import VoiceCloningModule from './VoiceCloningModule';
 import PatientReportsModule from './PatientReportsModule';
 import EmergencySOSModule from './EmergencySOSModule';
 import PatientAppointmentsModule from './PatientAppointmentsModule';
+import DynamicCommunicationModule from './DynamicCommunicationModule';
+import VolumeControlWidget from './VolumeControlWidget';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 import patientService from '../services/patientService';
@@ -90,6 +92,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const [therapyProgress, setTherapyProgress] = useState([]);
   const [voiceProfiles, setVoiceProfiles] = useState([]);
   const [deviceStatus, setDeviceStatus] = useState(() => deviceService.getDeviceStatus());
+  const [activeCaregiverQuestion, setActiveCaregiverQuestion] = useState('How are you feeling today?');
 
   useEffect(() => {
     const unsubscribe = deviceService.subscribe((status) => {
@@ -135,18 +138,28 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           ? caregiversRes
           : [];
 
-        const match = list.find(
-          (p) => (p.email || p.userId?.email || '').toLowerCase() === userEmail.toLowerCase()
-        );
+        const currentUserId = session?.user?.id;
+        const sessionProfile = session?.user?.profile || (() => {
+          try {
+            return JSON.parse(localStorage.getItem('voiceback_patient_user') || 'null');
+          } catch (e) { return null; }
+        })();
+
+        const match = list.find((p) => {
+          const pUserId = p.userId?._id || p.userId;
+          return (currentUserId && String(pUserId) === String(currentUserId)) || ((p.email || p.userId?.email || '').toLowerCase() === userEmail.toLowerCase());
+        });
+
+        const activePatientRecord = match || sessionProfile;
 
         if (isMounted) {
-          if (match) {
-            // Find linked caregiver if match.assignedCaregiverId is missing
-            let linkedCgName = match.assignedCaregiverId?.fullName || '';
-            if (!linkedCgName) {
+          if (activePatientRecord) {
+            // Find linked caregiver if activePatientRecord.assignedCaregiverId is missing
+            let linkedCgName = activePatientRecord.assignedCaregiverId?.fullName || '';
+            if (!linkedCgName && activePatientRecord._id) {
               const matchedCg = cList.find((c) =>
                 Array.isArray(c.assignedPatients) &&
-                c.assignedPatients.some((ap) => (ap._id || ap) === match._id)
+                c.assignedPatients.some((ap) => (ap._id || ap) === activePatientRecord._id)
               );
               if (matchedCg) {
                 linkedCgName = matchedCg.fullName;
@@ -154,25 +167,30 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             }
 
             setProfileData({
-              id: match._id,
-              fullName: match.fullName || session?.name || 'Not Available',
-              email: match.email || session?.email || userEmail || 'Not Available',
-              gender: match.gender || 'Not Available',
-              age: match.age ? `${match.age} Years` : 'Not Available',
-              preferredLanguage: match.preferredLanguage || 'Not Available',
-              aphasiaType: match.aphasiaType || 'Not Available',
-              assignedDoctorName: match.assignedDoctorId?.fullName ? `Dr. ${match.assignedDoctorId.fullName}` : '',
+              id: activePatientRecord._id || activePatientRecord.id,
+              fullName: activePatientRecord.fullName || session?.fullName || userEmail,
+              email: activePatientRecord.email || session?.email || userEmail || '',
+              gender: activePatientRecord.gender || '',
+              age: activePatientRecord.age ? (String(activePatientRecord.age).includes('Years') ? activePatientRecord.age : `${activePatientRecord.age} Years`) : '',
+              preferredLanguage: activePatientRecord.preferredLanguage || '',
+              aphasiaType: activePatientRecord.aphasiaType || '',
+              mobileNumber: activePatientRecord.phone || activePatientRecord.mobileNumber || '',
+              emergencyContact: activePatientRecord.emergencyContact || '',
+              assignedDoctorName: activePatientRecord.assignedDoctorId?.fullName ? `Dr. ${activePatientRecord.assignedDoctorId.fullName}` : '',
               assignedCaregiverName: linkedCgName,
               role: 'Patient',
             });
           } else {
             // Fallback to active session information if backend record is pending
             setProfileData({
-              fullName: session?.name || (userEmail ? userEmail.split('@')[0] : 'Not Available'),
-              email: userEmail || 'Not Available',
-              gender: 'Not Available',
-              age: 'Not Available',
-              preferredLanguage: 'Not Available',
+              fullName: session?.fullName || userEmail,
+              email: userEmail || '',
+              gender: '',
+              age: '',
+              preferredLanguage: '',
+              aphasiaType: '',
+              mobileNumber: '',
+              emergencyContact: '',
               role: 'Patient',
             });
           }
@@ -180,12 +198,16 @@ export const PatientDashboardScreen = ({ onLogout }) => {
       } catch (e) {
         console.warn('Failed to load patient profile from backend:', e.message);
         if (isMounted) {
+          const fallbackProfile = session?.user?.profile || null;
           setProfileData({
-            fullName: session?.name || (userEmail ? userEmail.split('@')[0] : 'Not Available'),
-            email: userEmail || 'Not Available',
-            gender: 'Not Available',
-            age: 'Not Available',
-            preferredLanguage: 'Not Available',
+            fullName: fallbackProfile?.fullName || session?.fullName || userEmail,
+            email: fallbackProfile?.email || userEmail || '',
+            gender: fallbackProfile?.gender || '',
+            age: fallbackProfile?.age ? `${fallbackProfile.age} Years` : '',
+            preferredLanguage: fallbackProfile?.preferredLanguage || '',
+            aphasiaType: fallbackProfile?.aphasiaType || '',
+            mobileNumber: fallbackProfile?.phone || '',
+            emergencyContact: fallbackProfile?.emergencyContact || '',
             role: 'Patient',
           });
         }
@@ -278,37 +300,22 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     const textToSynthesize = phraseKey ? t(phraseKey) : phraseText;
     setActiveOutputPhrase(textToSynthesize);
 
-    // 1. Attempt ElevenLabs Cloud TTS synthesis via backend voiceService
+    setIsSynthesizingVoice(true);
     try {
-      setIsSynthesizingVoice(true);
-      const audioBlob = await voiceService.synthesizeSpeech({
+      const speechResult = await voiceService.playSynthesizedAudio({
         patientId: profileData?.id || '',
         text: textToSynthesize,
         language: language === 'kannada' ? 'Kannada' : language === 'hindi' ? 'Hindi' : 'English',
+        emotion: 'neutral',
       });
-      if (audioBlob && audioBlob.size > 0) {
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        await audio.play();
-        setIsSynthesizingVoice(false);
-
-        try {
-          await communicationService.saveHistory({ recognizedText: textToSynthesize, attemptType: 'Voice' });
-        } catch (e) {}
-        return;
-      }
+      console.log('🔊 [PatientDashboard] Voice output result:', speechResult);
     } catch (e) {
-      console.warn('ElevenLabs Cloud synthesis unavailable, falling back to local TTS:', e.message);
+      console.warn('⚠️ [PatientDashboard] Voice output error:', e.message);
     } finally {
       setIsSynthesizingVoice(false);
     }
 
-    // 2. Fallback to browser Web Speech API (speechSynthesis)
-    if (speak) {
-      speak(textToSynthesize);
-    }
-
-    // 3. Log history
+    // Log history
     try {
       await communicationService.saveHistory({ recognizedText: textToSynthesize, attemptType: 'Voice' });
     } catch (e) {}
@@ -808,14 +815,25 @@ export const PatientDashboardScreen = ({ onLogout }) => {
               </h1>
 
               {/* COMPACT TRUTHFUL DEVICE PILL */}
-              <div className="truthful-device-pill" title="Hardware telemetry status">
-                <span className={`device-dot ${deviceStatus.status === 'Connected' ? 'connected' : ''}`} />
+              <div
+                className="truthful-device-pill"
+                onClick={() => {
+                  if (deviceStatus.status !== 'CONNECTED') {
+                    deviceService.requestAndConnectBluetooth().catch((err) => console.warn(err.message));
+                  }
+                }}
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                title="Click to Connect Bluetooth Neckband"
+              >
+                <span className={`device-dot ${deviceStatus.status === 'CONNECTED' ? 'connected' : ''}`} />
                 <span>
-                  {t('deviceStatus')}: <strong>{deviceStatus.status === 'Connected' ? t('connected') : t('disconnected')}</strong>
+                  Status: <strong style={{ color: deviceStatus.status === 'CONNECTED' ? '#16A34A' : deviceStatus.status === 'CONNECTING' ? '#CA8A04' : '#DC2626' }}>
+                    {deviceStatus.status}
+                  </strong>
                 </span>
                 <span style={{ opacity: 0.5 }}>|</span>
                 <span>
-                  {t('battery')}: <strong>{deviceStatus.status === 'Connected' && deviceStatus.batteryLevel ? deviceStatus.batteryLevel : '—'}</strong>
+                  {deviceStatus.status === 'CONNECTED' ? 'VoiceBack-Neckband Connected' : 'Tap to Connect BLE'}
                 </span>
               </div>
             </div>
@@ -930,8 +948,22 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             </div>
           )}
 
+          {/* SPEAKER VOLUME CONTROL WIDGET */}
+          <VolumeControlWidget style={{ marginTop: '0.5rem' }} />
 
-          {/* 3. TWO LARGE CATEGORY SELECTION CONTROLS: BASIC & PEOPLE */}
+
+          {/* 3. DYNAMIC CONTEXT-AWARE COMMUNICATION MODULE (PHASE C) */}
+          <DynamicCommunicationModule
+            patientId={profileData?.id || profileData?._id}
+            currentQuestion={activeCaregiverQuestion}
+            initialLanguage={language || 'en'}
+            onSelectOption={(result) => {
+              console.log('[PatientDashboard] Dynamic intent selected:', result);
+              setActiveOutputPhrase(result.responseText);
+            }}
+          />
+
+          {/* 4. TWO LARGE CATEGORY SELECTION CONTROLS: BASIC & PEOPLE */}
           <section style={{ width: '100%' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.65rem' }}>
               <Sparkles size={16} color="var(--color-blue-primary)" />
