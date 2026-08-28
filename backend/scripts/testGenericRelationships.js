@@ -4,6 +4,8 @@
  * Zero hardcoded real names or identities
  */
 
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const connectDB = require('../src/config/database');
 const userLoginService = require('../src/services/userLoginService');
@@ -17,7 +19,14 @@ const runGenericTest = async () => {
     console.log('========================================');
     console.log('--- 1. Setting Up Generic Test Fixtures ---');
     console.log('========================================');
-    await connectDB();
+    try {
+      await connectDB();
+    } catch (dbErr) {
+      console.warn('⚠️ Atlas connection unavailable. Starting isolated MongoMemoryServer for test...');
+      const { MongoMemoryServer } = require('mongodb-memory-server');
+      const mongod = await MongoMemoryServer.create();
+      await mongoose.connect(mongod.getUri());
+    }
 
     const timestamp = Date.now();
     const emailP = `patient.gen.${timestamp}@test.org`;

@@ -56,8 +56,8 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
   const [doctorProfile, setDoctorProfile] = useState({
     fullName: initialDoctorName,
     doctorId: sessionUser?.profile?._id || storedDoc?._id || '',
-    specialization: sessionUser?.profile?.specialization || storedDoc?.specialization || 'Speech-Language Pathologist & Neurologist',
-    hospital: sessionUser?.profile?.hospitalAffiliation || storedDoc?.hospitalAffiliation || 'Clinical Rehabilitation Center',
+    specialization: sessionUser?.profile?.specialization || storedDoc?.specialization || '',
+    hospital: sessionUser?.profile?.hospitalAffiliation || storedDoc?.hospitalAffiliation || '',
     email: sessionUser?.email || storedDoc?.email || '',
     phone: sessionUser?.profile?.phone || storedDoc?.phone || '',
   });
@@ -125,8 +125,8 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
         setDoctorProfile({
           fullName: matchedDoctor.fullName || initialDoctorName,
           doctorId: matchedDoctor._id,
-          specialization: matchedDoctor.specialization || 'Speech-Language Pathologist & Neurologist',
-          hospital: matchedDoctor.hospitalAffiliation || 'Clinical Rehabilitation Center',
+          specialization: matchedDoctor.specialization || '',
+          hospital: matchedDoctor.hospitalAffiliation || '',
           email: matchedDoctor.email || currentEmail,
           phone: matchedDoctor.phone || '',
         });

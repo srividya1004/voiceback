@@ -51,6 +51,13 @@ const validateLanguageScript = (text, language = 'en') => {
  * Maps raw/provider intent strings and context text to canonical, language-independent semantic intents.
  */
 const CANONICAL_INTENT_MAP = {
+  // Water & Hydration
+  WATER_REQUEST: 'WATER_REQUEST',
+  THIRSTY: 'WATER_REQUEST',
+  WANT_WATER: 'WATER_REQUEST',
+  DRINK_WATER: 'WATER_REQUEST',
+  NEED_WATER: 'WATER_REQUEST',
+
   // Meals
   MEAL_COMPLETED: 'MEAL_COMPLETED',
   MEAL_ATE: 'MEAL_COMPLETED',
@@ -188,6 +195,27 @@ const SAFE_GENERIC_FALLBACKS = {
  */
 const DETERMINISTIC_RULES = [
   {
+    category: 'water',
+    keywords: ['water', 'drink', 'thirsty', 'hydration', 'cup', 'glass', 'ಕುಡಿಯಲು', 'ನೀರು', 'ದಾಹ', 'पानी', 'प्यास', 'पिऊंगा', 'पीना'],
+    options: {
+      en: [
+        { id: 'opt_water_1', intent: 'WATER_REQUEST', text: 'Yes, please give me water.' },
+        { id: 'opt_water_2', intent: 'NO', text: 'No, I am not thirsty.' },
+        { id: 'opt_water_3', intent: 'HELP', text: 'I need help drinking.' }
+      ],
+      kn: [
+        { id: 'opt_water_1', intent: 'WATER_REQUEST', text: 'ಹೌದು, ದಯವಿಟ್ಟು ನನಗೆ ನೀರು ಕೊಡಿ.' },
+        { id: 'opt_water_2', intent: 'NO', text: 'ಇಲ್ಲ, ನನಗೆ ದಾಹವಿಲ್ಲ.' },
+        { id: 'opt_water_3', intent: 'HELP', text: 'ನನಗೆ ಸಹಾಯ ಬೇಕು.' }
+      ],
+      hi: [
+        { id: 'opt_water_1', intent: 'WATER_REQUEST', text: 'हाँ, कृपया मुझे पानी दीजिए।' },
+        { id: 'opt_water_2', intent: 'NO', text: 'नहीं, मुझे प्यास नहीं लगी है।' },
+        { id: 'opt_water_3', intent: 'HELP', text: 'मुझे मदद चाहिए।' }
+      ]
+    }
+  },
+  {
     category: 'meal',
     keywords: ['eat', 'food', 'lunch', 'dinner', 'breakfast', 'meal', 'hungry', 'ಊಟ', 'ತಿಂಡಿ', 'ಆಹಾರ', 'ಹಸಿವು', 'खाना', 'लंच', 'भोजन', 'भूख'],
     options: {
@@ -208,6 +236,51 @@ const DETERMINISTIC_RULES = [
         { id: 'opt_meal_2', intent: 'MEAL_NOT_EATEN', text: 'नहीं, मैंने अभी नहीं खाया।' },
         { id: 'opt_meal_3', intent: 'MEAL_UNSURE', text: 'मुझे याद नहीं है।' },
         { id: 'opt_meal_4', intent: 'MEAL_HUNGRY', text: 'मुझे भूख लगी है।' }
+      ]
+    }
+  },
+  {
+    category: 'pain',
+    keywords: ['pain', 'hurt', 'aches', 'sore', 'ನೋವು', 'ಕಷ್ಟ', 'दर्द', 'तकलीफ़'],
+    options: {
+      en: [
+        { id: 'opt_pain_1', intent: 'PAIN_NONE', text: 'No, I am not in pain.' },
+        { id: 'opt_pain_2', intent: 'PAIN_MILD', text: 'I have mild pain.' },
+        { id: 'opt_pain_3', intent: 'PAIN_SEVERE', text: 'Yes, severe pain.' },
+        { id: 'opt_pain_4', intent: 'HELP', text: 'I need immediate help.' }
+      ],
+      kn: [
+        { id: 'opt_pain_1', intent: 'PAIN_NONE', text: 'ಇಲ್ಲ, ನನಗೆ ನೋವಿಲ್ಲ.' },
+        { id: 'opt_pain_2', intent: 'PAIN_MILD', text: 'ಸ್ವಲ್ಪ ನೋವಿದೆ.' },
+        { id: 'opt_pain_3', intent: 'PAIN_SEVERE', text: 'ಹೌದು, ಹೆಚ್ಚು ನೋವಿದೆ.' },
+        { id: 'opt_pain_4', intent: 'HELP', text: 'ನನಗೆ ತಕ್ಷಣ ಸಹಾಯ ಬೇಕು.' }
+      ],
+      hi: [
+        { id: 'opt_pain_1', intent: 'PAIN_NONE', text: 'नहीं, मुझे दर्द नहीं है।' },
+        { id: 'opt_pain_2', intent: 'PAIN_MILD', text: 'थोड़ा दर्द है।' },
+        { id: 'opt_pain_3', intent: 'PAIN_SEVERE', text: 'हाँ, बहुत दर्द है।' },
+        { id: 'opt_pain_4', intent: 'HELP', text: 'मुझे तुरंत मदद चाहिए।' }
+      ]
+    }
+  },
+  {
+    category: 'help',
+    keywords: ['help', 'emergency', 'assist', 'urgent', 'ಸಹಾಯ', 'ಮದತ್', 'मदद', 'सहायता'],
+    options: {
+      en: [
+        { id: 'opt_help_1', intent: 'HELP', text: 'I need immediate help.' },
+        { id: 'opt_help_2', intent: 'PAIN_PRESENT', text: 'I am in pain, please help.' },
+        { id: 'opt_help_3', intent: 'MEDICINE_REQUEST', text: 'I need my emergency medicine.' }
+      ],
+      kn: [
+        { id: 'opt_help_1', intent: 'HELP', text: 'ನನಗೆ ತಕ್ಷಣ ಸಹಾಯ ಬೇಕು.' },
+        { id: 'opt_help_2', intent: 'PAIN_PRESENT', text: 'ನನಗೆ ನೋವಿದೆ, ದಯವಿಟ್ಟು ಸಹಾಯ ಮಾಡಿ.' },
+        { id: 'opt_help_3', intent: 'MEDICINE_REQUEST', text: 'ನನಗೆ ತುರ್ತು ಔಷಧಿ ಬೇಕು.' }
+      ],
+      hi: [
+        { id: 'opt_help_1', intent: 'HELP', text: 'मुझे तुरंत मदद चाहिए।' },
+        { id: 'opt_help_2', intent: 'PAIN_PRESENT', text: 'मुझे दर्द हो रहा है, कृपया मदद करें।' },
+        { id: 'opt_help_3', intent: 'MEDICINE_REQUEST', text: 'मुझे मेरी आपातकालीन दवा चाहिए।' }
       ]
     }
   },
@@ -393,7 +466,7 @@ const getDeterministicFallback = (question, language = 'en') => {
 /**
  * Call Gemini API for dynamic LLM context reasoning
  */
-const callGeminiAPI = async (question, language = 'en') => {
+const callGeminiAPI = async (question, language = 'en', patientContext = null) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY environment variable is missing');
@@ -403,17 +476,22 @@ const callGeminiAPI = async (question, language = 'en') => {
   const normalizedLang = ['en', 'kn', 'hi'].includes(language) ? language : 'en';
   const sanitizedQuestion = (question || '').trim();
 
-  const systemPrompt = `You are a dynamic context-aware communication engine for an aphasia patient application.
+  const contextSnippet = patientContext
+    ? `Patient Context: Name=${patientContext.fullName || 'Patient'}, Age=${patientContext.age || 'Adult'}, Gender=${patientContext.gender || 'unspecified'}.`
+    : '';
+
+  const systemPrompt = `You are an expressive, context-aware speech generation engine for an aphasia patient application (VoiceBack).
 Caregiver Question: "${sanitizedQuestion}"
 Target Language: "${normalizedLang}" (en = English, kn = Kannada, hi = Hindi)
+${contextSnippet}
 
 Task:
-Understand the caregiver question and generate 3 to 5 short, natural, patient-friendly response options.
+Understand the caregiver question and generate 3 to 5 short, natural, patient-friendly response options appropriate for an aphasia patient to select.
 Rules:
-1. Options MUST be short, simple sentences suitable for an aphasia patient.
+1. Options MUST be short, simple, first-person sentences (e.g., "Yes, I ate lunch", "No, I haven't eaten yet", "I am thirsty").
 2. Each option MUST include:
    - "id": string unique identifier (e.g., "opt_1", "opt_2")
-   - "intent": UPPERCASE language-independent semantic intent code (e.g., "MEAL_COMPLETED", "MEAL_NOT_EATEN", "FEELING_GOOD", "MEDICINE_TAKEN", "PAIN_NONE", "YES", "NO", "HELP")
+   - "intent": UPPERCASE language-independent semantic intent code (e.g., "MEAL_COMPLETED", "MEAL_NOT_EATEN", "WATER_REQUEST", "MEDICINE_TAKEN", "PAIN_NONE", "PAIN_PRESENT", "ACTIVITY_WANT", "YES", "NO", "HELP")
    - "text": natural response sentence written strictly in the target language (${normalizedLang}) using only native script (Kannada for kn, Devanagari for hi, English for en). Do not mix scripts.
 3. Return ONLY a raw valid JSON object with NO markdown codeblocks or extra text.
 
@@ -495,7 +573,7 @@ JSON Schema:
  * Main Context Engine Service entry point
  * Attempts Gemini API call first, falls back gracefully to local deterministic engine
  */
-const generateResponseOptions = async ({ question, language = 'en' }) => {
+const generateResponseOptions = async ({ question, language = 'en', patientContext = null }) => {
   const normalizedLang = ['en', 'kn', 'hi'].includes(language) ? language : 'en';
 
   if (!question || typeof question !== 'string' || !question.trim()) {
@@ -509,7 +587,7 @@ const generateResponseOptions = async ({ question, language = 'en' }) => {
 
   try {
     if (process.env.GEMINI_API_KEY) {
-      return await callGeminiAPI(question, normalizedLang);
+      return await callGeminiAPI(question, normalizedLang, patientContext);
     }
   } catch (err) {
     console.warn(`[ContextEngine] Gemini API call failed/bypassed: ${err.message}. Using local deterministic engine.`);

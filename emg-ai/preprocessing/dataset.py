@@ -35,6 +35,16 @@ class TextTokenizer:
             self.char2id[char] = idx
             self.id2char[idx] = char
 
+    def load_vocab_dict(self, vocab_dict):
+        self.char2id = dict(vocab_dict)
+        self.id2char = {v: k for k, v in self.char2id.items()}
+
+    def load_from_json(self, json_path):
+        with open(json_path, "r", encoding="utf-8") as f:
+            vocab_dict = json.load(f)
+        self.load_vocab_dict(vocab_dict)
+
+
     def encode(self, text):
         return [self.char2id.get(c, self.unk_id) for c in text]
 

@@ -159,29 +159,48 @@ const synthesizeSpeech = async (req, res) => {
     }
 
     let targetVoiceId = null;
+    let patientGender = req.body.gender || 'female';
+    let patientAgeGroup = req.body.ageGroup || 'adult';
 
     if (patientId) {
       try {
+        const patientDoc = await Patient.findById(patientId);
+        if (patientDoc) {
+          if (patientDoc.gender) patientGender = patientDoc.gender;
+          if (patientDoc.age) {
+            patientAgeGroup = patientDoc.age < 18 ? 'child' : patientDoc.age < 35 ? 'young' : patientDoc.age > 60 ? 'senior' : 'adult';
+          }
+        }
+
         const profile = await voiceProfileService.getByPatientId(patientId);
         if (profile && profile.voiceId && profile.status === 'Ready') {
           targetVoiceId = profile.voiceId;
         }
       } catch (dbErr) {
-        console.warn(`ℹ️ VoiceProfile lookup skipped for patientId "${patientId}": ${dbErr.message}`);
+        console.warn(`ℹ️ VoiceProfile/Patient lookup skipped for patientId "${patientId}": ${dbErr.message}`);
       }
     }
 
-    const DEFAULT_ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_DEFAULT_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
-
-    // Fallback: Use default ElevenLabs pre-made voice if patient has no custom cloned voice yet
-    if (!targetVoiceId) {
-      console.log(`ℹ️ No custom cloned voice found for patient. Using default ElevenLabs voice (${DEFAULT_ELEVENLABS_VOICE_ID}).`);
-      targetVoiceId = DEFAULT_ELEVENLABS_VOICE_ID;
-    }
+    // Resolve target voice ID based on patient profile (IVC custom voice -> age/gender natural premade pool)
+    targetVoiceId = elevenLabsService.resolveProfileVoiceId({
+      customVoiceId: targetVoiceId,
+      gender: patientGender,
+      ageGroup: patientAgeGroup,
+    });
 
 
 
     // Call ElevenLabs TTS Service (returns MP3 Buffer)
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      res.setHeader('X-Voice-Provider', 'native_speech_fallback');
+      return res.status(200).json({
+        success: true,
+        provider: 'native_speech_fallback',
+        message: 'ElevenLabs API key is unconfigured. Client will fall back to native speech provider.'
+      });
+    }
+
     const audioBuffer = await elevenLabsService.generateSpeech({
       voiceId: targetVoiceId,
       text,
@@ -189,11 +208,20 @@ const synthesizeSpeech = async (req, res) => {
       emotion: emotion || 'neutral',
     });
 
+    res.setHeader('X-Voice-Provider', 'elevenlabs_ivc');
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Content-Length', audioBuffer.length);
     res.setHeader('Accept-Ranges', 'bytes');
     return res.status(200).send(audioBuffer);
   } catch (error) {
+    if (error.message && error.message.includes('ELEVENLABS_API_KEY')) {
+      res.setHeader('X-Voice-Provider', 'native_speech_fallback');
+      return res.status(200).json({
+        success: true,
+        provider: 'native_speech_fallback',
+        message: 'ElevenLabs API key is unconfigured. Client will fall back to native speech provider.'
+      });
+    }
     return sendError(res, 500, 'Speech synthesis failed', error.message);
   }
 };

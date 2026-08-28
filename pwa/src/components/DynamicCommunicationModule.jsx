@@ -12,6 +12,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import contextService from '../services/contextService';
+import voiceService from '../services/voiceService';
 
 export const DynamicCommunicationModule = ({
   patientId,
@@ -25,6 +26,7 @@ export const DynamicCommunicationModule = ({
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [submissionStatus, setSubmissionStatus] = useState(null);
+  const [activeVoiceProvider, setActiveVoiceProvider] = useState('');
 
   useEffect(() => {
     setQuestion(currentQuestion);
@@ -40,6 +42,7 @@ export const DynamicCommunicationModule = ({
     setLoading(true);
     setSelectedId(null);
     setSubmissionStatus(null);
+    setActiveVoiceProvider('');
     try {
       const data = await contextService.generateOptions({
         caregiverQuestion: qText,
@@ -66,8 +69,20 @@ export const DynamicCommunicationModule = ({
       attemptType: 'ContextSelect'
     };
 
-    // NO TTS/Audio playback in Phase C (deferred strictly to Phase D)
+    // Save intent record to MongoDB Atlas
     const result = await contextService.submitIntent(payload);
+
+    // Trigger Patient Voice Profile Speech Synthesis
+    const speechResult = await voiceService.playSynthesizedAudio({
+      patientId: patientId || 'demo_patient_id',
+      text: option.text,
+      language: language === 'kn' ? 'Kannada' : language === 'hi' ? 'Hindi' : 'English',
+      emotion: 'neutral'
+    });
+
+    if (speechResult && speechResult.provider) {
+      setActiveVoiceProvider(speechResult.provider);
+    }
 
     setSubmissionStatus('submitted');
 
@@ -77,7 +92,8 @@ export const DynamicCommunicationModule = ({
         responseText: option.text,
         language: language,
         optionId: option.id,
-        recordId: result?.data?.recordId
+        recordId: result?.data?.recordId,
+        voiceProvider: speechResult?.provider
       });
     }
   };
@@ -147,6 +163,19 @@ export const DynamicCommunicationModule = ({
           "{question || 'How are you feeling today?'}"
         </p>
       </div>
+
+      {/* Voice Provider Badge */}
+      {activeVoiceProvider && (
+        <div className="mb-4 px-3 py-2 bg-indigo-950/60 border border-indigo-500/30 rounded-lg flex items-center justify-between text-xs text-indigo-300">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
+            <span>Voice Profile Output: <strong>{activeVoiceProvider}</strong></span>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-900/80 text-indigo-200 border border-indigo-700/40">
+            {language.toUpperCase()}
+          </span>
+        </div>
+      )}
 
       {/* Loading Skeleton / Response Option Cards */}
       {loading ? (

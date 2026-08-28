@@ -3,9 +3,11 @@
  * Loads environment variables using dotenv
  */
 
+const path = require('path');
 const dotenv = require('dotenv');
 
-// Load environment variables from .env file
+// Load environment variables from .env file in backend/ or root
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
 const config = {

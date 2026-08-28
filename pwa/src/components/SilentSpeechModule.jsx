@@ -23,19 +23,148 @@ import {
   Utensils,
   HelpCircle,
   Heart,
-  Sparkles
+  Sparkles,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
+import VolumeControlWidget from './VolumeControlWidget';
 import { useSettings } from '../context/SettingsContext';
-import deviceService from '../services/deviceService';
+import deviceService, { DEVICE_STATES } from '../services/deviceService';
 import authService from '../services/authService';
+import voiceService from '../services/voiceService';
+
+/**
+ * Live EMG Waveform Visualizer for BioAmp EXG Pill (GPIO34)
+ */
+export const EMGWaveformVisualizer = ({ isConnected, deviceName }) => {
+  const canvasRef = useRef(null);
+  const BUFFER_SIZE = 200;
+  const dataBufferRef = useRef(Array(200).fill(1800));
+  const [currentVal, setCurrentVal] = useState({ raw: 0, flt: 0, vlt: 0 });
+
+  useEffect(() => {
+    if (!isConnected) {
+      setCurrentVal({ raw: 0, flt: 0, vlt: 0 });
+      dataBufferRef.current = Array(200).fill(1800);
+      return;
+    }
+
+    const unsubscribe = deviceService.subscribeTelemetry((packet) => {
+      if (packet && typeof packet.raw !== 'undefined') {
+        setCurrentVal(packet);
+        const val = typeof packet.flt !== 'undefined' ? packet.flt : packet.raw;
+        dataBufferRef.current.push(val);
+        if (dataBufferRef.current.length > BUFFER_SIZE) {
+          dataBufferRef.current.shift();
+        }
+      }
+    });
+
+    let animId;
+    const renderCanvas = () => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        const parentWidth = canvas.parentElement?.clientWidth || 340;
+        if (canvas.width !== parentWidth) {
+          canvas.width = parentWidth;
+        }
+        const width = canvas.width;
+        const height = canvas.height;
+
+        ctx.clearRect(0, 0, width, height);
+
+        // Grid lines
+        ctx.strokeStyle = 'rgba(2, 132, 199, 0.12)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < width; x += 25) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+          ctx.stroke();
+        }
+        for (let y = 0; y < height; y += 20) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+        }
+
+        // Waveform plot
+        const data = dataBufferRef.current;
+        if (data.length > 1) {
+          ctx.beginPath();
+          ctx.strokeStyle = isConnected ? '#38BDF8' : '#64748B';
+          ctx.lineWidth = 2.5;
+
+          const minVal = 0;
+          const maxVal = 4095;
+
+          data.forEach((val, index) => {
+            const x = (index / (data.length - 1)) * width;
+            const normalized = Math.max(0, Math.min(1, (val - minVal) / (maxVal - minVal)));
+            const y = height - (normalized * (height - 12) + 6);
+
+            if (index === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          });
+          ctx.stroke();
+        }
+      }
+      animId = requestAnimationFrame(renderCanvas);
+    };
+
+    animId = requestAnimationFrame(renderCanvas);
+
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(animId);
+    };
+  }, [isConnected]);
+
+  return (
+    <div style={{ width: '100%', background: '#0F172A', borderRadius: '16px', padding: '1rem', border: '1px solid rgba(2, 132, 199, 0.3)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: isConnected ? '#22C55E' : '#EF4444', display: 'inline-block', boxShadow: isConnected ? '0 0 8px #22C55E' : 'none' }} />
+          <span style={{ color: '#F8FAFC', fontSize: '0.875rem', fontWeight: 800 }}>
+            {isConnected ? `${deviceName || 'VoiceBack-Neckband'} Connected` : 'EMG Telemetry Offline'}
+          </span>
+        </div>
+        <span style={{ color: '#38BDF8', fontSize: '0.75rem', fontWeight: 700, fontFamily: 'monospace' }}>
+          BioAmp EXG Pill (GPIO34)
+        </span>
+      </div>
+
+      <canvas ref={canvasRef} width={340} height={90} style={{ width: '100%', height: '90px', display: 'block', borderRadius: '8px', background: 'rgba(2, 6, 23, 0.6)' }} />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginTop: '0.75rem', textAlign: 'center' }}>
+        <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '0.4rem', borderRadius: '8px' }}>
+          <div style={{ color: '#94A3B8', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase' }}>Raw ADC</div>
+          <div style={{ color: '#F8FAFC', fontSize: '0.95rem', fontWeight: 800, fontFamily: 'monospace' }}>{isConnected ? currentVal.raw : '-'}</div>
+        </div>
+        <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '0.4rem', borderRadius: '8px' }}>
+          <div style={{ color: '#94A3B8', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase' }}>Filtered EMA</div>
+          <div style={{ color: '#38BDF8', fontSize: '0.95rem', fontWeight: 800, fontFamily: 'monospace' }}>{isConnected ? currentVal.flt : '-'}</div>
+        </div>
+        <div style={{ background: 'rgba(255, 255, 255, 0.05)', padding: '0.4rem', borderRadius: '8px' }}>
+          <div style={{ color: '#94A3B8', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase' }}>Voltage</div>
+          <div style={{ color: '#4ADE80', fontSize: '0.95rem', fontWeight: 800, fontFamily: 'monospace' }}>{isConnected ? `${currentVal.vlt}V` : '-'}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const SilentSpeechModule = ({
   initialStep = 'silent-speech-home',
   onBackToDashboard,
   onOpenProfile,
-  onOpenAppointments,
   onLogout
 }) => {
   const { t, voiceAssistant, speak } = useSettings();
@@ -43,16 +172,73 @@ export const SilentSpeechModule = ({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activePhrase, setActivePhrase] = useState('I need water.');
-  const [activeCategory, setActiveCategory] = useState('basic'); // 'basic' | 'relation' | 'sos'
+  const [activeCategory, setActiveCategory] = useState('basic');
   const [deviceStatus, setDeviceStatus] = useState(() => deviceService.getDeviceStatus());
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState('');
+  const [proposedText, setProposedText] = useState('I need water.');
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [playbackStatus, setPlaybackStatus] = useState('');
   const lastSpokenStepRef = useRef(null);
+
+  const handleConfirmAndSpeak = async () => {
+    if (!proposedText || !proposedText.trim()) return;
+    setIsSynthesizing(true);
+    setPlaybackStatus('Synthesizing speech via patient voice profile...');
+    try {
+      const session = authService.getActiveSession();
+      const patientId = session?.user?.profile?._id || session?.user?.id;
+      const res = await voiceService.playSynthesizedAudio({
+        patientId,
+        text: proposedText,
+        language: 'English',
+        emotion: 'neutral',
+      });
+      setPlaybackStatus(res.provider ? `Output: ${res.provider}` : 'Audio sent to physical speaker.');
+    } catch (err) {
+      console.warn('Speech synthesis playback error:', err.message);
+      setPlaybackStatus(`Speech synthesis error: ${err.message}`);
+    } finally {
+      setIsSynthesizing(false);
+    }
+  };
+
+  const handleRejectText = () => {
+    setPlaybackStatus('Speech request rejected by patient.');
+    setStep('listening');
+  };
 
   useEffect(() => {
     const unsubscribe = deviceService.subscribe((status) => {
       setDeviceStatus(status);
+      if (status.status === DEVICE_STATES.CONNECTED) {
+        setIsConnecting(false);
+      }
     });
     return () => unsubscribe();
   }, []);
+
+  const handleConnectBLE = async () => {
+    setConnectionError('');
+    setIsConnecting(true);
+    try {
+      await deviceService.requestAndConnectBluetooth();
+      setConnectionError('');
+    } catch (err) {
+      console.warn('Bluetooth connection error:', err.message);
+      setConnectionError(err.message);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnectBLE = async () => {
+    try {
+      await deviceService.disconnect();
+    } catch (err) {
+      console.warn('Disconnection error:', err);
+    }
+  };
 
   // Categorized Quick Communication Phrases
   const basicPhrases = [
@@ -73,8 +259,6 @@ export const SilentSpeechModule = ({
     { id: 'help', label: 'HELP', text: 'I need help.', icon: HelpCircle, colorClass: 'help' },
   ];
 
-
-  // Sync profile data & avatar from localStorage
   const [profileData] = useState(() => {
     const session = authService.getActiveSession();
     const sessionUser = session?.user;
@@ -99,7 +283,6 @@ export const SilentSpeechModule = ({
 
   const firstLetter = profileData.fullName ? profileData.fullName.trim().charAt(0).toUpperCase() : 'S';
 
-  // Voice Assistant: Speak ONLY ONCE per screen step when screen opens
   useEffect(() => {
     if (!voiceAssistant || !speak) return;
     if (lastSpokenStepRef.current === step) return;
@@ -119,15 +302,6 @@ export const SilentSpeechModule = ({
       case 'listening':
         speak('Listening has started.');
         break;
-      case 'recognized-text':
-        speak('Speech recognition results will appear here.');
-        break;
-      case 'generated-voice':
-        speak('Voice generation will be available after AI integration.');
-        break;
-      case 'conversation-history':
-        speak('Your conversation history will appear here.');
-        break;
       default:
         break;
     }
@@ -138,7 +312,6 @@ export const SilentSpeechModule = ({
     setIsDrawerOpen(false);
   };
 
-  // Drawer menu items
   const drawerItems = [
     {
       id: 'dashboard',
@@ -326,7 +499,16 @@ export const SilentSpeechModule = ({
                 </button>
               </div>
 
-              {/* 2. CATEGORY TABS (BASIC, RELATION, SOS) */}
+              {/* 2. LIVE EMG TELEMETRY VISUALIZER (WHEN BLE CONNECTED) */}
+              <EMGWaveformVisualizer
+                isConnected={deviceStatus.isConnected}
+                deviceName={deviceStatus.deviceName}
+              />
+
+              {/* 3. SPEAKER VOLUME CONTROL WIDGET */}
+              <VolumeControlWidget />
+
+              {/* 3. CATEGORY TABS (BASIC, RELATION, SOS) */}
               <section className="common-needs-section">
                 <div className="category-tab-grid">
                   <button
@@ -421,45 +603,57 @@ export const SilentSpeechModule = ({
                 </div>
               </section>
 
-              {/* 3. TRUTHFUL MICROPHONE & HARDWARE SPEECH INPUT SECTION */}
+              {/* 4. HARDWARE BLE SETUP CARD */}
               <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Mic size={20} color="var(--color-blue-primary)" />
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0 }}>Microphone & Speech Input</h3>
+                    <Radio size={20} color="var(--color-blue-primary)" />
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0 }}>ESP32 BLE Neckband</h3>
                   </div>
-                  <span className={`device-name-badge ${deviceStatus.status === 'Connected' ? 'connected' : 'disconnected'}`}>
-                    {deviceStatus.status === 'Connected' ? 'Connected' : 'Not Connected'}
+                  <span className={`device-name-badge ${deviceStatus.isConnected ? 'connected' : 'disconnected'}`}>
+                    {deviceStatus.status || 'Connect Device'}
                   </span>
                 </div>
 
-                <p style={{ fontSize: '0.875rem', color: 'var(--color-brand-tagline)' }}>
-                  Microphone input is active. ESP32 + EMG wearable signals can be connected in Device Setup when hardware is present.
-                </p>
+                {deviceStatus.isConnected ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                    <p style={{ fontSize: '0.875rem', color: '#16A34A', fontWeight: 700, margin: 0 }}>
+                      ✓ VoiceBack-Neckband Connected & Streaming sEMG Telemetry
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-danger-logout"
+                      onClick={handleDisconnectBLE}
+                      style={{ width: '100%', marginTop: '0.35rem' }}
+                    >
+                      Disconnect Device
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                    <p style={{ fontSize: '0.875rem', color: 'var(--color-brand-tagline)', margin: 0 }}>
+                      Connect physical ESP32 BLE device (VoiceBack-Neckband) to capture live sEMG signal telemetry.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-continue"
+                      onClick={handleConnectBLE}
+                      disabled={isConnecting}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                    >
+                      {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <Wifi size={18} />}
+                      <span>{isConnecting ? 'CONNECTING...' : 'Connect VoiceBack-Neckband'}</span>
+                    </button>
+                  </div>
+                )}
 
-                <div style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
-                  <button
-                    type="button"
-                    className="btn-continue"
-                    onClick={() => handleStepChange('listening')}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  >
-                    <Mic size={18} />
-                    <span>Start Speech Input</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-secondary-auth"
-                    onClick={() => handleStepChange('connect-device')}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
-                  >
-                    <Wifi size={16} />
-                    <span>Device Setup</span>
-                  </button>
-                </div>
+                {connectionError && (
+                  <div style={{ padding: '0.75rem', borderRadius: '10px', background: 'rgba(220, 38, 38, 0.1)', border: '1px solid #DC2626', color: '#DC2626', fontSize: '0.825rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <AlertCircle size={16} />
+                    <span>{connectionError}</span>
+                  </div>
+                )}
               </section>
-
 
             </main>
           </>
@@ -484,14 +678,13 @@ export const SilentSpeechModule = ({
             </header>
 
             <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              {/* Illustration Placeholder */}
               <div
                 style={{
                   width: 100,
                   height: 100,
                   borderRadius: '50%',
-                  background: 'rgba(2, 132, 199, 0.1)',
-                  border: '2px solid var(--color-blue-primary)',
+                  background: deviceStatus.isConnected ? 'rgba(34, 197, 94, 0.1)' : 'rgba(2, 132, 199, 0.1)',
+                  border: `2px solid ${deviceStatus.isConnected ? '#22C55E' : 'var(--color-blue-primary)'}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -499,40 +692,77 @@ export const SilentSpeechModule = ({
                   boxShadow: '0 8px 24px rgba(2, 132, 199, 0.15)',
                 }}
               >
-                <Radio size={48} color="var(--color-blue-primary)" />
+                <Radio size={48} color={deviceStatus.isConnected ? '#22C55E' : 'var(--color-blue-primary)'} />
               </div>
 
               <div style={{ textAlign: 'center', maxWidth: '340px' }}>
                 <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-brand-title)', marginBottom: '0.4rem' }}>
-                  Wearable Device
+                  VoiceBack-Neckband
                 </h2>
                 <p style={{ fontSize: '0.925rem', color: 'var(--color-brand-tagline)', lineHeight: 1.45 }}>
-                  To begin communication, connect your VoiceBack Neckband.
+                  {deviceStatus.isConnected ? 'VoiceBack-Neckband Connected' : 'Connect your physical ESP32 BLE wearable device to begin streaming real-time BioAmp EXG Pill sEMG telemetry.'}
                 </p>
               </div>
 
               <div className="profile-section-card" style={{ width: '100%', alignItems: 'center', textAlign: 'center', gap: '0.75rem' }}>
                 <span className="profile-field-label">Current Status</span>
-                <span className="device-name-badge disconnected" style={{ fontSize: '0.85rem', padding: '0.35rem 0.85rem' }}>
-                  Not Connected
-                </span>
-                
-                <button
-                  type="button"
-                  className="btn-continue"
-                  onClick={() => handleStepChange('ready-to-capture')}
-                  style={{ width: '100%', marginTop: '0.5rem' }}
+                <span
+                  className={`device-name-badge ${deviceStatus.isConnected ? 'connected' : 'disconnected'}`}
+                  style={{
+                    fontSize: '0.9rem',
+                    padding: '0.4rem 1rem',
+                    fontWeight: 800,
+                    letterSpacing: '0.05em',
+                    background: deviceStatus.isConnected ? 'rgba(34, 197, 94, 0.15)' : deviceStatus.isConnecting ? 'rgba(234, 179, 8, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    color: deviceStatus.isConnected ? '#16A34A' : deviceStatus.isConnecting ? '#CA8A04' : '#DC2626',
+                    border: `1px solid ${deviceStatus.isConnected ? '#22C55E' : deviceStatus.isConnecting ? '#EAB308' : '#EF4444'}`
+                  }}
                 >
-                  <Wifi size={18} />
-                  <span>Search Device</span>
-                </button>
+                  {deviceStatus.status}
+                </span>
+
+                {deviceStatus.isConnected ? (
+                  <div style={{ width: '100%', marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <div style={{ padding: '0.75rem', borderRadius: '10px', background: 'rgba(34, 197, 94, 0.08)', border: '1px solid #22C55E', color: '#16A34A', fontSize: '0.9rem', fontWeight: 800 }}>
+                      VoiceBack-Neckband Connected
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn-danger-logout"
+                      onClick={handleDisconnectBLE}
+                      style={{ width: '100%' }}
+                    >
+                      Disconnect Device
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-continue"
+                    onClick={handleConnectBLE}
+                    disabled={isConnecting}
+                    style={{ width: '100%', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <Wifi size={18} />}
+                    <span>{isConnecting ? 'CONNECTING...' : 'Connect VoiceBack-Neckband'}</span>
+                  </button>
+                )}
+
+                {connectionError && (
+                  <div style={{ width: '100%', padding: '0.75rem', borderRadius: '10px', background: 'rgba(220, 38, 38, 0.1)', border: '1px solid #DC2626', color: '#DC2626', fontSize: '0.825rem', fontWeight: 600, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                    <span>{connectionError}</span>
+                  </div>
+                )}
               </div>
 
-              <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px dashed var(--border-color)', textAlign: 'center', width: '100%' }}>
-                <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', fontWeight: 500 }}>
-                  Device connection will be available after firmware integration.
-                </p>
-              </div>
+              {/* LIVE EMG WAVEFORM DISPLAY */}
+              <EMGWaveformVisualizer
+                isConnected={deviceStatus.isConnected}
+                deviceName={deviceStatus.deviceName}
+              />
+
             </main>
           </>
         )}
@@ -606,7 +836,6 @@ export const SilentSpeechModule = ({
             </header>
 
             <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-              {/* Clean Listening Pulse Animation */}
               <div className="listening-stage">
                 <div className="listening-mic-circle">
                   <Mic size={48} color="#FFFFFF" />
@@ -624,9 +853,14 @@ export const SilentSpeechModule = ({
                   Listening...
                 </h2>
                 <p style={{ fontSize: '0.95rem', color: 'var(--color-brand-tagline)', marginTop: '0.35rem' }}>
-                  Waiting for EMG signal...
+                  {deviceStatus.isConnected ? 'Receiving real-time BioAmp EXG Pill sEMG signal stream...' : 'Waiting for EMG signal...'}
                 </p>
               </div>
+
+              <EMGWaveformVisualizer
+                isConnected={deviceStatus.isConnected}
+                deviceName={deviceStatus.deviceName}
+              />
 
               <button
                 type="button"
@@ -641,7 +875,7 @@ export const SilentSpeechModule = ({
           </>
         )}
 
-        {/* SCREEN 5: RECOGNIZED TEXT */}
+        {/* SCREEN 5: RECOGNIZED TEXT & PATIENT CONFIRMATION */}
         {step === 'recognized-text' && (
           <>
             <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -654,149 +888,82 @@ export const SilentSpeechModule = ({
                 <ArrowLeft size={20} />
               </button>
               <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                Recognized Text
+                Review Prediction
               </h1>
               <div style={{ width: 42 }} />
             </header>
 
             <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              <div className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
-                <h3 className="profile-section-title">Recognized Speech</h3>
+              
+              <div className="profile-section-card" style={{ width: '100%', gap: '1rem', padding: '1.5rem 1.25rem', textAlign: 'center' }}>
+                <span className="placeholder-badge" style={{ background: 'rgba(234, 179, 8, 0.12)', color: '#CA8A04', border: '1px solid #EAB308' }}>
+                  Confirmation Required Before Audio Output
+                </span>
 
-                <div style={{ padding: '1.25rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.04)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                  <p style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                    No speech detected yet.
+                <h3 style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-brand-tagline)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                  Proposed Speech Output
+                </h3>
+
+                <div style={{ padding: '1.25rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.06)', border: '2px solid var(--color-blue-primary)' }}>
+                  <p style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0, lineHeight: 1.4 }}>
+                    "{proposedText}"
                   </p>
                 </div>
 
-                <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1px dashed var(--border-color)' }}>
-                  <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', textAlign: 'center', lineHeight: 1.4 }}>
-                    Speech recognition will be available after AI integration.
-                  </p>
-                </div>
+                <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-tagline)', margin: 0 }}>
+                  Review the proposed text above. Audio will <strong>NOT</strong> play until you press <strong>CONFIRM & SPEAK</strong>.
+                </p>
 
-                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', width: '100%' }}>
+                {playbackStatus && (
+                  <div style={{ padding: '0.65rem 0.85rem', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.04)', color: 'var(--color-brand-title)', fontSize: '0.825rem', fontWeight: 600 }}>
+                    {playbackStatus}
+                  </div>
+                )}
+
+                {/* PATIENT ACTION BUTTONS: CONFIRM vs REJECT */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', width: '100%', marginTop: '0.5rem' }}>
+                  
+                  {/* REJECT BUTTON (DISCARD WITHOUT TTS) */}
                   <button
                     type="button"
-                    className="btn-secondary-auth"
-                    onClick={() => handleStepChange('listening')}
-                    style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                    className="btn-danger-logout"
+                    onClick={handleRejectText}
+                    disabled={isSynthesizing}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.85rem 0.5rem' }}
                   >
-                    <RefreshCw size={16} />
-                    <span>Listen Again</span>
+                    <X size={18} />
+                    <span>REJECT</span>
                   </button>
 
+                  {/* CONFIRM BUTTON (SYNTHESIZE & ROUTE TO PHYSICAL SPEAKER) */}
                   <button
                     type="button"
                     className="btn-continue"
-                    onClick={() => handleStepChange('generated-voice')}
-                    style={{ flex: 1 }}
+                    onClick={handleConfirmAndSpeak}
+                    disabled={isSynthesizing}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.85rem 0.5rem', background: '#16A34A', borderColor: '#16A34A' }}
                   >
-                    <span>Continue</span>
+                    {isSynthesizing ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        <span>SYNTHESIZING...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={18} />
+                        <span>CONFIRM & SPEAK</span>
+                      </>
+                    )}
                   </button>
-                </div>
-              </div>
-            </main>
-          </>
-        )}
 
-        {/* SCREEN 6: GENERATED VOICE */}
-        {step === 'generated-voice' && (
-          <>
-            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="settings-btn"
-                aria-label="Back to Recognized Text"
-                onClick={() => handleStepChange('recognized-text')}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                Generated Voice
-              </h1>
-              <div style={{ width: 42 }} />
-            </header>
-
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              <div className="profile-section-card" style={{ width: '100%', gap: '1rem' }}>
-                <h3 className="profile-section-title">Voice Output</h3>
-
-                <div style={{ padding: '1.25rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.04)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-                  <p style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--color-brand-title)', lineHeight: 1.5 }}>
-                    Voice generation is not available yet.<br />
-                    <span style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)' }}>
-                      This feature will be enabled after AI integration.
-                    </span>
-                  </p>
-                </div>
-
-                {/* Disabled Play Voice Button */}
-                <button
-                  type="button"
-                  className="btn-secondary-auth"
-                  disabled
-                  style={{ width: '100%', opacity: 0.6, cursor: 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                >
-                  <VolumeX size={18} />
-                  <span>Play Voice (Pending AI Integration)</span>
-                </button>
-
-                <button
-                  type="button"
-                  className="btn-continue"
-                  onClick={() => handleStepChange('conversation-history')}
-                  style={{ width: '100%', marginTop: '0.5rem' }}
-                >
-                  <span>Go to Conversation History</span>
-                </button>
-              </div>
-            </main>
-          </>
-        )}
-
-        {/* SCREEN 7: CONVERSATION HISTORY */}
-        {step === 'conversation-history' && (
-          <>
-            <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                className="settings-btn"
-                aria-label="Back to Generated Voice"
-                onClick={() => handleStepChange('generated-voice')}
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                Conversation History
-              </h1>
-              <div style={{ width: 42 }} />
-            </header>
-
-            <main className="role-main" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', alignItems: 'center' }}>
-              <div className="recent-activity-card" style={{ width: '100%' }}>
-                <div className="recent-activity-header">
-                  <Info size={18} color="var(--color-blue-primary)" />
-                  <h3>Conversation History</h3>
-                </div>
-
-                <div className="recent-activity-empty-state" style={{ padding: '1.25rem', textAlign: 'center' }}>
-                  <p className="empty-state-title" style={{ fontSize: '1rem' }}>No conversation history available.</p>
-                  <p className="empty-state-desc" style={{ marginTop: '0.25rem' }}>
-                    Your conversations will appear here after using Silent Speech.
-                  </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="btn-continue"
-                onClick={onBackToDashboard}
-                style={{ width: '100%' }}
-              >
-                <Home size={18} />
-                <span>Return to Dashboard</span>
-              </button>
+              {/* LIVE TELEMETRY DISPLAY */}
+              <EMGWaveformVisualizer
+                isConnected={deviceStatus.isConnected}
+                deviceName={deviceStatus.deviceName}
+              />
             </main>
           </>
         )}

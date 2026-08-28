@@ -36,6 +36,7 @@ import patientService from '../services/patientService';
 import doctorService from '../services/doctorService';
 import caregiverService from '../services/caregiverService';
 import contextService from '../services/contextService';
+import voiceService from '../services/voiceService';
 import apiClient from '../services/apiClient';
 
 export const CaregiverDashboardScreen = ({ onLogout }) => {
@@ -43,6 +44,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [currentView, setCurrentView] = useState('dashboard');
+  const [activeVoiceProvider, setActiveVoiceProvider] = useState('');
 
   // Appointment Booking & Relationship State
   const [appointmentsList, setAppointmentsList] = useState([]);
@@ -142,7 +144,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
   const [caregiverProfile, setCaregiverProfile] = useState({
     id: sessionUser?.profile?._id || storedCg?._id || '',
     fullName: initialCaregiverName,
-    relationship: sessionUser?.profile?.relationshipToPatient || storedCg?.relationshipToPatient || storedCg?.relationship || 'Caregiver',
+    relationship: sessionUser?.profile?.relationshipToPatient || storedCg?.relationshipToPatient || storedCg?.relationship || '',
     email: sessionUser?.email || storedCg?.email || '',
     mobileNumber: sessionUser?.profile?.phone || storedCg?.phone || storedCg?.mobileNumber || '',
     assignedPatients: sessionUser?.profile?.assignedPatients || storedCg?.assignedPatients || []
@@ -174,7 +176,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
         setCaregiverProfile({
           id: match._id,
           fullName: match.fullName || initialCaregiverName,
-          relationship: match.relationshipToPatient || 'Caregiver',
+          relationship: match.relationshipToPatient || '',
           email: match.email || currentEmail,
           mobileNumber: match.phone || '',
           assignedPatients: match.assignedPatients || []
@@ -182,7 +184,7 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
         setEditProfileForm({
           fullName: match.fullName || '',
           phone: match.phone || '',
-          relationshipToPatient: match.relationshipToPatient || 'Caregiver'
+          relationshipToPatient: match.relationshipToPatient || ''
         });
       }
     } catch (err) {
@@ -858,13 +860,32 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
               {/* GENERATED OPTIONS PREVIEW */}
               {generatedOptions.length > 0 && (
                 <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-brand-title)' }}>
-                    Generated Options Preview:
-                  </span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-brand-title)' }}>
+                      Generated Options Preview (Click to Listen in Patient's Voice):
+                    </span>
+                    {activeVoiceProvider && (
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '6px', background: 'rgba(234,88,12,0.12)', color: 'var(--color-orange-primary)', fontWeight: 700 }}>
+                        {activeVoiceProvider}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                     {generatedOptions.map((opt) => (
                       <div
                         key={opt.id}
+                        onClick={async () => {
+                          const langMap = { en: 'English', kn: 'Kannada', hi: 'Hindi' };
+                          const speechResult = await voiceService.playSynthesizedAudio({
+                            patientId: 'demo_patient_id',
+                            text: opt.text,
+                            language: langMap[questionLanguage] || 'English',
+                            emotion: 'neutral'
+                          });
+                          if (speechResult?.provider) {
+                            setActiveVoiceProvider(speechResult.provider);
+                          }
+                        }}
                         style={{
                           padding: '0.6rem 0.85rem',
                           borderRadius: '8px',
@@ -872,8 +893,9 @@ export const CaregiverDashboardScreen = ({ onLogout }) => {
                           border: '1px solid var(--border-color)',
                           display: 'flex',
                           alignItems: 'center',
-                          justify: 'space-between',
-                          fontSize: '0.85rem'
+                          justifyContent: 'space-between',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer'
                         }}
                       >
                         <span style={{ fontWeight: 600 }}>{opt.text}</span>

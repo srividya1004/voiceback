@@ -33,7 +33,7 @@ const runFeature1Test = async () => {
     const testTs = Date.now();
 
     console.log('\n========================================');
-    console.log('--- 1. Testing Patient Profile Persistence ---');
+    console.log('--- 1. Testing Patient Profile Persistence & Zero Auto-Creation ---');
     console.log('========================================');
     const patientEmail = `patient.f1.${testTs}@voiceback.org`;
     const patientUser = await userLoginService.create({
@@ -43,9 +43,29 @@ const runFeature1Test = async () => {
     });
     console.log(`✅ Created UserLogin for Patient (ID: ${patientUser._id})`);
 
+    // Verify login without profile does NOT auto-create profile document
+    const pLoginInitial = await userLoginService.loginUser(patientEmail, 'PatientPass123!');
+    const countBeforePat = await Patient.countDocuments({ userId: patientUser._id });
+    if (pLoginInitial.user.profile !== null || !pLoginInitial.user.profileMissing || countBeforePat !== 0) {
+      throw new Error(`Synthetic Patient profile was created unexpectedly during login! Count: ${countBeforePat}`);
+    }
+    console.log(`✅ Verified login without profile returns profile: null and creates ZERO Patient documents.`);
+
+    // Create real patient profile in MongoDB
+    const initialPatientProfile = await patientService.create({
+      userId: patientUser._id,
+      fullName: 'Initial Patient',
+      age: 50,
+      aphasiaType: "Broca's",
+      email: patientEmail
+    });
+    console.log(`✅ Created real Patient profile (ID: ${initialPatientProfile._id})`);
+
     const pLoginRes = await userLoginService.loginUser(patientEmail, 'PatientPass123!');
-    const initialPatientProfile = pLoginRes.user.profile;
-    console.log(`✅ Logged in Patient. Resolved Profile ID: ${initialPatientProfile._id}`);
+    if (!pLoginRes.user.profile || pLoginRes.user.profile._id.toString() !== initialPatientProfile._id.toString()) {
+      throw new Error('Failed to resolve real MongoDB patient profile on login!');
+    }
+    console.log(`✅ Logged in Patient. Resolved Profile ID: ${pLoginRes.user.profile._id}`);
 
     // Update patient profile fields
     const updatedPatientData = {
@@ -87,7 +107,7 @@ const runFeature1Test = async () => {
     console.log('✅ Patient profile persistence PASSED!');
 
     console.log('\n========================================');
-    console.log('--- 2. Testing Doctor Profile Persistence ---');
+    console.log('--- 2. Testing Doctor Profile Persistence & Zero Auto-Creation ---');
     console.log('========================================');
     const doctorEmail = `doctor.f1.${testTs}@voiceback.org`;
     const doctorUser = await userLoginService.create({
@@ -97,9 +117,28 @@ const runFeature1Test = async () => {
     });
     console.log(`✅ Created UserLogin for Doctor (ID: ${doctorUser._id})`);
 
+    const dLoginInitial = await userLoginService.loginUser(doctorEmail, 'DoctorPass123!');
+    const countBeforeDoc = await Doctor.countDocuments({ userId: doctorUser._id });
+    if (dLoginInitial.user.profile !== null || !dLoginInitial.user.profileMissing || countBeforeDoc !== 0) {
+      throw new Error(`Synthetic Doctor profile was created unexpectedly during login! Count: ${countBeforeDoc}`);
+    }
+    console.log(`✅ Verified login without profile returns profile: null and creates ZERO Doctor documents.`);
+
+    const initialDoctorProfile = await doctorService.create({
+      userId: doctorUser._id,
+      fullName: 'Initial Doctor',
+      specialization: 'Neurology',
+      hospitalAffiliation: 'General Hospital',
+      licenseNumber: `LIC-${testTs}`,
+      email: doctorEmail
+    });
+    console.log(`✅ Created real Doctor profile (ID: ${initialDoctorProfile._id})`);
+
     const dLoginRes = await userLoginService.loginUser(doctorEmail, 'DoctorPass123!');
-    const initialDoctorProfile = dLoginRes.user.profile;
-    console.log(`✅ Logged in Doctor. Resolved Profile ID: ${initialDoctorProfile._id}`);
+    if (!dLoginRes.user.profile || dLoginRes.user.profile._id.toString() !== initialDoctorProfile._id.toString()) {
+      throw new Error('Failed to resolve real MongoDB doctor profile on login!');
+    }
+    console.log(`✅ Logged in Doctor. Resolved Profile ID: ${dLoginRes.user.profile._id}`);
 
     const updatedDoctorData = {
       fullName: 'Dr. Evelyn Reed',
@@ -131,7 +170,7 @@ const runFeature1Test = async () => {
     console.log('✅ Doctor profile persistence PASSED!');
 
     console.log('\n========================================');
-    console.log('--- 3. Testing Caregiver Profile Persistence ---');
+    console.log('--- 3. Testing Caregiver Profile Persistence & Zero Auto-Creation ---');
     console.log('========================================');
     const caregiverEmail = `caregiver.f1.${testTs}@voiceback.org`;
     const caregiverUser = await userLoginService.create({
@@ -141,9 +180,27 @@ const runFeature1Test = async () => {
     });
     console.log(`✅ Created UserLogin for Caregiver (ID: ${caregiverUser._id})`);
 
+    const cLoginInitial = await userLoginService.loginUser(caregiverEmail, 'CaregiverPass123!');
+    const countBeforeCg = await Caregiver.countDocuments({ userId: caregiverUser._id });
+    if (cLoginInitial.user.profile !== null || !cLoginInitial.user.profileMissing || countBeforeCg !== 0) {
+      throw new Error(`Synthetic Caregiver profile was created unexpectedly during login! Count: ${countBeforeCg}`);
+    }
+    console.log(`✅ Verified login without profile returns profile: null and creates ZERO Caregiver documents.`);
+
+    const initialCaregiverProfile = await caregiverService.create({
+      userId: caregiverUser._id,
+      fullName: 'Initial Caregiver',
+      phone: '+1-555-111-2222',
+      relationshipToPatient: 'Sibling',
+      email: caregiverEmail
+    });
+    console.log(`✅ Created real Caregiver profile (ID: ${initialCaregiverProfile._id})`);
+
     const cLoginRes = await userLoginService.loginUser(caregiverEmail, 'CaregiverPass123!');
-    const initialCaregiverProfile = cLoginRes.user.profile;
-    console.log(`✅ Logged in Caregiver. Resolved Profile ID: ${initialCaregiverProfile._id}`);
+    if (!cLoginRes.user.profile || cLoginRes.user.profile._id.toString() !== initialCaregiverProfile._id.toString()) {
+      throw new Error('Failed to resolve real MongoDB caregiver profile on login!');
+    }
+    console.log(`✅ Logged in Caregiver. Resolved Profile ID: ${cLoginRes.user.profile._id}`);
 
     const updatedCaregiverData = {
       fullName: 'Marcus Vance',
@@ -172,11 +229,18 @@ const runFeature1Test = async () => {
     console.log('✅ Caregiver profile persistence PASSED!');
 
     console.log('\n========================================');
-    console.log('--- 4. Testing Duplicate Profile Immunity ---');
+    console.log('--- 4. Testing Duplicate Profile Immunity & Profile-Less Login Immunity ---');
     console.log('========================================');
+    const profilelessUser = await userLoginService.create({
+      email: `profileless.${testTs}@voiceback.org`,
+      passwordHash: 'Pass123!',
+      role: 'Patient'
+    });
+
     const patientCountBefore = await Patient.countDocuments({ userId: patientUser._id });
     const doctorCountBefore = await Doctor.countDocuments({ userId: doctorUser._id });
     const caregiverCountBefore = await Caregiver.countDocuments({ userId: caregiverUser._id });
+    const profilelessCountBefore = await Patient.countDocuments({ userId: profilelessUser._id });
 
     // Call getMe and loginUser 5 times each
     for (let i = 0; i < 5; i++) {
@@ -186,15 +250,19 @@ const runFeature1Test = async () => {
       await userLoginService.loginUser(doctorEmail, 'DoctorPass123!');
       await userLoginService.getMe(caregiverUser._id.toString());
       await userLoginService.loginUser(caregiverEmail, 'CaregiverPass123!');
+      await userLoginService.getMe(profilelessUser._id.toString());
+      await userLoginService.loginUser(`profileless.${testTs}@voiceback.org`, 'Pass123!');
     }
 
     const patientCountAfter = await Patient.countDocuments({ userId: patientUser._id });
     const doctorCountAfter = await Doctor.countDocuments({ userId: doctorUser._id });
     const caregiverCountAfter = await Caregiver.countDocuments({ userId: caregiverUser._id });
+    const profilelessCountAfter = await Patient.countDocuments({ userId: profilelessUser._id });
 
     console.log(` Patient profiles count for User ${patientUser._id}: Before=${patientCountBefore}, After=${patientCountAfter}`);
     console.log(` Doctor profiles count for User ${doctorUser._id}: Before=${doctorCountBefore}, After=${doctorCountAfter}`);
     console.log(` Caregiver profiles count for User ${caregiverUser._id}: Before=${caregiverCountBefore}, After=${caregiverCountAfter}`);
+    console.log(` Profile-less user Patient profiles count for User ${profilelessUser._id}: Before=${profilelessCountBefore}, After=${profilelessCountAfter}`);
 
     if (patientCountBefore !== 1 || patientCountAfter !== 1) {
       throw new Error(`Duplicate Patient profile detected! Count: ${patientCountAfter}`);
@@ -205,7 +273,10 @@ const runFeature1Test = async () => {
     if (caregiverCountBefore !== 1 || caregiverCountAfter !== 1) {
       throw new Error(`Duplicate Caregiver profile detected! Count: ${caregiverCountAfter}`);
     }
-    console.log('✅ Duplicate profile immunity PASSED! Exactly ONE profile exists per user.');
+    if (profilelessCountBefore !== 0 || profilelessCountAfter !== 0) {
+      throw new Error(`Profile was created for profile-less user! Count: ${profilelessCountAfter}`);
+    }
+    console.log('✅ Duplicate profile immunity & profile-less immunity PASSED!');
 
     console.log('\n========================================');
     console.log('🎉 ALL FEATURE 1 TESTS PASSED SUCCESSFULLY!');

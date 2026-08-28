@@ -158,14 +158,14 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
       const storedUser = JSON.parse(localStorage.getItem('voiceback_current_user') || 'null');
       const merged = { ...storedUser, ...raw };
       return {
-        fullName: merged.fullName || 'Not Available',
-        age: merged.age ? (String(merged.age).includes('Years') ? merged.age : `${merged.age} Years`) : 'Not Available',
-        gender: merged.gender || 'Not Available',
-        aphasiaType: merged.aphasiaType || 'Not Available',
-        preferredLanguage: merged.preferredLanguage || 'Not Available',
-        mobileNumber: merged.phone || merged.mobileNumber || 'Not Available',
-        email: merged.email || 'Not Available',
-        emergencyContact: merged.emergencyContact || 'Not Available',
+        fullName: merged.fullName || '',
+        age: merged.age ? (String(merged.age).includes('Years') ? merged.age : `${merged.age} Years`) : '',
+        gender: merged.gender || '',
+        aphasiaType: merged.aphasiaType || '',
+        preferredLanguage: merged.preferredLanguage || '',
+        mobileNumber: merged.phone || merged.mobileNumber || '',
+        email: merged.email || '',
+        emergencyContact: merged.emergencyContact || '',
         assignedDoctorName: merged.assignedDoctorName || '',
         assignedCaregiverName: merged.assignedCaregiverName || '',
       };
@@ -173,14 +173,14 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
       // ignore
     }
     return {
-      fullName: raw.fullName || 'Not Available',
-      age: raw.age ? (String(raw.age).includes('Years') ? raw.age : `${raw.age} Years`) : 'Not Available',
-      gender: raw.gender || 'Not Available',
-      aphasiaType: raw.aphasiaType || 'Not Available',
-      preferredLanguage: raw.preferredLanguage || 'Not Available',
-      mobileNumber: raw.phone || raw.mobileNumber || 'Not Available',
-      email: raw.email || 'Not Available',
-      emergencyContact: raw.emergencyContact || 'Not Available',
+      fullName: raw.fullName || '',
+      age: raw.age ? (String(raw.age).includes('Years') ? raw.age : `${raw.age} Years`) : '',
+      gender: raw.gender || '',
+      aphasiaType: raw.aphasiaType || '',
+      preferredLanguage: raw.preferredLanguage || '',
+      mobileNumber: raw.phone || raw.mobileNumber || '',
+      email: raw.email || '',
+      emergencyContact: raw.emergencyContact || '',
       assignedDoctorName: raw.assignedDoctorName || '',
       assignedCaregiverName: raw.assignedCaregiverName || '',
     };
