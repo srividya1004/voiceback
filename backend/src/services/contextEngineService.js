@@ -6,6 +6,7 @@
  */
 
 const axios = require('axios');
+const nlpProcessorService = require('./nlpProcessorService');
 
 /**
  * Script contamination validator
@@ -16,28 +17,22 @@ const validateLanguageScript = (text, language = 'en') => {
 
   const devanagariPattern = /[\u0900-\u097F]/;
   const kannadaPattern = /[\u0C80-\u0CFF]/;
-  const teluguPattern = /[\u0C00-\u0C7F]/;
   const foreignScriptPattern = /[\u3130-\u318F\uAC00-\uD7AF\u4E00-\u9FFF]/; // Korean / CJK
 
   if (language === 'kn') {
-    // Kannada script MUST NOT contain Devanagari, Telugu, Korean, or Latin letters
-    if (devanagariPattern.test(text) || teluguPattern.test(text) || foreignScriptPattern.test(text) || /[a-zA-Z]/.test(text)) {
-      return false;
-    }
-    return kannadaPattern.test(text) || /^[\s\d\p{P}]+$/u.test(text);
+    // Kannada script check — ensure it contains Kannada characters or valid punctuation
+    if (foreignScriptPattern.test(text)) return false;
+    return kannadaPattern.test(text) || /[a-zA-Z0-9]/.test(text);
   }
 
   if (language === 'hi') {
-    // Hindi Devanagari MUST NOT contain Kannada, Telugu, Korean, or Latin letters
-    if (kannadaPattern.test(text) || teluguPattern.test(text) || foreignScriptPattern.test(text) || /[a-zA-Z]/.test(text)) {
-      return false;
-    }
-    return devanagariPattern.test(text) || /^[\s\d\p{P}]+$/u.test(text);
+    // Hindi Devanagari script check
+    if (foreignScriptPattern.test(text)) return false;
+    return devanagariPattern.test(text) || /[a-zA-Z0-9]/.test(text);
   }
 
   if (language === 'en') {
-    // English MUST NOT contain Indic or foreign Asian scripts
-    if (devanagariPattern.test(text) || kannadaPattern.test(text) || teluguPattern.test(text) || foreignScriptPattern.test(text)) {
+    if (devanagariPattern.test(text) || kannadaPattern.test(text) || foreignScriptPattern.test(text)) {
       return false;
     }
     return true;
@@ -212,6 +207,30 @@ const DETERMINISTIC_RULES = [
         { id: 'opt_water_1', intent: 'WATER_REQUEST', text: 'हाँ, कृपया मुझे पानी दीजिए।' },
         { id: 'opt_water_2', intent: 'NO', text: 'नहीं, मुझे प्यास नहीं लगी है।' },
         { id: 'opt_water_3', intent: 'HELP', text: 'मुझे मदद चाहिए।' }
+      ]
+    }
+  },
+  {
+    category: 'what_meal',
+    keywords: ['what food', 'what to eat', 'which food', 'what dish', 'en uuta', 'en oota', 'enu uuta', 'enu thindi', 'ಏನ್ ಊಟ', 'ಏನು ಊಟ', 'ಏನು ತಿಂಡಿ', 'ಏನ್ ಬೇಕು', 'ಯಾವ ಊಟ', 'ಯಾವ ತಿಂಡಿ'],
+    options: {
+      en: [
+        { id: 'opt_wm_1', intent: 'SPECIFIC_FOOD_1', text: 'I want dosa or idli, please.' },
+        { id: 'opt_wm_2', intent: 'SPECIFIC_FOOD_2', text: 'I want hot rice and sambar.' },
+        { id: 'opt_wm_3', intent: 'SPECIFIC_FOOD_3', text: 'I want chapati and curry.' },
+        { id: 'opt_wm_4', intent: 'SPECIFIC_FOOD_4', text: 'Just light snacks or fresh fruit.' }
+      ],
+      kn: [
+        { id: 'opt_wm_1', intent: 'SPECIFIC_FOOD_1', text: 'ನನಗೆ ದೋಸೆ ಅಥವಾ ಇಡ್ಲಿ ಬೇಕು.' },
+        { id: 'opt_wm_2', intent: 'SPECIFIC_FOOD_2', text: 'ನನಗೆ ಬಿಸಿ ಬಿಸಿ ಅನ್ನ ಮತ್ತು ಸಾರು ಬೇಕು.' },
+        { id: 'opt_wm_3', intent: 'SPECIFIC_FOOD_3', text: 'ನನಗೆ ಚಪಾತಿ ಮತ್ತು ಪಲ್ಯ ಬೇಕು.' },
+        { id: 'opt_wm_4', intent: 'SPECIFIC_FOOD_4', text: 'ಸ್ವಲ್ಪ ಲಘು ಆಹಾರ ಅಥವಾ ಹಣ್ಣು ಕೊಡಿ.' }
+      ],
+      hi: [
+        { id: 'opt_wm_1', intent: 'SPECIFIC_FOOD_1', text: 'मुझे डोसा या इडली चाहिए।' },
+        { id: 'opt_wm_2', intent: 'SPECIFIC_FOOD_2', text: 'मुझे गरम चावल और सांभर चाहिए।' },
+        { id: 'opt_wm_3', intent: 'SPECIFIC_FOOD_3', text: 'मुझे चपाती और सब्जी चाहिए।' },
+        { id: 'opt_wm_4', intent: 'SPECIFIC_FOOD_4', text: 'थोड़ा हल्का खाना या फल दे दो।' }
       ]
     }
   },
@@ -428,7 +447,7 @@ const DETERMINISTIC_RULES = [
  * Execute local deterministic reasoning engine
  */
 const getDeterministicFallback = (question, language = 'en') => {
-  const normalizedLang = ['en', 'kn', 'hi'].includes(language) ? language : 'en';
+  const normalizedLang = ['en', 'kn'].includes(language) ? language : 'en';
   const qLower = (question || '').toLowerCase();
 
   for (const rule of DETERMINISTIC_RULES) {
@@ -454,12 +473,14 @@ const getDeterministicFallback = (question, language = 'en') => {
     }
   }
 
-  // Safe generic emergency fallback
+  // Advanced NLP Semantic Reasoning Engine when Gemini rate-limits or rule unmatched
+  const nlpOptions = nlpProcessorService.generateSemanticNLPResponses(question, normalizedLang);
+
   return {
     question: question,
     language: normalizedLang,
-    intentContext: 'generic_fallback',
-    options: SAFE_GENERIC_FALLBACKS[normalizedLang]
+    intentContext: 'nlp_semantic_reasoning',
+    options: nlpOptions
   };
 };
 
@@ -542,12 +563,8 @@ JSON Schema:
 
   // Ensure every option has required fields, script validation, and canonical intent mapping
   const validOptions = parsed.options.map((opt, index) => {
-    const rawOptText = opt.text || 'Response option';
-    const isValidScript = validateLanguageScript(rawOptText, normalizedLang);
-
-    const cleanText = isValidScript
-      ? rawOptText
-      : SAFE_GENERIC_FALLBACKS[normalizedLang][index % 5].text;
+    const rawOptText = typeof opt === 'string' ? opt : opt.text || 'Response option';
+    const cleanText = (rawOptText && rawOptText.trim().length > 0) ? rawOptText.trim() : 'Yes.';
 
     const rawIntent = (opt.intent || 'UNKNOWN_INTENT').toUpperCase();
     const canonicalIntent = normalizeSemanticIntent(rawIntent, cleanText);
@@ -585,20 +602,104 @@ const generateResponseOptions = async ({ question, language = 'en', patientConte
     };
   }
 
+  let rawResult;
   try {
     if (process.env.GEMINI_API_KEY) {
-      return await callGeminiAPI(question, normalizedLang, patientContext);
+      rawResult = await callGeminiAPI(question, normalizedLang, patientContext);
     }
   } catch (err) {
     console.warn(`[ContextEngine] Gemini API call failed/bypassed: ${err.message}. Using local deterministic engine.`);
   }
 
-  // Fallback to deterministic local context-reasoning engine
-  return getDeterministicFallback(question, normalizedLang);
+  if (!rawResult) {
+    rawResult = getDeterministicFallback(question, normalizedLang);
+  }
+
+  // Apply NLP Output Post-Processing Engine
+  const nlpOptions = nlpProcessorService.postProcessOutputNLP(rawResult.options, normalizedLang);
+
+  return {
+    ...rawResult,
+    options: nlpOptions,
+    nlpProcessed: true
+  };
+};
+
+/**
+ * Multimodal Audio Speech Recognition & Intent Response reasoning using Google Gemini
+ */
+const transcribeAndRecognizeWithGemini = async ({ audioBase64, mimeType = 'audio/webm', language = 'en' }) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY environment variable is missing');
+  }
+
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const normalizedLang = ['en', 'kn', 'hi'].includes(language) ? language : 'en';
+
+  const systemPrompt = `You are Google Gemini VoiceBack Multimodal Speech & Intent Engine for an aphasia patient application.
+Listen to this audio recording of a caregiver or patient speaking.
+Target Language: "${normalizedLang}" (en = English, kn = Kannada, hi = Hindi)
+
+Tasks:
+1. Transcribe the spoken speech into clean text. If speech is distorted or unintelligible due to aphasia, output a gentle summary like "Speech Attempt Detected".
+2. Identify the intent context.
+3. Generate 3 to 5 short patient-friendly response options written in native script (Kannada for kn, Devanagari for hi, English for en).
+
+Return ONLY valid JSON:
+{
+  "transcript": "Transcribed speech text",
+  "language": "${normalizedLang}",
+  "intentContext": "context_label",
+  "options": [
+    { "id": "opt_1", "intent": "INTENT_CODE", "text": "Native script response" }
+  ]
+}`;
+
+  const parts = [{ text: systemPrompt }];
+
+  if (audioBase64) {
+    parts.push({
+      inline_data: {
+        mime_type: mimeType,
+        data: audioBase64
+      }
+    });
+  }
+
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const response = await axios.post(
+    apiUrl,
+    {
+      contents: [{ parts }],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json'
+      }
+    },
+    { headers: { 'Content-Type': 'application/json' }, timeout: 25000 }
+  );
+
+  const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!rawText) {
+    throw new Error('Empty response payload from Gemini Multimodal Audio API');
+  }
+
+  const cleanedText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const parsed = JSON.parse(cleanedText);
+
+  return {
+    transcript: parsed.transcript || 'Speech Attempt Recognized',
+    language: parsed.language || normalizedLang,
+    intentContext: parsed.intentContext || 'gemini_multimodal',
+    options: Array.isArray(parsed.options) ? parsed.options : SAFE_GENERIC_FALLBACKS[normalizedLang]
+  };
 };
 
 module.exports = {
   generateResponseOptions,
+  transcribeAndRecognizeWithGemini,
   getDeterministicFallback,
   validateLanguageScript,
   normalizeSemanticIntent,

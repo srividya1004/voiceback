@@ -1,4 +1,5 @@
 import apiClient from './apiClient';
+import { generateDynamicResponses } from '../components/ConversationModeModule';
 
 /**
  * VoiceBack Context Service (Phase C)
@@ -19,18 +20,16 @@ export const contextService = {
       return response.data?.data || { question: caregiverQuestion, language, options: [] };
     } catch (error) {
       console.warn('Failed to generate dynamic context options:', error.message);
-      // Client-side fallback if backend call fails completely
+      const dynamicChoices = generateDynamicResponses(caregiverQuestion, language === 'kn' ? 'Kannada' : language === 'hi' ? 'Hindi' : 'English');
       return {
         question: caregiverQuestion,
         language,
-        intentContext: 'client_fallback',
-        options: [
-          { id: 'opt_yes', intent: 'YES', text: language === 'kn' ? 'ಹೌದು' : language === 'hi' ? 'हाँ' : 'Yes' },
-          { id: 'opt_no', intent: 'NO', text: language === 'kn' ? 'ಇಲ್ಲ' : language === 'hi' ? 'नहीं' : 'No' },
-          { id: 'opt_unsure', intent: 'UNSURE', text: language === 'kn' ? 'ನನಗೆ ಗೊತ್ತಿಲ್ಲ' : language === 'hi' ? 'मुझे नहीं पता' : "I don't know" },
-          { id: 'opt_repeat', intent: 'REPEAT', text: language === 'kn' ? 'ದಯವಿಟ್ಟು ಇನ್ನೊಮ್ಮೆ ಹೇಳಿ' : language === 'hi' ? 'कृपया दोबारा कहें' : 'Please repeat' },
-          { id: 'opt_help', intent: 'HELP', text: language === 'kn' ? 'ನನಗೆ ಸಹಾಯ ಬೇಕು' : language === 'hi' ? 'मुझे मदद चाहिए' : 'I need help' }
-        ]
+        intentContext: 'dynamic_fallback',
+        options: dynamicChoices.map((choiceText, index) => ({
+          id: `opt_${index + 1}`,
+          intent: `INTENT_${index + 1}`,
+          text: choiceText
+        }))
       };
     }
   },

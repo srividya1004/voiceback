@@ -9,5 +9,6 @@ const contextController = require('../controllers/contextController');
 
 router.post('/generate-options', contextController.generateOptions);
 router.post('/submit-intent', contextController.submitIntent);
+router.post('/gemini-speech-response', contextController.geminiSpeechRecognize);
 
 module.exports = router;

@@ -86,7 +86,29 @@ const submitIntent = async (req, res) => {
   }
 };
 
+/**
+ * Gemini Multimodal Audio Speech Recognition & Intent Response Generator
+ * @route POST /api/context/gemini-speech-response
+ */
+const geminiSpeechRecognize = async (req, res) => {
+  try {
+    const { audioBase64, mimeType = 'audio/webm', language = 'en' } = req.body || {};
+
+    const result = await contextEngineService.transcribeAndRecognizeWithGemini({
+      audioBase64,
+      mimeType,
+      language: (language || 'en').toLowerCase()
+    });
+
+    return sendSuccess(res, 200, 'Google Gemini Multimodal Speech Recognition completed successfully', result);
+  } catch (error) {
+    console.error('Error in geminiSpeechRecognize:', error);
+    return sendError(res, 500, 'Gemini multimodal speech recognition failed', error.message);
+  }
+};
+
 module.exports = {
   generateOptions,
-  submitIntent
+  submitIntent,
+  geminiSpeechRecognize
 };

@@ -142,15 +142,6 @@ export const DynamicCommunicationModule = ({
           >
             ಕನ್ನಡ
           </button>
-          <button
-            type="button"
-            onClick={() => setLanguage('hi')}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
-              language === 'hi' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            हिंदी
-          </button>
         </div>
       </div>
 

@@ -724,7 +724,7 @@ export const SilentSpeechModule = ({
                 {deviceStatus.isConnected ? (
                   <div style={{ width: '100%', marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <div style={{ padding: '0.75rem', borderRadius: '10px', background: 'rgba(34, 197, 94, 0.08)', border: '1px solid #22C55E', color: '#16A34A', fontSize: '0.9rem', fontWeight: 800 }}>
-                      VoiceBack-Neckband Connected
+                      🟢 {deviceStatus.deviceName || 'VoiceBack-Neckband'} Connected
                     </div>
 
                     <button
@@ -737,16 +737,31 @@ export const SilentSpeechModule = ({
                     </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    className="btn-continue"
-                    onClick={handleConnectBLE}
-                    disabled={isConnecting}
-                    style={{ width: '100%', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                  >
-                    {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <Wifi size={18} />}
-                    <span>{isConnecting ? 'CONNECTING...' : 'Connect VoiceBack-Neckband'}</span>
-                  </button>
+                  <div style={{ width: '100%', marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    <button
+                      type="button"
+                      className="btn-continue"
+                      onClick={handleConnectBLE}
+                      disabled={isConnecting}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                    >
+                      {isConnecting ? <Loader2 size={18} className="animate-spin" /> : <Wifi size={18} />}
+                      <span>{isConnecting ? 'CONNECTING VIA BLUETOOTH...' : '📡 Pair Bluetooth Device (Web Bluetooth)'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn-secondary-auth"
+                      onClick={() => {
+                        setConnectionError('');
+                        deviceService.startDemoSimulation();
+                      }}
+                      style={{ width: '100%', padding: '0.75rem', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                    >
+                      <Sparkles size={16} color="var(--color-blue-primary)" />
+                      <span>Simulate Bluetooth Pairing (Demo Mode)</span>
+                    </button>
+                  </div>
                 )}
 
                 {connectionError && (

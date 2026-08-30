@@ -188,11 +188,18 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
     isConfirmPasswordValid,
   ]);
 
+  const [registrationError, setRegistrationError] = useState('');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isFormValid) return;
-    await authService.registerPatient(formData);
-    setIsSubmittedSuccess(true);
+    setRegistrationError('');
+    const res = await authService.registerPatient(formData);
+    if (res && res.success) {
+      setIsSubmittedSuccess(true);
+    } else {
+      setRegistrationError(res?.error || 'Registration failed. Please check your details and try again.');
+    }
   };
 
   const handleContinueToLogin = () => {
@@ -275,6 +282,23 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
               noValidate
               style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}
             >
+              {registrationError && (
+                <div
+                  style={{
+                    padding: '0.75rem 1rem',
+                    borderRadius: '12px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#DC2626',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    textAlign: 'center',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  {registrationError}
+                </div>
+              )}
               {/* 1. Full Name * */}
               <div className="form-group">
                 <label className="form-label" htmlFor="reg-fullname">
@@ -336,10 +360,10 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
                   required
                 >
                   <option value="" disabled>Select Gender</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                  <option value="prefer_not_to_say">Prefer not to say</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
                 </select>
                 {getFieldError('gender') && (
                   <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, marginTop: '0.15rem' }}>
@@ -452,8 +476,8 @@ export const PatientRegistrationScreen = ({ onBack, onSuccess, onSignInClick }) 
                   required
                 >
                   <option value="" disabled>Select Type of Aphasia</option>
-                  <option value="Broca's Aphasia">Broca's Aphasia</option>
-                  <option value="Wernicke's Aphasia">Wernicke's Aphasia</option>
+                  <option value="Broca's">Broca's Aphasia</option>
+                  <option value="Wernicke's">Wernicke's Aphasia</option>
                 </select>
                 {getFieldError('aphasiaType') && (
                   <span style={{ fontSize: '0.75rem', color: '#DC2626', fontWeight: 600, marginTop: '0.15rem' }}>

@@ -108,8 +108,15 @@ export const SettingsProvider = ({ children }) => {
     }
 
     const targetLang = overrideLang || language;
-    voiceService.speakNativeTTS(text, { language: targetLang }).catch((e) => {
-      console.warn('⚠️ Voice Assistant TTS playback error:', e);
+    const formattedLang = targetLang === 'kannada' || targetLang === 'kn' ? 'Kannada' : 'English';
+
+    voiceService.playSynthesizedAudio({
+      text,
+      language: formattedLang,
+      emotion: 'neutral'
+    }).catch((e) => {
+      console.warn('⚠️ Voice Assistant ElevenLabs speech playback notice:', e);
+      voiceService.speakNativeTTS(text, { language: targetLang });
     });
   };
 

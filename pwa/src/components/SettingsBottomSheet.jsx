@@ -118,14 +118,62 @@ export const SettingsBottomSheet = ({ isOpen, onClose }) => {
             >
               <span>ಕನ್ನಡ</span>
             </button>
-            <button
-              type="button"
-              className={`segmented-btn ${language === 'hindi' ? 'active' : ''}`}
-              data-speech={t('hindiLangSpeech')}
-              onClick={() => setLanguage('hindi')}
-            >
-              <span>हिंदी</span>
-            </button>
+          </div>
+        </div>
+
+        {/* Section 2.5: Human Voice Profile (Gender & Age Group) */}
+        <div className="settings-section">
+          <h3 className="settings-section-title">🗣️ Human Voice Profile (Gender & Age)</h3>
+          
+          {/* Gender Selector */}
+          <div style={{ marginBottom: '0.65rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-brand-tagline)', display: 'block', marginBottom: '0.3rem' }}>
+              Voice Gender:
+            </span>
+            <div className="segmented-group">
+              {['female', 'male'].map((g) => {
+                const activeGender = (localStorage.getItem('voiceback_patient_gender') || 'female') === g;
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    className={`segmented-btn ${activeGender ? 'active' : ''}`}
+                    onClick={() => {
+                      localStorage.setItem('voiceback_patient_gender', g);
+                      if (updateSettings) updateSettings({ gender: g });
+                    }}
+                  >
+                    <span>{g === 'female' ? '👩 Female Voice' : '👨 Male Voice'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Age Group Selector */}
+          <div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-brand-tagline)', display: 'block', marginBottom: '0.3rem' }}>
+              Voice Age Group:
+            </span>
+            <div className="segmented-group" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.25rem' }}>
+              {['child', 'young', 'adult', 'senior'].map((age) => {
+                const activeAge = (localStorage.getItem('voiceback_patient_age_group') || 'adult') === age;
+                return (
+                  <button
+                    key={age}
+                    type="button"
+                    className={`segmented-btn ${activeAge ? 'active' : ''}`}
+                    style={{ fontSize: '0.7rem', padding: '0.35rem 0.2rem', textTransform: 'capitalize' }}
+                    onClick={() => {
+                      localStorage.setItem('voiceback_patient_age_group', age);
+                      if (updateSettings) updateSettings({ ageGroup: age });
+                    }}
+                  >
+                    <span>{age}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

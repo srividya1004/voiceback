@@ -6,11 +6,27 @@
 const { Patient, Doctor, Caregiver, UserLogin } = require('../models');
 const { validateObjectId } = require('../utils/validationHelper');
 
+const sanitizeAphasiaType = (type) => {
+  if (!type || typeof type !== 'string') return undefined;
+  const validEnums = [
+    "Broca's", "Wernicke's", "Global", "Anomic",
+    "Transcortical Motor", "Transcortical Sensory", "Conduction", "Mixed", "Other"
+  ];
+  const stripped = type.replace(/\s+Aphasia$/i, '').trim();
+  if (validEnums.includes(stripped)) return stripped;
+  if (validEnums.includes(type)) return type;
+  return "Broca's";
+};
+
 /**
  * Create a new Patient record (Find-or-create / Upsert)
  */
 const createPatient = async (patientData) => {
   const normalizedEmail = patientData.email ? patientData.email.trim().toLowerCase() : '';
+
+  if (patientData.aphasiaType) {
+    patientData.aphasiaType = sanitizeAphasiaType(patientData.aphasiaType);
+  }
 
   const existing = await Patient.findOne({
     $or: [
@@ -204,6 +220,10 @@ const assignCaregiverByEmail = async (patientId, caregiverEmailInput) => {
  */
 const updatePatient = async (id, updateData) => {
   validateObjectId(id, 'Patient');
+
+  if (updateData.aphasiaType) {
+    updateData.aphasiaType = sanitizeAphasiaType(updateData.aphasiaType);
+  }
 
   const patient = await Patient.findByIdAndUpdate(id, updateData, {
     new: true,

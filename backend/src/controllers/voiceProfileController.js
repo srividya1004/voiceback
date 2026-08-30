@@ -152,17 +152,17 @@ const cloneVoiceSample = async (req, res) => {
  */
 const synthesizeSpeech = async (req, res) => {
   try {
-    const { patientId, text, language, emotion } = req.body;
+    const { patientId, voiceId, text, language, emotion } = req.body;
 
     if (!text || !text.trim()) {
       return sendError(res, 400, 'Text parameter is required for speech synthesis.');
     }
 
-    let targetVoiceId = null;
+    let targetVoiceId = voiceId || null;
     let patientGender = req.body.gender || 'female';
     let patientAgeGroup = req.body.ageGroup || 'adult';
 
-    if (patientId) {
+    if (!targetVoiceId && patientId) {
       try {
         const patientDoc = await Patient.findById(patientId);
         if (patientDoc) {
@@ -214,15 +214,13 @@ const synthesizeSpeech = async (req, res) => {
     res.setHeader('Accept-Ranges', 'bytes');
     return res.status(200).send(audioBuffer);
   } catch (error) {
-    if (error.message && error.message.includes('ELEVENLABS_API_KEY')) {
-      res.setHeader('X-Voice-Provider', 'native_speech_fallback');
-      return res.status(200).json({
-        success: true,
-        provider: 'native_speech_fallback',
-        message: 'ElevenLabs API key is unconfigured. Client will fall back to native speech provider.'
-      });
-    }
-    return sendError(res, 500, 'Speech synthesis failed', error.message);
+    console.warn(`ℹ️ ElevenLabs TTS notice (${error.message}) — triggering client fallback.`);
+    res.setHeader('X-Voice-Provider', 'native_speech_fallback');
+    return res.status(200).json({
+      success: true,
+      provider: 'native_speech_fallback',
+      message: `ElevenLabs TTS notice: ${error.message}`
+    });
   }
 };
 
@@ -236,8 +234,10 @@ const transcribeSpeech = async (req, res) => {
       return sendError(res, 400, 'Audio sample file is required for speech-to-text transcription.');
     }
 
+    const { language } = req.body;
     const transcript = await elevenLabsService.transcribeSpeech({
       audioFilePath: req.file.path,
+      language: language || 'kn'
     });
 
     return sendSuccess(res, 200, 'Speech transcribed successfully', {

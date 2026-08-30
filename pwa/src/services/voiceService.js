@@ -70,26 +70,33 @@ export const voiceService = {
 
   synthesizeSpeech: async ({
     patientId,
+    voiceId,
+    gender,
+    ageGroup,
     text,
     language,
     emotion,
   }) => {
-    const response =
-      await apiClient.post(
-        '/voice-profiles/synthesize',
+    const activeClonedVoiceId = voiceId || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_cloned_voice_id') : null);
+    const activeGender = gender || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_patient_gender') : null) || 'female';
+    const activeAgeGroup = ageGroup || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_patient_age_group') : null) || 'adult';
 
-        {
-          patientId,
-          text,
-          language,
-          emotion,
-        },
-
-        {
-          responseType: 'blob',
-          timeout: 45000,
-        }
-      );
+    const response = await apiClient.post(
+      '/voice-profiles/synthesize',
+      {
+        patientId,
+        voiceId: activeClonedVoiceId,
+        gender: activeGender,
+        ageGroup: activeAgeGroup,
+        text,
+        language,
+        emotion,
+      },
+      {
+        responseType: 'blob',
+        timeout: 45000,
+      }
+    );
 
     return response.data;
   },
@@ -237,52 +244,37 @@ export const voiceService = {
       if (knVoice) return knVoice;
     }
 
-    const enInVoice =
-      voices.find((v) => {
-        const l =
-          v.lang
-            .toLowerCase()
-            .replace('_', '-');
+    // Prioritize High-Quality Human / Neural / Natural Voices
+    const neuralOrNatural = (list) => list.find(v => {
+      const name = (v.name || '').toLowerCase();
+      return name.includes('natural') || name.includes('neural') || name.includes('google') || name.includes('online');
+    }) || list[0];
 
-        return (
-          l.includes('en-in') ||
-          l.includes('en_in')
-        );
-      });
+    const enInVoice = voices.filter((v) => {
+      const l = v.lang.toLowerCase().replace('_', '-');
+      return l.includes('en-in') || l.includes('en_in');
+    });
 
-    if (enInVoice) {
-      return enInVoice;
+    if (enInVoice.length > 0) {
+      return neuralOrNatural(enInVoice);
     }
 
-    const enUsVoice =
-      voices.find((v) => {
-        const l =
-          v.lang
-            .toLowerCase()
-            .replace('_', '-');
+    const enUsVoice = voices.filter((v) => {
+      const l = v.lang.toLowerCase().replace('_', '-');
+      return l.includes('en-us') || l.includes('en_us');
+    });
 
-        return (
-          l.includes('en-us') ||
-          l.includes('en_us')
-        );
-      });
-
-    if (enUsVoice) {
-      return enUsVoice;
+    if (enUsVoice.length > 0) {
+      return neuralOrNatural(enUsVoice);
     }
 
-    const anyEnVoice =
-      voices.find((v) => {
-        const l =
-          v.lang
-            .toLowerCase()
-            .replace('_', '-');
+    const anyEnVoice = voices.filter((v) => {
+      const l = v.lang.toLowerCase().replace('_', '-');
+      return l.startsWith('en');
+    });
 
-        return l.startsWith('en');
-      });
-
-    if (anyEnVoice) {
-      return anyEnVoice;
+    if (anyEnVoice.length > 0) {
+      return neuralOrNatural(anyEnVoice);
     }
 
     return voices[0];
@@ -491,6 +483,7 @@ export const voiceService = {
 
   playSynthesizedAudio: async ({
     patientId,
+    voiceId,
     text,
     language = 'English',
     emotion = 'neutral',
@@ -514,54 +507,59 @@ export const voiceService = {
         '🔊 [VoiceOutput] Requesting ElevenLabs synthesized audio...'
       );
 
+      const activeClonedVoiceId = voiceId || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_cloned_voice_id') : null);
+
       const blob =
         await voiceService.synthesizeSpeech({
           patientId,
+          voiceId: activeClonedVoiceId,
           text,
           language,
           emotion,
         });
 
-      if (
-        blob &&
-        blob.size > 200 &&
-        blob.type.includes('audio')
-      ) {
-        console.log(
-          `🔊 [VoiceOutput] ElevenLabs audio received: ${blob.size} bytes`
-        );
+      if (blob && blob.type && blob.type.includes('json')) {
+        const textPayload = await blob.text();
+        console.warn('🔊 [VoiceOutput] Received fallback JSON payload from backend:', textPayload);
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = language === 'Kannada' || language === 'kn' ? 'kn-IN' : language === 'Hindi' || language === 'hi' ? 'hi-IN' : 'en-US';
+          utterance.rate = 0.9;
+          window.speechSynthesis.speak(utterance);
+          return {
+            success: true,
+            provider: 'Web Speech TTS (ElevenLabs Notice Fallback)',
+            audioUrl: null,
+          };
+        }
+      }
+
+      if (blob && blob.size > 100) {
+        console.log(`🔊 [VoiceOutput] Audio payload received: ${blob.size} bytes (type: ${blob.type})`);
+
+        // Ensure proper audio MIME type
+        const audioBlob = blob.type && blob.type.includes('audio')
+          ? blob
+          : new Blob([blob], { type: 'audio/mpeg' });
 
         if (deviceService.getDeviceStatus().isConnected) {
-          const result =
-            await deviceService.sendAudioToESP32(
-              blob
-            );
-
-          console.log(
-            '🔊 [VoiceOutput] Audio successfully transferred to ESP32 MAX98357A physical speaker.'
-          );
+          const result = await deviceService.sendAudioToESP32(audioBlob);
+          console.log('🔊 [VoiceOutput] Audio successfully transferred to ESP32 MAX98357A physical speaker.');
 
           return {
             success: true,
-
-            provider:
-              'ElevenLabs IVC → ESP32 MAX98357A Physical Speaker',
-
+            provider: 'ElevenLabs IVC → ESP32 MAX98357A Physical Speaker',
             audioUrl: null,
-
-            bytes:
-              result.bytes,
-
-            packets:
-              result.packets,
-
-            sampleRate:
-              result.sampleRate,
+            bytes: result.bytes,
+            packets: result.packets,
+            sampleRate: result.sampleRate,
           };
         } else {
-          // Play audio blob through physical output device via HTML5 setSinkId if configured
-          const audioUrl = URL.createObjectURL(blob);
-          const audio = new Audio(audioUrl);
+          // Play audio blob out loud via HTML5 Audio element
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const audio = new Audio();
+          audio.src = audioUrl;
 
           if (typeof audio.setSinkId === 'function' && window.selectedAudioDeviceId) {
             try {
@@ -571,40 +569,54 @@ export const voiceService = {
             }
           }
 
-          await audio.play();
-
-          return {
-            success: true,
-            provider: 'ElevenLabs IVC → Physical Audio Device',
-            audioUrl,
-          };
+          try {
+            await audio.play();
+            console.log('🔊 [VoiceOutput] HTML5 Audio playback started successfully.');
+            return {
+              success: true,
+              provider: 'ElevenLabs IVC → Physical Speaker',
+              audioUrl,
+            };
+          } catch (playErr) {
+            console.warn('🔊 HTML5 Audio play notice:', playErr.message);
+            // Fallback to Web Speech API Utterance if audio.play() is blocked by browser autoplay policy
+            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+              const utterance = new SpeechSynthesisUtterance(text);
+              utterance.lang = language === 'Kannada' || language === 'kn' ? 'kn-IN' : language === 'Hindi' || language === 'hi' ? 'hi-IN' : 'en-US';
+              utterance.rate = 0.9;
+              window.speechSynthesis.speak(utterance);
+              return {
+                success: true,
+                provider: 'ElevenLabs Fallback → Web Speech TTS',
+                audioUrl: null,
+              };
+            }
+          }
         }
       }
 
-      throw new Error(
-        'ElevenLabs returned invalid audio data.'
-      );
+      throw new Error('Audio payload empty or invalid.');
     } catch (err) {
-      console.warn(
-        '⚠️ [VoiceOutput] ElevenLabs/ESP32 audio path failed:',
-        err.message
-      );
-
-      // Keep the existing browser fallback.
-      // This is only a fallback and will play on the laptop.
-    }
-
-    // ----------------------------------------------------------
-    // 2. EXISTING BROWSER FALLBACK
-    // ----------------------------------------------------------
-
-    return await voiceService.speakNativeTTS(
-      text,
-      {
-        language,
-        emotion,
+      console.warn('⚠️ [VoiceOutput] ElevenLabs synthesis notice:', err.message);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = language === 'Kannada' || language === 'kn' ? 'kn-IN' : language === 'Hindi' || language === 'hi' ? 'hi-IN' : 'en-US';
+        utterance.rate = 0.9;
+        window.speechSynthesis.speak(utterance);
+        return {
+          success: true,
+          provider: 'Web Speech TTS (Notice Fallback)',
+          audioUrl: null
+        };
       }
-    );
+      return {
+        success: false,
+        provider: 'ElevenLabs Output Notice: ' + err.message,
+        audioUrl: null
+      };
+    }
   },
 
   // ============================================================

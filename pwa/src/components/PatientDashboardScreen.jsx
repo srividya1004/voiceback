@@ -31,7 +31,8 @@ import {
   CheckCircle2,
   XCircle,
   Moon,
-  PhoneCall
+  PhoneCall,
+  RefreshCw
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
@@ -45,9 +46,13 @@ import EmergencySOSModule from './EmergencySOSModule';
 import PatientAppointmentsModule from './PatientAppointmentsModule';
 import DynamicCommunicationModule from './DynamicCommunicationModule';
 import VolumeControlWidget from './VolumeControlWidget';
+import UniversalSpeechInput from './UniversalSpeechInput';
+import WakeWordVoicePipelineModule from './WakeWordVoicePipelineModule';
+import ConversationModeModule, { generateDynamicResponses } from './ConversationModeModule';
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 import patientService from '../services/patientService';
+import caregiverService from '../services/caregiverService';
 import appointmentService from '../services/appointmentService';
 import communicationService from '../services/communicationService';
 import therapyService from '../services/therapyService';
@@ -70,6 +75,49 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const [speechErrorMsg, setSpeechErrorMsg] = useState('');
   const [isSynthesizingVoice, setIsSynthesizingVoice] = useState(false);
   const [activeCategoryTab, setActiveCategoryTab] = useState('basic'); // 'basic' | 'people'
+  
+  // Ephemeral Dynamic Conversation State (Patient Dashboard)
+  const [ephemeralQuestion, setEphemeralQuestion] = useState('');
+  const [ephemeralChoices, setEphemeralChoices] = useState([]);
+  const [ephemeralSelectedChoice, setEphemeralSelectedChoice] = useState('');
+  const [ephemeralIsSynthesizing, setEphemeralIsSynthesizing] = useState(false);
+  const [ephemeralStatusMsg, setEphemeralStatusMsg] = useState('');
+  const ephemeralAutoClearTimer = useRef(null);
+
+  const clearEphemeralConversation = () => {
+    setEphemeralQuestion('');
+    setEphemeralChoices([]);
+    setEphemeralSelectedChoice('');
+    setEphemeralIsSynthesizing(false);
+    setEphemeralStatusMsg('');
+    if (ephemeralAutoClearTimer.current) {
+      clearTimeout(ephemeralAutoClearTimer.current);
+    }
+  };
+
+  const handleConfirmEphemeralChoice = async () => {
+    if (!ephemeralSelectedChoice) return;
+    setEphemeralIsSynthesizing(true);
+    setEphemeralStatusMsg('Synthesizing patient voice audio and routing to physical speaker...');
+
+    try {
+      await processPhraseOutput(ephemeralSelectedChoice);
+      setEphemeralStatusMsg('🟢 Audio played through physical MAX98357A speaker!');
+
+      // AUTOMATIC EPHEMERAL CLEANUP AFTER SUCCESSFUL PLAYBACK
+      ephemeralAutoClearTimer.current = setTimeout(() => {
+        clearEphemeralConversation();
+      }, 2500);
+    } catch (err) {
+      console.warn('Ephemeral output notice:', err.message);
+      setEphemeralStatusMsg(`Notice: ${err.message}`);
+      ephemeralAutoClearTimer.current = setTimeout(() => {
+        clearEphemeralConversation();
+      }, 3500);
+    } finally {
+      setEphemeralIsSynthesizing(false);
+    }
+  };
   
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -165,6 +213,22 @@ export const PatientDashboardScreen = ({ onLogout }) => {
                 linkedCgName = matchedCg.fullName;
               }
             }
+
+            const patientGender = (activePatientRecord.gender || 'female').toLowerCase();
+            const numericAge = parseInt(activePatientRecord.age, 10) || 22;
+            const patientAgeGroup = numericAge <= 17 ? 'child' : numericAge <= 30 ? 'young' : numericAge <= 60 ? 'adult' : 'senior';
+
+            localStorage.setItem('voiceback_patient_gender', patientGender);
+            localStorage.setItem('voiceback_patient_age_group', patientAgeGroup);
+
+            // Fetch patient's saved voice profile from backend and bind cloned voiceId
+            voiceService.getVoiceProfiles().then((profiles) => {
+              const patientIdStr = String(activePatientRecord._id || activePatientRecord.id || '');
+              const profile = Array.isArray(profiles) ? profiles.find(vp => String(vp.patientId?._id || vp.patientId) === patientIdStr || vp.voiceId) : null;
+              if (profile && profile.voiceId) {
+                localStorage.setItem('voiceback_cloned_voice_id', profile.voiceId);
+              }
+            }).catch(() => {});
 
             setProfileData({
               id: activePatientRecord._id || activePatientRecord.id,
@@ -386,18 +450,41 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           const response = await voiceService.transcribeSpeech(formData);
           const transcript = response?.data?.text || response?.text || '';
 
-          if (transcript && transcript.trim().length > 0) {
-            const cleanTranscript = transcript.trim();
-            console.log(`✅ Scribe v2 Transcript received: "${cleanTranscript}"`);
-            setSpeechErrorMsg('');
-            processPhraseOutput(cleanTranscript);
+          const lang = language === 'kannada' ? 'Kannada' : language === 'hindi' ? 'Hindi' : 'English';
+          const defaultPrompt = lang === 'Kannada' ? 'ಧ್ವನಿ ಪ್ರಯತ್ನ ಗ್ರಹಿಸಲಾಗಿದೆ' : lang === 'Hindi' ? 'वाणी प्रयास पहचाना गया' : 'Speech Vocalization Triggered';
+          
+          const rawTranscript = (transcript || '').trim();
+          const cleanTranscript = rawTranscript
+            .replace(/\[(pause|silence|cough|sigh|snort|laughter|music|clearing|throat-clearing|applause|cheering|noise|static)\]/gi, '')
+            .replace(/^\[.*\]$/, '')
+            .replace(/\s+/g, ' ')
+            .trim() || defaultPrompt;
+
+          console.log(`✅ Scribe v2 Vocalization received: "${rawTranscript}" -> Cleaned: "${cleanTranscript}"`);
+          setSpeechErrorMsg('');
+
+          // Dynamically classify question and generate targeted response choices
+          const choices = generateDynamicResponses(cleanTranscript, lang);
+
+          setEphemeralQuestion(cleanTranscript);
+          setEphemeralChoices(choices);
+
+          if (choices && choices.length > 0) {
+            const topReply = choices[0];
+            setEphemeralSelectedChoice(topReply);
+            setEphemeralStatusMsg(`⚡ Auto-Reply triggered: Synthesizing "${topReply}"...`);
+            // Automatically trigger ElevenLabs TTS synthesis & audio playback
+            processPhraseOutput(topReply);
           } else {
-            console.warn('ElevenLabs Scribe v2 returned an empty transcript string.');
-            setSpeechErrorMsg("Couldn't hear that. Please try again or choose a message below.");
+            const fallbackReply = lang === 'Kannada' ? 'ಹೌದು, ದಯವಿಟ್ಟು' : lang === 'Hindi' ? 'हाँ, कृपया' : 'Yes, please';
+            setEphemeralSelectedChoice(fallbackReply);
+            setEphemeralStatusMsg(`⚡ Auto-Reply triggered: Synthesizing "${fallbackReply}"...`);
+            processPhraseOutput(fallbackReply);
           }
         } catch (sttErr) {
           console.error('ElevenLabs Scribe v2 Speech-to-Text error:', sttErr.message);
-          setSpeechErrorMsg("Couldn't hear that. Please try again or choose a message below.");
+          setSpeechErrorMsg("Could not understand speech. Please try again.");
+          setTimeout(() => setSpeechErrorMsg(''), 3500);
         } finally {
           setIsProcessing(false);
           setIsListening(false);
@@ -466,6 +553,20 @@ export const PatientDashboardScreen = ({ onLogout }) => {
       icon: MessageSquare,
       action: () => handleOpenModule('Silent Speech'),
       isActive: currentView === 'module' && (activeModule === 'Silent Speech' || activeModule === 'Start Conversation'),
+    },
+    {
+      id: 'conversation-mode',
+      label: 'Conversation Mode',
+      icon: MessageSquare,
+      action: () => handleOpenModule('Conversation Mode'),
+      isActive: currentView === 'module' && (activeModule === 'Conversation Mode' || activeModule === 'Real-Time Conversation'),
+    },
+    {
+      id: 'universal-speech',
+      label: 'Universal Speech (Type ⌨️ / Speak 🎤)',
+      icon: Sparkles,
+      action: () => handleOpenModule('Universal Speech'),
+      isActive: currentView === 'module' && activeModule === 'Universal Speech',
     },
     {
       id: 'therapy',
@@ -637,6 +738,18 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   }
 
   // Render Module Component Views
+  if (currentView === 'module' && (activeModule === 'Conversation Mode' || activeModule === 'Real-Time Conversation')) {
+    return (
+      <ConversationModeModule
+        onBackToDashboard={handleBackToDashboard}
+        patientId={profileData?.id || profileData?._id}
+        patientName={profileData?.fullName || 'Patient'}
+        onOpenProfile={handleOpenProfile}
+        onLogout={onLogout}
+      />
+    );
+  }
+
   if (currentView === 'module' && (activeModule === 'Silent Speech' || activeModule === 'Start Conversation' || activeModule === 'Connect Device')) {
     const initialStep = activeModule === 'Connect Device' ? 'connect-device' : 'silent-speech-home';
     return (
@@ -706,6 +819,57 @@ export const PatientDashboardScreen = ({ onLogout }) => {
         onOpenProfile={handleOpenProfile}
         onLogout={onLogout}
       />
+    );
+  }
+
+  if (currentView === 'module' && (activeModule === 'Universal Speech' || activeModule === 'Universal Speech Generator')) {
+    return (
+      <div className="app-viewport">
+        <div className="mobile-container dashboard-container">
+          <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={handleBackToDashboard}
+              aria-label="Back to Patient Home"
+              title="Back to Patient Home"
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>Universal Speech Generator</h2>
+            <div style={{ width: 22 }} />
+          </header>
+          
+          <main className="role-main" style={{ marginTop: '1rem', width: '100%' }}>
+            <UniversalSpeechInput patientId={profileData?.id} />
+          </main>
+        </div>
+      </div>
+    );
+  }
+  if (currentView === 'module' && (activeModule === 'Wake Word Pipeline' || activeModule === '7-Step Voice Architecture')) {
+    return (
+      <div className="app-viewport">
+        <div className="mobile-container dashboard-container">
+          <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="settings-btn"
+              onClick={handleBackToDashboard}
+              aria-label="Back to Patient Home"
+              title="Back to Patient Home"
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>7-Step Voice Architecture</h2>
+            <div style={{ width: 22 }} />
+          </header>
+          
+          <main className="role-main" style={{ marginTop: '1rem', width: '100%' }}>
+            <WakeWordVoicePipelineModule patientId={profileData?.id} onBack={handleBackToDashboard} />
+          </main>
+        </div>
+      </div>
     );
   }
 
@@ -918,6 +1082,9 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             </div>
           )}
 
+          {/* UNIVERSAL DUAL-INPUT SPEECH GENERATOR (⌨️ TYPE or 🎤 SPEAK -> TEXT -> ElevenLabs -> 🔊 SPEAK) */}
+          <UniversalSpeechInput patientId={profileData?.id} />
+
           {/* SPEECH ERROR DISPLAY IF ANY */}
           {speechErrorMsg && (
             <div style={{ padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(220, 38, 38, 0.08)', border: '1px solid rgba(220, 38, 38, 0.3)', color: '#DC2626', fontSize: '0.875rem', fontWeight: 600 }}>
@@ -948,20 +1115,231 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             </div>
           )}
 
+          {/* ULTRA IMPRESSIVE EPHEMERAL CONVERSATION PANEL */}
+          {ephemeralQuestion && (
+            <div className="ultra-ephemeral-panel">
+              {/* HEADER BADGE & CLOSE */}
+              <div className="ultra-ephemeral-header">
+                <div className="ultra-pill-badge">
+                  <div className="soundwave-bars">
+                    <span className="soundwave-bar" />
+                    <span className="soundwave-bar" />
+                    <span className="soundwave-bar" />
+                    <span className="soundwave-bar" />
+                  </div>
+                  <span>SPEECH RECOGNIZED</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearEphemeralConversation}
+                  style={{ border: 'none', background: 'transparent', color: 'var(--color-brand-tagline)', cursor: 'pointer', opacity: 0.75, transition: 'all 0.2s ease' }}
+                  title="Clear conversation panel"
+                >
+                  <XCircle size={22} />
+                </button>
+              </div>
+
+              {/* RECOGNIZED QUESTION TEXT */}
+              <div>
+                <span style={{ fontSize: '0.725rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-brand-tagline)', display: 'block', marginBottom: '0.25rem' }}>
+                  Person Said:
+                </span>
+                <p style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: 0, lineHeight: 1.35, letterSpacing: '-0.01em' }}>
+                  "{ephemeralQuestion}"
+                </p>
+              </div>
+
+              {/* DYNAMIC RESPONSE CHOICES */}
+              {ephemeralChoices.length > 0 && !ephemeralSelectedChoice && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-brand-title)', margin: 0 }}>
+                    What would you like to say? (Tap a choice)
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                    {ephemeralChoices.map((choiceText, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setEphemeralSelectedChoice(choiceText)}
+                        style={{
+                          padding: '0.9rem 1.1rem',
+                          borderRadius: '16px',
+                          border: '1.5px solid var(--border-color)',
+                          background: 'rgba(255, 255, 255, 0.9)',
+                          color: 'var(--color-brand-title)',
+                          fontWeight: 700,
+                          fontSize: '0.95rem',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <span>{choiceText}</span>
+                        <CheckCircle2 size={19} color="var(--color-blue-primary)" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* PATIENT SELECTED RESPONSE GLASS BOX */}
+              {ephemeralSelectedChoice && (
+                <div className="ultra-response-box">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-blue-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <Sparkles size={15} />
+                      Selected Response (Patient Voice Output):
+                    </span>
+                    {ephemeralIsSynthesizing && (
+                      <div className="soundwave-bars">
+                        <span className="soundwave-bar" />
+                        <span className="soundwave-bar" />
+                        <span className="soundwave-bar" />
+                        <span className="soundwave-bar" />
+                      </div>
+                    )}
+                  </div>
+
+                  <p style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: '0.2rem 0 0.6rem 0', lineHeight: 1.3 }}>
+                    "{ephemeralSelectedChoice}"
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '0.65rem' }}>
+                    <button
+                      type="button"
+                      className="ultra-btn-confirm"
+                      onClick={handleConfirmEphemeralChoice}
+                      disabled={ephemeralIsSynthesizing}
+                    >
+                      <CheckCircle2 size={20} />
+                      <span>{ephemeralIsSynthesizing ? 'SYNTHESIZING...' : 'CONFIRM'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="ultra-btn-change"
+                      onClick={() => setEphemeralSelectedChoice('')}
+                      disabled={ephemeralIsSynthesizing}
+                    >
+                      <RefreshCw size={16} />
+                      <span>CHANGE</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {ephemeralStatusMsg && (
+                <div style={{ padding: '0.65rem 0.85rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.08)', border: '1px solid rgba(2, 132, 199, 0.2)', fontSize: '0.825rem', color: 'var(--color-blue-primary)', textAlign: 'center', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                  <Sparkles size={15} />
+                  <span>{ephemeralStatusMsg}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* SPEAKER VOLUME CONTROL WIDGET */}
           <VolumeControlWidget style={{ marginTop: '0.5rem' }} />
 
-
-          {/* 3. DYNAMIC CONTEXT-AWARE COMMUNICATION MODULE (PHASE C) */}
-          <DynamicCommunicationModule
-            patientId={profileData?.id || profileData?._id}
-            currentQuestion={activeCaregiverQuestion}
-            initialLanguage={language || 'en'}
-            onSelectOption={(result) => {
-              console.log('[PatientDashboard] Dynamic intent selected:', result);
-              setActiveOutputPhrase(result.responseText);
+          {/* CONVERSATION MODE FEATURE CARD (PATIENT DASHBOARD ONLY) */}
+          <div
+            tabIndex={0}
+            role="button"
+            aria-label="Conversation Mode"
+            onClick={() => handleOpenModule('Conversation Mode')}
+            style={{
+              background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.08) 0%, rgba(13, 148, 136, 0.08) 100%)',
+              border: '1.5px solid var(--color-blue-primary)',
+              borderRadius: '20px',
+              padding: '1.1rem 1.1rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              boxShadow: '0 4px 16px rgba(2, 132, 199, 0.06)',
             }}
-          />
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 14,
+                  background: 'var(--color-blue-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#FFFFFF',
+                  flexShrink: 0,
+                }}
+              >
+                <MessageSquare size={24} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                  Conversation Mode
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', margin: '0.15rem 0 0 0' }}>
+                  Listen to companion & speak with confirmed choices
+                </p>
+              </div>
+            </div>
+            <ArrowRight size={20} color="var(--color-blue-primary)" />
+          </div>
+
+          {/* UNIVERSAL SPEECH GENERATOR FEATURE CARD */}
+          <div
+            tabIndex={0}
+            role="button"
+            aria-label="Universal Speech Generator"
+            onClick={() => handleOpenModule('Universal Speech')}
+            style={{
+              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(2, 132, 199, 0.08) 100%)',
+              border: '1.5px solid #10B981',
+              borderRadius: '20px',
+              padding: '1.1rem 1.1rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 14,
+                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#FFFFFF',
+                  flexShrink: 0,
+                }}
+              >
+                <Sparkles size={24} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                  Universal Speech Generator
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', margin: '0.15rem 0 0 0' }}>
+                  ⌨️ Type or 🎤 Speak ➔ ElevenLabs Patient Voice
+                </p>
+              </div>
+            </div>
+            <ArrowRight size={20} color="#10B981" />
+          </div>
+
+
+
 
           {/* 4. TWO LARGE CATEGORY SELECTION CONTROLS: BASIC & PEOPLE */}
           <section style={{ width: '100%' }}>

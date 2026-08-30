@@ -3025,5 +3025,139 @@ html, body, #root {
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
 }
 
+/* ================= ULTRA IMPRESSIVE GLASSMORPHIC CARD & EQUALIZER ================= */
+.ultra-ephemeral-panel {
+  position: relative;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(240, 249, 255, 0.96) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 2px solid rgba(2, 132, 199, 0.4);
+  border-radius: 26px;
+  padding: 1.35rem 1.25rem;
+  box-shadow: 0 16px 40px rgba(2, 132, 199, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ultra-ephemeral-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ultra-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 100px;
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.12) 0%, rgba(13, 148, 136, 0.12) 100%);
+  border: 1px solid rgba(2, 132, 199, 0.25);
+  color: var(--color-blue-primary);
+  font-size: 0.775rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ultra-response-box {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.07) 0%, rgba(13, 148, 136, 0.07) 100%);
+  border: 2px solid rgba(2, 132, 199, 0.3);
+  border-radius: 22px;
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.06);
+}
+
+.ultra-btn-confirm {
+  flex: 2;
+  background: linear-gradient(135deg, #16A34A 0%, #059669 100%) !important;
+  border: none !important;
+  color: #FFFFFF !important;
+  font-weight: 800 !important;
+  font-size: 1rem !important;
+  letter-spacing: 0.03em !important;
+  padding: 0.85rem 1.25rem !important;
+  border-radius: 16px !important;
+  box-shadow: 0 8px 24px rgba(22, 163, 74, 0.35) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.5rem !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.ultra-btn-confirm:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(22, 163, 74, 0.45) !important;
+}
+
+.ultra-btn-change {
+  flex: 1;
+  background: #FFFFFF !important;
+  border: 1.5px solid rgba(2, 132, 199, 0.3) !important;
+  color: var(--color-blue-primary) !important;
+  font-weight: 800 !important;
+  font-size: 0.9rem !important;
+  border-radius: 16px !important;
+  padding: 0.85rem 1rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.4rem !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.08) !important;
+  transition: all 0.2s ease !important;
+}
+
+.ultra-btn-change:hover {
+  background: rgba(2, 132, 199, 0.06) !important;
+  border-color: var(--color-blue-primary) !important;
+}
+
+/* Soundwave Equalizer Animations */
+.soundwave-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 16px;
+}
+
+.soundwave-bar {
+  width: 3px;
+  border-radius: 3px;
+  background: var(--color-blue-primary);
+  animation: soundwavePulse 1s ease-in-out infinite alternate;
+}
+
+.soundwave-bar:nth-child(1) { height: 8px; animation-delay: 0.1s; }
+.soundwave-bar:nth-child(2) { height: 16px; animation-delay: 0.3s; }
+.soundwave-bar:nth-child(3) { height: 10px; animation-delay: 0.2s; }
+.soundwave-bar:nth-child(4) { height: 14px; animation-delay: 0.4s; }
+
+@keyframes soundwavePulse {
+  0% { transform: scaleY(0.4); }
+  100% { transform: scaleY(1); }
+}
+
+
 
 

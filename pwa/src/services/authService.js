@@ -100,9 +100,10 @@ export const authService = {
         "Broca's", "Wernicke's", "Global", "Anomic",
         "Transcortical Motor", "Transcortical Sensory", "Conduction", "Mixed", "Other"
       ];
-      const selectedAphasia = validAphasiaTypes.includes(patientData.aphasiaType)
-        ? patientData.aphasiaType
-        : (patientData.aphasiaType || null);
+      const rawAphasia = (patientData.aphasiaType || '').replace(/\s+Aphasia$/i, '').trim();
+      const selectedAphasia = validAphasiaTypes.includes(rawAphasia)
+        ? rawAphasia
+        : (validAphasiaTypes.includes(patientData.aphasiaType) ? patientData.aphasiaType : "Broca's");
 
       const profRes = await patientService.createPatientProfile({
         userId: userLogin._id,

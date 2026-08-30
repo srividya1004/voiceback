@@ -234,7 +234,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
 
         const match = list.find((p) => {
           const pUserId = p.userId?._id || p.userId;
-          return (currentUserId && pUserId === currentUserId) || ((p.email || p.userId?.email || '').toLowerCase() === userEmail);
+          return (currentUserId && String(pUserId) === String(currentUserId)) || ((p.email || p.userId?.email || '').toLowerCase() === userEmail);
         });
 
         if (match) {
@@ -244,7 +244,7 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
           if (!cgName) {
             const matchedCg = cList.find((c) =>
               Array.isArray(c.assignedPatients) &&
-              c.assignedPatients.some((ap) => (ap._id || ap) === match._id)
+              c.assignedPatients.some((ap) => String(ap._id || ap) === String(match._id))
             );
             if (matchedCg) {
               cgName = matchedCg.fullName;
@@ -293,23 +293,34 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
     try {
       const targetId = profileData.id || backendProfile?.id || backendProfile?._id;
       let updatedRecord = null;
+      const updatePayload = {
+        fullName: profileData.fullName,
+        age: parseInt(profileData.age, 10) || undefined,
+        aphasiaType: profileData.aphasiaType && profileData.aphasiaType !== 'Not Available' ? profileData.aphasiaType : undefined,
+        gender: profileData.gender && profileData.gender !== 'Not Available' ? profileData.gender : undefined,
+        preferredLanguage: profileData.preferredLanguage && profileData.preferredLanguage !== 'Not Available' ? profileData.preferredLanguage : undefined,
+        phone: profileData.mobileNumber && profileData.mobileNumber !== 'Not Available' ? profileData.mobileNumber : undefined,
+        emergencyContact: profileData.emergencyContact && profileData.emergencyContact !== 'Not Available' ? profileData.emergencyContact : undefined,
+      };
+
       if (targetId) {
-        const updatePayload = {
-          fullName: profileData.fullName,
-          age: parseInt(profileData.age, 10) || undefined,
-          aphasiaType: profileData.aphasiaType !== 'Not Available' ? profileData.aphasiaType : undefined,
-          gender: profileData.gender !== 'Not Available' ? profileData.gender : undefined,
-          preferredLanguage: profileData.preferredLanguage !== 'Not Available' ? profileData.preferredLanguage : undefined,
-          phone: profileData.mobileNumber !== 'Not Available' ? profileData.mobileNumber : undefined,
-          emergencyContact: profileData.emergencyContact !== 'Not Available' ? profileData.emergencyContact : undefined,
-        };
         const res = await patientService.updatePatient(targetId, updatePayload);
+        updatedRecord = res?.data || res;
+      } else {
+        const session = authService.getActiveSession();
+        const userId = session?.user?.id;
+        const res = await patientService.createPatientProfile({
+          userId,
+          email: profileData.email || session?.email,
+          ...updatePayload
+        });
         updatedRecord = res?.data || res;
       }
 
       if (updatedRecord) {
         setProfileData((prev) => ({
           ...prev,
+          id: updatedRecord._id || updatedRecord.id || prev.id,
           fullName: updatedRecord.fullName || prev.fullName,
           age: updatedRecord.age ? `${updatedRecord.age} Years` : prev.age,
           aphasiaType: updatedRecord.aphasiaType || prev.aphasiaType,
