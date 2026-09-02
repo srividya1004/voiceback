@@ -37,18 +37,25 @@ public:
         }
 
         Serial.printf(
-            "[BLE AUDIO] Received %u bytes\n",
+            "[BLE AUDIO] Received BLE payload (%u bytes)\n",
             (unsigned int)data.size()
         );
 
-        // Forward raw PCM bytes to MAX98357A
+        // Check if payload is an explicit test trigger string
+        if (data == "PLAY_TEST_ASSET" || data == "TEST_VOICE") {
+            Serial.println("[BLE AUDIO] Explicit test trigger received. Playing test voice asset via physical speaker...");
+            audioDriver.playVoice();
+            return;
+        }
+
+        // Forward raw PCM audio bytes directly to MAX98357A physical speaker
         size_t written = audioDriver.writePCM(
             reinterpret_cast<const uint8_t*>(data.data()),
             data.size()
         );
 
         Serial.printf(
-            "[BLE AUDIO] Sent %u bytes to MAX98357A\n",
+            "[BLE AUDIO] Sent %u bytes to MAX98357A physical speaker\n",
             (unsigned int)written
         );
     }
@@ -455,6 +462,8 @@ void BLEServiceManager::onConnect(
     Serial.println(
         "\n[BLE Event] >>> CENTRAL DEVICE CONNECTED <<<\n"
     );
+    Serial.println("[VoiceBack System] Hardware application connected! Playing CONNECTED sound via physical speaker...");
+    audioDriver.playConnectedSound();
 }
 
 
@@ -478,6 +487,9 @@ void BLEServiceManager::onConnect(
             ).toString().c_str()
         );
     }
+
+    Serial.println("[VoiceBack System] Hardware application connected! Playing CONNECTED sound via physical speaker...");
+    audioDriver.playConnectedSound();
 }
 
 
@@ -494,6 +506,8 @@ void BLEServiceManager::onDisconnect(
     Serial.println(
         "\n[BLE Event] >>> CENTRAL DEVICE DISCONNECTED <<<\n"
     );
+    Serial.println("[VoiceBack System] Hardware application disconnected! Playing DISCONNECTED sound via physical speaker...");
+    audioDriver.playDisconnectedSound();
 
     NimBLEDevice::startAdvertising();
 }
@@ -509,6 +523,8 @@ void BLEServiceManager::onDisconnect(
     Serial.println(
         "\n[BLE Event] >>> CENTRAL DEVICE DISCONNECTED <<<\n"
     );
+    Serial.println("[VoiceBack System] Hardware application disconnected! Playing DISCONNECTED sound via physical speaker...");
+    audioDriver.playDisconnectedSound();
 
     NimBLEDevice::startAdvertising();
 }

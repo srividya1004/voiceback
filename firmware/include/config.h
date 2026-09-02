@@ -20,6 +20,7 @@
 #define MAX98357_I2S_BCLK       26   // Bit Clock (BCLK)
 #define MAX98357_I2S_LRC        25   // Left/Right Word Select (LRC / WS)
 #define MAX98357_I2S_DOUT       22   // Serial Data Out (DIN / DOUT)
+#define MAX98357_SD_MODE_PIN    -1   // SD/SD_MODE pin (-1 if tied to 3.3V, or specify GPIO pin if wired to ESP32)
 
 // Optional Diagnostics / Debug Serial Speed
 #define SERIAL_BAUD_RATE        115200

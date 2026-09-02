@@ -12,6 +12,7 @@ import CaregiverLoginScreen from './components/CaregiverLoginScreen';
 import CaregiverRegistrationScreen from './components/CaregiverRegistrationScreen';
 import CaregiverDashboardScreen from './components/CaregiverDashboardScreen';
 import authService from './services/authService';
+import voiceService from './services/voiceService';
 import './App.css';
 
 function App() {
@@ -24,6 +25,11 @@ function App() {
     doctor: '',
     caregiver: '',
   });
+
+  // Pre-fetch patient voice profiles to cache cloned voice ID
+  useEffect(() => {
+    voiceService.getVoiceProfiles().catch(() => {});
+  }, []);
 
   // Role-Based Access Control (RBAC) & Protected Route Guard
   useEffect(() => {

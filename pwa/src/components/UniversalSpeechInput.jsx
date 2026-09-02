@@ -111,9 +111,9 @@ export const UniversalSpeechInput = ({
         caregiverQuestion: cleanedPrompt,
         language: lang === 'Kannada' ? 'kn' : lang === 'Hindi' ? 'hi' : 'en'
       });
-      const resOptions = res?.data?.options || res?.options || [];
+      const resOptions = Array.isArray(res) ? res : (res?.options || res?.data?.options || res?.data || []);
       if (Array.isArray(resOptions) && resOptions.length > 0) {
-        generatedChoices = resOptions.map((opt) => (typeof opt === 'string' ? opt : opt.text || opt.rawText));
+        generatedChoices = resOptions.map((opt) => (typeof opt === 'string' ? opt : opt.text || opt.rawText || String(opt)));
       }
     } catch (e) {
       console.warn('Backend context engine notice — using local dynamic response engine:', e.message);

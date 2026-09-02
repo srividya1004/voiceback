@@ -92,36 +92,11 @@ const predictEMGIntent = async (patientId, rawAnalogSignal = [], rmsAmplitude = 
   let aiInferenceResult = null;
 
   if (rawLength > 0 && (numChannels === 1 || numChannels === 8)) {
-    // 1-channel (BioAmp EXG Pill) or 8-channel input supplied -> execute Python PyTorch model inference
-    aiInferenceResult = await new Promise((resolve) => {
-      const pythonExe = path.resolve(__dirname, '../../../.venv/Scripts/python.exe');
-      const scriptPath = path.resolve(__dirname, '../../../emg-ai/preprocessing/emg_inference_service.py');
-
-      const payload = JSON.stringify({ raw_emg: rawAnalogSignal });
-
-      const child = execFile(pythonExe, [scriptPath, '--mode', mode], (error, stdout, stderr) => {
-        if (error || !stdout) {
-          return resolve({
-            status: 'error',
-            error_code: 'PYTHON_EXEC_ERROR',
-            message: error ? error.message : 'No output from EMG inference service'
-          });
-        }
-        try {
-          const parsed = JSON.parse(stdout.trim());
-          resolve(parsed);
-        } catch (e) {
-          resolve({
-            status: 'error',
-            error_code: 'JSON_PARSE_ERROR',
-            message: 'Failed to parse EMG inference JSON response'
-          });
-        }
-      });
-
-      child.stdin.write(payload);
-      child.stdin.end();
-    });
+    aiInferenceResult = {
+      status: 'decoupled',
+      mode,
+      message: 'EMG AI inference superseded by Microphone + Wispr Flow primary speech pipeline'
+    };
   } else if (rawLength > 0 && numChannels !== 1 && numChannels !== 8) {
     // Explicit signal mismatch response for unsupported channel counts
     aiInferenceResult = {

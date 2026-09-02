@@ -254,11 +254,15 @@ export const VoiceCloningModule = ({
       formData.append('voiceName', `VoiceBack_Patient_${patientData.fullName.replace(/\s+/g, '_')}`);
 
       const result = await voiceService.uploadAndCloneVoice(formData);
+      const clonedVoiceId = result?.data?.voiceId || result?.voiceId;
+      if (clonedVoiceId && typeof window !== 'undefined') {
+        localStorage.setItem('voiceback_cloned_voice_id', clonedVoiceId);
+      }
 
       setVoiceProfileStatus('Ready');
       setVoiceEngine('elevenlabs');
       setLastClonedAt(new Date());
-      setSuccessMessage('Voice Profile created successfully! Your ElevenLabs natural voice reference is ready.');
+      setSuccessMessage('Voice Profile created successfully! Your cloned natural human voice is saved and active.');
       handleClearSample();
     } catch (err) {
       console.warn('ElevenLabs Voice Cloning Cloud Notice:', err.message);

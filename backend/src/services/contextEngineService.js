@@ -493,7 +493,8 @@ const callGeminiAPI = async (question, language = 'en', patientContext = null) =
     throw new Error('GEMINI_API_KEY environment variable is missing');
   }
 
-  const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+  const primaryModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const modelCandidates = Array.from(new Set([primaryModel, 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemini-3.6-flash']));
   const normalizedLang = ['en', 'kn', 'hi'].includes(language) ? language : 'en';
   const sanitizedQuestion = (question || '').trim();
 
@@ -526,26 +527,44 @@ JSON Schema:
   ]
 }`;
 
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  let response = null;
+  let lastError = null;
 
-  const response = await axios.post(
-    apiUrl,
-    {
-      contents: [
+  for (const modelName of modelCandidates) {
+    try {
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+      response = await axios.post(
+        apiUrl,
         {
-          parts: [{ text: systemPrompt }]
+          contents: [
+            {
+              parts: [{ text: systemPrompt }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json'
+          }
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 25000
         }
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json'
+      );
+      if (response && response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        break; // Successfully got response from modelName
       }
-    },
-    {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 30000
+    } catch (err) {
+      lastError = err;
+      const status = err.response?.status;
+      const msg = err.response?.data?.error?.message || err.message;
+      console.warn(`[ContextEngine] Gemini model ${modelName} notice (${status}): ${msg}. Trying next candidate...`);
     }
-  );
+  }
+
+  if (!response || !response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+    throw new Error(lastError ? (lastError.response?.data?.error?.message || lastError.message) : 'All Gemini model candidates failed');
+  }
 
   const rawText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) {

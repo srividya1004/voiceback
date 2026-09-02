@@ -121,28 +121,33 @@ const generateSpeech = async ({ voiceId, text, language, emotion }) => {
   // Format clean text without bracketed tags when using eleven_multilingual_v2 for maximum human voice naturalness
   const cleanText = text.replace(/\[(calm|urgent|happy|neutral|pause|cough)\]/gi, '').trim();
 
+  // Use ElevenLabs flagship ultra-realistic human voice model (eleven_multilingual_v2) for natural human voice cloning
+  const selectedModelId = 'eleven_multilingual_v2';
+
   // Dynamic Emotion & Warmth Parameter Tuning for Flagship Human Voice Synthesis
-  let stability = 0.32;
-  let similarityBoost = 0.88;
-  let style = 0.35;
+  // Stability ~0.38 provides dynamic human pitch inflection and warmth (prevents flat robotic monotone)
+  let stability = 0.38;
+  let similarityBoost = 0.85;
+  let style = 0.25;
 
   if (emotion === 'calm') {
-    stability = 0.42;
-    style = 0.22;
+    stability = 0.45;
+    style = 0.15;
   } else if (emotion === 'urgent') {
     stability = 0.25;
-    style = 0.50;
+    style = 0.45;
   } else if (emotion === 'happy') {
-    stability = 0.30;
-    style = 0.42;
+    stability = 0.32;
+    style = 0.35;
   }
 
   try {
+    console.log(`🎙️ ElevenLabs Human Voice TTS Request: "${cleanText.substring(0, 40)}..." (Lang: ${language || 'en'}, Model: ${selectedModelId}, Voice: ${targetVoiceId})`);
     const response = await axios.post(
       `${ELEVENLABS_BASE_URL}/text-to-speech/${targetVoiceId}`,
       {
         text: cleanText,
-        model_id: modelId,
+        model_id: selectedModelId,
         voice_settings: {
           stability: stability,
           similarity_boost: similarityBoost,

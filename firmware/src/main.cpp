@@ -52,7 +52,7 @@ void setup() {
 
     Serial.begin(SERIAL_BAUD_RATE);
 
-    delay(10000);
+    delay(200);
 
 #if (EMG_DEBUG_MODE == DEBUG_NORMAL)
     Serial.println();
@@ -114,9 +114,10 @@ void setup() {
 #endif
 
     if (audioDriver.begin()) {
-        audioDriver.stop();
+        audioDriver.setVolume(80);
+        audioDriver.playTestTone(880, 200); // 200ms startup tone on physical speaker
 #if (EMG_DEBUG_MODE == DEBUG_NORMAL)
-        Serial.println("[Audio] MAX98357A initialized & silent.");
+        Serial.println("[Audio] MAX98357A initialized & ready.");
 #endif
     } else {
 #if (EMG_DEBUG_MODE == DEBUG_NORMAL)
@@ -159,6 +160,13 @@ void loop() {
                 : "DISCONNECTED (Advertising...)"
         );
 #endif
+        if (currentBleState) {
+            Serial.println("[Hardware Event] Application Connected -> Playing 'CONNECTED' sound chime via physical speaker...");
+            audioDriver.playConnectedSound();
+        } else {
+            Serial.println("[Hardware Event] Application Disconnected -> Playing 'DISCONNECTED' sound chime via physical speaker...");
+            audioDriver.playDisconnectedSound();
+        }
     }
 
 

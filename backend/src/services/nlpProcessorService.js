@@ -648,39 +648,39 @@ class NLPProcessorService {
       ];
     }
 
-    // 10. Health / Greetings ("How are you?" / "hegiddira" / "ಹೇಗಿದ್ದೀರಾ?")
-    if (q.includes('how are you') || q.includes('hegiddira') || q.includes('heg') || q.includes('gidi') || q.includes('tiana') || q.includes('chennag') || q.includes('ಹೇಗಿದ್ದೀರಾ') || q.includes('ಚೆನ್ನಾಗಿದ್ದೀರಾ')) {
+    // 10. Health & Activity Greetings ("How are you?" / "hegiddiya" / "chennagiddiya" / "ಚೆನ್ನಾಗಿದ್ದೀಯಾ" / "ಏನ್ ಮಾಡ್ತಾ ಇದ್ದೀಯಾ")
+    if (q.includes('how are you') || q.includes('doing') || q.includes('hegiddira') || q.includes('hegiddiya') || q.includes('chennagiddiya') || q.includes('chennagiddira') || q.includes('madtha') || q.includes('heg') || q.includes('gidi') || q.includes('chennag') || q.includes('ಹೇಗಿದ್ದೀರಾ') || q.includes('ಹೇಗಿದ್ದೀಯಾ') || q.includes('ಚೆನ್ನಾಗಿದ್ದೀರಾ') || q.includes('ಚೆನ್ನಾಗಿದ್ದೀಯಾ') || q.includes('ಮಾಡ್ತಾ') || q.includes('ಮಾಡುತ್ತಿದ್ದೀಯಾ')) {
       if (isKannada) {
         return [
           { id: 'opt_nlp_hl1', intent: 'HEALTH_GOOD', text: 'ನಾನು ಚೆನ್ನಾಗಿದ್ದೇನೆ, ಧನ್ಯವಾದಗಳು!' },
-          { id: 'opt_nlp_hl2', intent: 'HEALTH_ASK', text: 'ಹೇ, ನೀವು ಹೇಗಿದ್ದೀರಾ?' },
-          { id: 'opt_nlp_hl3', intent: 'HEALTH_TIRED', text: 'ಸ್ವಲ್ಪ ಆಯಾಸವಾಗಿದೆ, ವಿಶ್ರಾಂತಿ ಬೇಕು.' },
-          { id: 'opt_nlp_hl4', intent: 'HEALTH_HELP', text: 'ನನಗೆ ಸಹಾಯ ಬೇಕು.' }
+          { id: 'opt_nlp_hl2', intent: 'ACTIVITY_RESTING', text: 'ವಿಶ್ರಾಂತಿ ತಗೋತಾ ಇದ್ದೀನಿ.' },
+          { id: 'opt_nlp_hl3', intent: 'ACTIVITY_TV', text: 'ಟಿವಿ ನೋಡ್ತಾ ಇದ್ದೀನಿ.' },
+          { id: 'opt_nlp_hl4', intent: 'HEALTH_TIRED', text: 'ಸ್ವಲ್ಪ ಆಯಾಸವಾಗಿದೆ, ವಿಶ್ರಾಂತಿ ಬೇಕು.' }
         ];
       }
       return [
         { id: 'opt_nlp_hl1', intent: 'HEALTH_GOOD', text: "I'm doing great, thank you!" },
-        { id: 'opt_nlp_hl2', intent: 'HEALTH_ASK', text: 'Hey, how are you doing?' },
-        { id: 'opt_nlp_hl3', intent: 'HEALTH_TIRED', text: 'A bit tired, I need to rest.' },
-        { id: 'opt_nlp_hl4', intent: 'HEALTH_HELP', text: 'I need some help.' }
+        { id: 'opt_nlp_hl2', intent: 'ACTIVITY_RESTING', text: "I'm just taking some rest." },
+        { id: 'opt_nlp_hl3', intent: 'ACTIVITY_TV', text: "I'm watching TV right now." },
+        { id: 'opt_nlp_hl4', intent: 'HEALTH_TIRED', text: 'A bit tired, I need to rest.' }
       ];
     }
 
     // 11. Open Domain Smart Paraphraser Fallback
     if (isKannada) {
       return [
-        { id: 'opt_nlp_od1', intent: 'AGREE_DYNAMIC', text: 'ಹೌದು, ಖಂಡಿತ!' },
-        { id: 'opt_nlp_od2', intent: 'DISAGREE_DYNAMIC', text: 'ಇಲ್ಲ, ಈಗ ಬೇಡ.' },
-        { id: 'opt_nlp_od3', intent: 'REST_DYNAMIC', text: 'ನನಗೆ ವಿಶ್ರಾಂತಿ ಪಡೆಯಲು ಮನಸ್ಸಿದೆ.' },
-        { id: 'opt_nlp_od4', intent: 'HELP_DYNAMIC', text: 'ದಯವಿಟ್ಟು ಸ್ವಲ್ಪ ಸಹಾಯ ಮಾಡಿ.' }
+        { id: 'opt_nlp_od1', intent: 'AGREE_DYNAMIC', text: 'ನಾನು ಚೆನ್ನಾಗಿದ್ದೇನೆ, ಧನ್ಯವಾದಗಳು!' },
+        { id: 'opt_nlp_od2', intent: 'REST_DYNAMIC', text: 'ವಿಶ್ರಾಂತಿ ತಗೋತಾ ಇದ್ದೀನಿ.' },
+        { id: 'opt_nlp_od3', intent: 'TV_DYNAMIC', text: 'ಟಿವಿ ನೋಡ್ತಾ ಇದ್ದೀನಿ.' },
+        { id: 'opt_nlp_od4', intent: 'HELP_DYNAMIC', text: 'ನನಗೆ ಸಹಾಯ ಬೇಕು.' }
       ];
     }
 
     return [
-      { id: 'opt_nlp_od1', intent: 'AGREE_DYNAMIC', text: 'Yeah, sure!' },
-      { id: 'opt_nlp_od2', intent: 'DISAGREE_DYNAMIC', text: 'No, not right now.' },
-      { id: 'opt_nlp_od3', intent: 'REST_DYNAMIC', text: 'I want to rest for a bit.' },
-      { id: 'opt_nlp_od4', intent: 'HELP_DYNAMIC', text: 'Could you please help me out?' }
+      { id: 'opt_nlp_od1', intent: 'AGREE_DYNAMIC', text: "I am doing fine, thank you!" },
+      { id: 'opt_nlp_od2', intent: 'REST_DYNAMIC', text: "I am just resting right now." },
+      { id: 'opt_nlp_od3', intent: 'TV_DYNAMIC', text: "I am watching TV." },
+      { id: 'opt_nlp_od4', intent: 'HELP_DYNAMIC', text: "Could you please help me out?" }
     ];
   }
 

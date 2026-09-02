@@ -3,7 +3,10 @@
  */
 
 #include "wifi_ap_service.h"
+#include "audio_driver.h"
 #include <ArduinoJson.h>
+
+extern AudioDriver audioDriver;
 
 // Embedded HTML/JS Live EMG Dashboard served at http://192.168.4.1/
 static const char INDEX_HTML[] PROGMEM = R"rawliteral(
@@ -149,7 +152,17 @@ void WiFiAPServiceManager::handleClientConnection(WiFiClient &client) {
     String req = client.readStringUntil('\r');
     client.flush();
 
-    if (req.indexOf("GET /api/emg") != -1) {
+    if (req.indexOf("GET /api/voice") != -1 || req.indexOf("GET /api/play") != -1) {
+        // Trigger voice playback via MAX98357A physical speaker
+        audioDriver.playVoice();
+
+        client.println("HTTP/1.1 200 OK");
+        client.println("Content-Type: application/json");
+        client.println("Access-Control-Allow-Origin: *");
+        client.println("Connection: close");
+        client.println();
+        client.println("{\"status\":\"success\",\"message\":\"Voice audio playing via physical speaker\"}");
+    } else if (req.indexOf("GET /api/emg") != -1) {
         // JSON API Endpoint for EMG Telemetry
         StaticJsonDocument<128> doc;
         doc["raw"] = latestEMGPacket.rawValue;

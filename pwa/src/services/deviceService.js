@@ -127,21 +127,7 @@ class DeviceService {
   }
 
   async announcePhysicalConnection() {
-    try {
-      console.log('🔊 [BLE Announcement] Synthesizing spoken "Connected" announcement for physical MAX98357A speaker...');
-      const voiceService = (await import('./voiceService')).default;
-      const blob = await voiceService.synthesizeSpeech({
-        text: 'Connected',
-        language: 'English',
-        emotion: 'neutral',
-      });
-      if (blob && blob.size > 200 && this.audioCharacteristic) {
-        await this.sendAudioToESP32(blob);
-        console.log('🔊 [BLE Announcement] Spoken "Connected" announcement successfully played through physical MAX98357A speaker.');
-      }
-    } catch (e) {
-      console.warn('⚠️ [BLE Announcement] Physical speaker connection announcement notice:', e.message);
-    }
+    console.log('🔊 [BLE Connection] Physical MAX98357A speaker ready. Hardware chime played on neckband.');
   }
 
   // ============================================================
@@ -721,8 +707,10 @@ class DeviceService {
     // ----------------------------------------------------------
 
     const CHUNK_SIZE = 180;
-
     let packetsSent = 0;
+
+    const supportsWithoutResponse = this.audioCharacteristic.properties?.writeWithoutResponse &&
+      typeof this.audioCharacteristic.writeValueWithoutResponse === 'function';
 
     for (
       let offset = 0;
@@ -741,16 +729,23 @@ class DeviceService {
           end
         );
 
-      await this.audioCharacteristic.writeValue(
-        chunk
-      );
-
-      packetsSent++;
+      try {
+        if (supportsWithoutResponse) {
+          await this.audioCharacteristic.writeValueWithoutResponse(chunk);
+        } else {
+          await this.audioCharacteristic.writeValue(chunk);
+        }
+        packetsSent++;
+      } catch (writeErr) {
+        console.warn('⚠️ [BLE Audio Chunk Write Notice]:', writeErr.message);
+        // Small delay to allow GATT stack to clear before continuing
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      }
 
       // Small delay prevents BLE queue overload
       await new Promise(
         (resolve) =>
-          setTimeout(resolve, 5)
+          setTimeout(resolve, 6)
       );
     }
 

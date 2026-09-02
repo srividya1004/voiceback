@@ -37,7 +37,6 @@ import {
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import PatientProfileScreen from './PatientProfileScreen';
-import SilentSpeechModule from './SilentSpeechModule';
 import TherapyExercisesModule from './TherapyExercisesModule';
 import TherapyGamesModule from './TherapyGamesModule';
 import VoiceCloningModule from './VoiceCloningModule';
@@ -738,24 +737,19 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   }
 
   // Render Module Component Views
-  if (currentView === 'module' && (activeModule === 'Conversation Mode' || activeModule === 'Real-Time Conversation')) {
+  if (
+    currentView === 'module' &&
+    (activeModule === 'Conversation Mode' ||
+      activeModule === 'Real-Time Conversation' ||
+      activeModule === 'Start Conversation' ||
+      activeModule === 'Silent Speech' ||
+      activeModule === 'Connect Device')
+  ) {
     return (
       <ConversationModeModule
         onBackToDashboard={handleBackToDashboard}
         patientId={profileData?.id || profileData?._id}
         patientName={profileData?.fullName || 'Patient'}
-        onOpenProfile={handleOpenProfile}
-        onLogout={onLogout}
-      />
-    );
-  }
-
-  if (currentView === 'module' && (activeModule === 'Silent Speech' || activeModule === 'Start Conversation' || activeModule === 'Connect Device')) {
-    const initialStep = activeModule === 'Connect Device' ? 'connect-device' : 'silent-speech-home';
-    return (
-      <SilentSpeechModule
-        initialStep={initialStep}
-        onBackToDashboard={handleBackToDashboard}
         onOpenProfile={handleOpenProfile}
         onLogout={onLogout}
       />

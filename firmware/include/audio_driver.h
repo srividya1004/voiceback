@@ -25,11 +25,15 @@ public:
 
     bool begin();
     void playTestTone(uint16_t frequencyHz = 440, uint16_t durationMs = 300);
+    void playVoice();
+    void playConnectedSound();
+    void playDisconnectedSound();
     size_t writePCM(const uint8_t *pcmBuffer, size_t lengthBytes);
     void setVolume(uint8_t volumePercent);
     uint8_t getVolume() const;
     bool startContinuousPlaybackTask();
     void stop();
+    bool isPlaying() const;
 };
 
 #endif // AUDIO_DRIVER_H

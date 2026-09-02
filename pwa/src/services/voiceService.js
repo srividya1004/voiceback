@@ -17,7 +17,14 @@ export const voiceService = {
           '/voice-profiles'
         );
 
-      return response.data?.data || [];
+      const profiles = response.data?.data || [];
+      if (Array.isArray(profiles) && profiles.length > 0) {
+        const readyProfile = profiles.find((p) => p.status === 'Ready' && p.voiceId) || profiles.find((p) => p.voiceId);
+        if (readyProfile && readyProfile.voiceId && typeof window !== 'undefined') {
+          localStorage.setItem('voiceback_cloned_voice_id', readyProfile.voiceId);
+        }
+      }
+      return profiles;
     } catch (error) {
       console.warn(
         'Failed to fetch voice profiles:',
@@ -488,6 +495,7 @@ export const voiceService = {
     language = 'English',
     emotion = 'neutral',
   }) => {
+    const normLang = (language === 'kn' || language === 'kannada') ? 'Kannada' : (language === 'hi' || language === 'hindi') ? 'Hindi' : (language || 'English');
     if (
       !text ||
       !text.trim()
@@ -514,7 +522,7 @@ export const voiceService = {
           patientId,
           voiceId: activeClonedVoiceId,
           text,
-          language,
+          language: normLang,
           emotion,
         });
 
@@ -543,21 +551,11 @@ export const voiceService = {
           ? blob
           : new Blob([blob], { type: 'audio/mpeg' });
 
-        if (deviceService.getDeviceStatus().isConnected) {
-          const result = await deviceService.sendAudioToESP32(audioBlob);
-          console.log('🔊 [VoiceOutput] Audio successfully transferred to ESP32 MAX98357A physical speaker.');
+        const audioUrl = URL.createObjectURL(audioBlob);
 
-          return {
-            success: true,
-            provider: 'ElevenLabs IVC → ESP32 MAX98357A Physical Speaker',
-            audioUrl: null,
-            bytes: result.bytes,
-            packets: result.packets,
-            sampleRate: result.sampleRate,
-          };
-        } else {
-          // Play audio blob out loud via HTML5 Audio element
-          const audioUrl = URL.createObjectURL(audioBlob);
+        // 1. Play synthesized audio blob out loud immediately via HTML5 Audio element
+        let localPlaySuccess = false;
+        try {
           const audio = new Audio();
           audio.src = audioUrl;
 
@@ -569,30 +567,46 @@ export const voiceService = {
             }
           }
 
-          try {
-            await audio.play();
-            console.log('🔊 [VoiceOutput] HTML5 Audio playback started successfully.');
-            return {
-              success: true,
-              provider: 'ElevenLabs IVC → Physical Speaker',
-              audioUrl,
-            };
-          } catch (playErr) {
-            console.warn('🔊 HTML5 Audio play notice:', playErr.message);
-            // Fallback to Web Speech API Utterance if audio.play() is blocked by browser autoplay policy
-            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-              window.speechSynthesis.cancel();
-              const utterance = new SpeechSynthesisUtterance(text);
-              utterance.lang = language === 'Kannada' || language === 'kn' ? 'kn-IN' : language === 'Hindi' || language === 'hi' ? 'hi-IN' : 'en-US';
-              utterance.rate = 0.9;
-              window.speechSynthesis.speak(utterance);
-              return {
-                success: true,
-                provider: 'ElevenLabs Fallback → Web Speech TTS',
-                audioUrl: null,
-              };
-            }
-          }
+          await audio.play();
+          localPlaySuccess = true;
+          console.log('🔊 [VoiceOutput] ElevenLabs human voice playback started out loud successfully.');
+        } catch (playErr) {
+          console.warn('🔊 HTML5 Audio play notice:', playErr.message);
+        }
+
+        // 2. If ESP32 BLE neckband is connected, stream audio in background asynchronously
+        let bleTransferred = false;
+        if (deviceService.getDeviceStatus().isConnected) {
+          deviceService.sendAudioToESP32(audioBlob).then((result) => {
+            console.log(`🔊 [VoiceOutput] Audio transferred to ESP32 MAX98357A neckband speaker (${result?.bytes || 0} bytes).`);
+          }).catch((bleErr) => {
+            console.warn('⚠️ [VoiceOutput] ESP32 BLE audio stream notice:', bleErr.message);
+          });
+          bleTransferred = true;
+        }
+
+        if (localPlaySuccess) {
+          return {
+            success: true,
+            provider: bleTransferred
+              ? 'ElevenLabs Human Voice → Speaker & ESP32 Neckband'
+              : 'ElevenLabs Human Voice → Speaker Output',
+            audioUrl,
+          };
+        }
+
+        // 3. Fallback to Web Speech API Utterance if HTML5 autoplay is blocked by browser interaction rules
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = (language === 'Kannada' || language === 'kn') ? 'kn-IN' : (language === 'Hindi' || language === 'hi') ? 'hi-IN' : 'en-US';
+          utterance.rate = 0.9;
+          window.speechSynthesis.speak(utterance);
+          return {
+            success: true,
+            provider: 'Web Speech TTS Fallback',
+            audioUrl: null,
+          };
         }
       }
 

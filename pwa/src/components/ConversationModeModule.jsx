@@ -19,6 +19,7 @@ import SettingsBottomSheet from './SettingsBottomSheet';
 import { useSettings } from '../context/SettingsContext';
 import voiceService from '../services/voiceService';
 import deviceService from '../services/deviceService';
+import contextService from '../services/contextService';
 
 /**
  * Lightweight Deterministic Dynamic Question Classifier & Response Generator
@@ -222,28 +223,36 @@ export const generateDynamicResponses = (questionText, language = 'English') => 
     return ['Thank you so much!', 'You are very kind, thanks!', 'My pleasure, thank you!'];
   }
 
-  // 21. Smart Question Paraphraser for any custom prompt
-  const displaySnippet = questionText && questionText.length > 3 ? `"${questionText.trim()}"` : '';
+  // 21. Wellbeing & Activity Check (How are you? What are you doing? / ಚೆನ್ನಾಗಿದ್ದೀಯಾ? ಏನ್ ಮಾಡ್ತಾ ಇದ್ದೀಯಾ?)
+  if (q.includes('how are you') || q.includes('doing') || q.includes('hal') || q.includes('chennagiddiya') || q.includes('madtha') || q.includes('hegiddiya') || q.includes('ಚೆನ್ನಾಗಿದ್ದೀಯಾ') || q.includes('ಏನ್ ಮಾಡ್ತಾ') || q.includes('ಹೇಗಿದ್ದೀಯಾ') || q.includes('ಏನು ಸಮಾಚಾರ')) {
+    if (language === 'Kannada') {
+      return ['ಚೆನ್ನಾಗಿದ್ದೀನಿ, ವಿಶ್ರಾಂತಿ ತಗೋತಾ ಇದ್ದೀನಿ', 'ಟಿವಿ ನೋಡ್ತಾ ಇದ್ದೀನಿ', 'ಊಟ ಮಾಡ್ತಾ ಇದ್ದೀನಿ', 'ನನಗೆ ಸ್ವಲ್ಪ ಆರಾಮ ಇಲ್ಲ'];
+    } else if (language === 'Hindi') {
+      return ['मैं ठीक हूँ, आराम कर रहा हूँ', 'टीवी देख रहा हूँ', 'खाना खा रहा हूँ', 'मेरी तबियत थोड़ी ठीक नहीं है'];
+    }
+    return ["I'm doing well, just resting", "I'm watching TV right now", "I'm having a meal", "I'm not feeling very well"];
+  }
 
+  // 22. Smart Contextual Fallback for any custom prompt
   if (language === 'Kannada') {
     return [
-      displaySnippet ? `ಹೌದು, ${displaySnippet} ಬಗ್ಗೆ ಸಮ್ಮತಿ ಇದೆ!` : 'ಹೌದು, ಖಂಡಿತ!',
-      'ನಾನು ಆರಾಮಾಗಿದ್ದೇನೆ, ಧನ್ಯವಾದಗಳು',
-      'ನನಗೆ ವಿಶ್ರಾಂತಿ ಪಡೆಯಲು ಮನಸ್ಸಿದೆ',
-      'ದಯವಿಟ್ಟು ಸ್ವಲ್ಪ ಸಹಾಯ ಮಾಡಿ'
+      'ನಾನು ಚೆನ್ನಾಗಿದ್ದೇನೆ, ಧನ್ಯವಾದಗಳು!',
+      'ಚೆನ್ನಾಗಿದ್ದೀನಿ, ವಿಶ್ರಾಂತಿ ತಗೋತಾ ಇದ್ದೀನಿ',
+      'ಟಿವಿ ನೋಡ್ತಾ ಇದ್ದೀನಿ',
+      'ನನಗೆ ಸಹಾಯ ಬೇಕು'
     ];
   } else if (language === 'Hindi') {
     return [
-      displaySnippet ? `हाँ, ${displaySnippet} ठीक है!` : 'हाँ, बिलकुल!',
-      'मैं ठीक हूँ, धन्यवाद',
-      'मुझे थोड़ा आराम चाहिए',
-      'कृपया थोड़ी मदद कीजिए'
+      'मैं ठीक हूँ, धन्यवाद!',
+      'मैं आराम कर रहा हूँ',
+      'टीवी देख रहा हूँ',
+      'मुझे मदद चाहिए'
     ];
   }
   return [
-    displaySnippet ? `Yes, agreeing with ${displaySnippet}!` : 'Yeah, sure!',
-    'I am doing great, thank you',
-    'I want to rest for a while',
+    'I am doing fine, thank you!',
+    'I am just resting right now',
+    'I am watching TV',
     'Could you please help me out?'
   ];
 };
@@ -395,7 +404,23 @@ export const ConversationModeModule = ({
             .trim() || defaultPrompt;
 
           setRecognizedQuestion(cleanText);
-          const choices = generateDynamicResponses(cleanText, selectedLanguage);
+
+          let choices = [];
+          try {
+            const langCode = selectedLanguage === 'Kannada' ? 'kn' : selectedLanguage === 'Hindi' ? 'hi' : 'en';
+            const aiRes = await contextService.generateOptions({ caregiverQuestion: cleanText, language: langCode });
+            const optList = aiRes?.options || aiRes?.data?.options || [];
+            if (Array.isArray(optList) && optList.length > 0) {
+              choices = optList.map((opt) => (typeof opt === 'string' ? opt : opt.text || opt.rawText));
+            }
+          } catch (aiErr) {
+            console.warn('AI Context Engine notice:', aiErr.message);
+          }
+
+          if (!choices || choices.length === 0) {
+            choices = generateDynamicResponses(cleanText, selectedLanguage);
+          }
+
           setResponseChoices(choices);
 
           if (isAutoReplyEnabled && choices.length > 0) {
