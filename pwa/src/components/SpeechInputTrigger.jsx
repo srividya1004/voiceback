@@ -12,6 +12,7 @@ export const SpeechInputTrigger = ({
   onTranscriptReceived,
   targetIntent = '',
   buttonLabel = '',
+  resetKey = '',
   className = '',
   style = {}
 }) => {
@@ -19,6 +20,13 @@ export const SpeechInputTrigger = ({
   const [speechState, setSpeechState] = useState('idle'); // 'idle' | 'listening' | 'processing' | 'result'
   const [transcriptResult, setTranscriptResult] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Reset transcript and status immediately when target or resetKey changes
+  React.useEffect(() => {
+    setSpeechState('idle');
+    setTranscriptResult('');
+    setErrorMessage('');
+  }, [targetIntent, resetKey]);
 
   const mediaStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
