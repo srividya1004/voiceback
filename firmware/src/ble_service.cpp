@@ -130,6 +130,7 @@ void BLEServiceManager::begin() {
 
     NimBLEDevice::init(BLE_DEVICE_NAME);
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    NimBLEDevice::setMTU(517); // Request maximum ATT MTU for larger BLE packets (~512 bytes/pkt vs 180)
 
     pServer = NimBLEDevice::createServer();
     if (!pServer) {

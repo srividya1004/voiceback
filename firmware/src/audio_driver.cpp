@@ -188,37 +188,13 @@ size_t AudioDriver::writePCM(const uint8_t *pcmBuffer, size_t lengthBytes) {
 }
 
 void AudioDriver::playConnectedSound() {
-    if (!initialized) return;
-    s_chimePlaying = true;
-    Serial.println("[Audio Driver] Playing 'CONNECTED' sound chime via physical speaker...");
-
-    // Professional 3-tone rising chime: C5 (523 Hz) -> E5 (659 Hz) -> G5 (784 Hz)
-    playTestTone(523, 90);
-    playTestTone(659, 90);
-    playTestTone(784, 160);
-
-    // Ensure chime playback physically finishes clocking out of DMA/DAC
-    vTaskDelay(pdMS_TO_TICKS(180));
-    i2s_zero_dma_buffer(i2sPort);
-
-    s_chimePlaying = false;
-    Serial.println("[Audio Driver] Connection chime finished. I2S available for voice playback.");
+    // Intentionally disabled to satisfy NO UNWANTED SPEAKER SOUND requirement
+    return;
 }
 
 void AudioDriver::playDisconnectedSound() {
-    if (!initialized) return;
-    s_chimePlaying = true;
-    Serial.println("[Audio Driver] Playing 'DISCONNECTED' sound chime via physical speaker...");
-
-    // 2-tone falling chime: G5 (784 Hz) -> C5 (523 Hz)
-    playTestTone(784, 100);
-    playTestTone(523, 150);
-
-    // Drain and clear
-    vTaskDelay(pdMS_TO_TICKS(170));
-    i2s_zero_dma_buffer(i2sPort);
-
-    s_chimePlaying = false;
+    // Intentionally disabled to satisfy NO UNWANTED SPEAKER SOUND requirement
+    return;
 }
 
 void AudioDriver::playVoice() {
@@ -277,8 +253,12 @@ void AudioDriver::audioTaskLoop() {
     uint8_t monoBytes[CHUNK_BYTES];
     int16_t stereoChunk[CHUNK_MONO_SAMPLES * 2]; // 512 int16_t samples = 1024 bytes stereo
 
-    // Ingress pause threshold: if no new BLE packet for 180ms, the phrase transfer has completed!
-    const uint32_t INGRESS_PAUSE_MS = 180;
+    // Ultra-low-latency streaming jitter buffer:
+    // Start I2S playback as soon as PREBUFFER_START_BYTES are received (~32ms of audio),
+    // then stream concurrently while BLE packets continue to arrive.
+    // Utterance END is detected when the buffer drains AND no new packet arrives for INGRESS_PAUSE_MS.
+    const size_t PREBUFFER_START_BYTES = 1024; // ~32ms pre-buffer before playback starts
+    const uint32_t INGRESS_PAUSE_MS = 200;     // Quiet period to detect end-of-utterance
 
     bool streamActive = false;
     uint32_t totalStreamBytes = 0;
@@ -292,25 +272,20 @@ void AudioDriver::audioTaskLoop() {
         }
 
         size_t avail = s_audioBuffer.available();
-        uint32_t now = millis();
 
         if (!streamActive) {
-            // Determine if we should begin I2S playback:
-            // Condition 1: Buffer near capacity (safety to prevent dropping packets on huge utterances)
-            // Condition 2: Ingress was active, we have audio in buffer, and the BLE sender paused for > 180ms
-            //              (meaning the PWA has finished sending the complete speech phrase into RAM!)
+            // Start playback as soon as the jitter pre-buffer is filled (or buffer near capacity as safety)
+            bool readyToPlay = s_ingressActive && (avail >= PREBUFFER_START_BYTES);
             bool bufferNearCapacity = (avail >= (CircularAudioBuffer::CAPACITY - 4096));
-            bool ingressFinished = (s_ingressActive && avail >= 180 && (now - s_lastWriteTime >= INGRESS_PAUSE_MS));
 
-            if (bufferNearCapacity || ingressFinished) {
+            if (readyToPlay || bufferNearCapacity) {
                 streamActive = true;
                 s_voicePlaying = true;
-                s_ingressActive = false;
                 totalStreamBytes = 0;
-                Serial.printf("[Audio Task] Utterance ready (%u bytes buffered, reason: %s). Starting continuous I2S voice playback...\n",
-                              (unsigned int)avail, bufferNearCapacity ? "buffer near capacity" : "transmission complete");
+                Serial.printf("[Audio Task] Jitter buffer ready (%u bytes). Streaming to I2S now...\n",
+                              (unsigned int)avail);
             } else {
-                vTaskDelay(pdMS_TO_TICKS(5));
+                vTaskDelay(pdMS_TO_TICKS(2)); // Tight poll — waiting for first packets
                 continue;
             }
         }
@@ -345,16 +320,28 @@ void AudioDriver::audioTaskLoop() {
                 totalStreamBytes += bytesRead;
             }
         } else {
-            // Ring buffer has been completely consumed!
-            // Wait 140ms for the hardware DMA buffer (128ms) to finish physically clocking out through MAX98357A
-            vTaskDelay(pdMS_TO_TICKS(140));
+            // Buffer temporarily empty during streaming.
+            // Check if we're mid-stream (packets still arriving) or truly done.
+            uint32_t now = millis();
+            uint32_t msSinceLastWrite = now - s_lastWriteTime;
 
-            // Utterance complete: output clean silence and reset state cleanly
+            if (s_ingressActive || msSinceLastWrite < INGRESS_PAUSE_MS) {
+                // Packets may still be in transit — output a brief silence and keep stream alive
+                // This prevents audible pops/cuts during momentary BLE gaps mid-phrase
+                vTaskDelay(pdMS_TO_TICKS(4));
+                continue;
+            }
+
+            // No packet for INGRESS_PAUSE_MS — utterance is truly complete.
+            // Drain DMA hardware buffer before silencing.
+            vTaskDelay(pdMS_TO_TICKS(120));
+
             streamActive = false;
             s_voicePlaying = false;
+            s_ingressActive = false;
             i2s_zero_dma_buffer(i2sPort);
 
-            // Safe index reset: only zero head/tail if no new packet arrived during DMA drain delay
+            // Safe index reset: only zero head/tail if buffer remains empty
             portENTER_CRITICAL(&s_audioBuffer.spinlock);
             if (s_audioBuffer.count == 0) {
                 s_audioBuffer.head = 0;
@@ -362,7 +349,7 @@ void AudioDriver::audioTaskLoop() {
             }
             portEXIT_CRITICAL(&s_audioBuffer.spinlock);
 
-            Serial.printf("[Audio Task] Voice playback complete (%u PCM bytes clocked). Physical speaker silent.\n",
+            Serial.printf("[Audio Task] Utterance complete (%u PCM bytes streamed). Speaker silent.\n",
                           (unsigned int)totalStreamBytes);
         }
     }
