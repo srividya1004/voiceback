@@ -36,7 +36,7 @@ class DeviceService {
 
     this.telemetry = {
       deviceName: 'VoiceBack-Neckband',
-      firmwareVersion: 'v1.0-BioAmp',
+      firmwareVersion: 'v1.0',
       batteryLevel: 'Not Available',
       signalStrength: 'Not Available',
       baselineVoltage: 'Not Available',
@@ -83,34 +83,13 @@ class DeviceService {
   }
 
   // ============================================================
-  // BACKEND EMG PROFILE
+  // BACKEND EMG PROFILE (DEPRECATED - BioAmp is telemetry only)
   // ============================================================
 
   async syncBackendEmgProfile() {
-    try {
-      const response = await apiClient.get('/emg-profiles');
-      const profiles = response.data?.data || [];
-
-      if (Array.isArray(profiles) && profiles.length > 0) {
-        const latest = profiles[0];
-
-        this.telemetry = {
-          ...this.telemetry,
-          baselineVoltage: latest.baselineVoltage
-            ? `${latest.baselineVoltage} mV`
-            : 'Not Available',
-
-          maxVoluntaryContraction: latest.maxVoluntaryContraction
-            ? `${latest.maxVoluntaryContraction} mV`
-            : 'Not Available',
-        };
-      }
-    } catch (e) {
-      console.warn(
-        'DeviceService: Failed to sync EMG profile from backend:',
-        e.message
-      );
-    }
+    // Deprecated: BioAmp sEMG is optional hardware telemetry/calibration, not speech recognition.
+    // emgprofiles runtime REST endpoints have been decoupled.
+    return Promise.resolve();
   }
 
   getFormattedStatus() {
@@ -540,8 +519,6 @@ class DeviceService {
       this.announcePhysicalConnection();
     }
 
-    await this.syncBackendEmgProfile();
-
     this.notifyListeners();
 
     if (onProgress) {
@@ -706,7 +683,7 @@ class DeviceService {
     // Keep packets below the typical BLE ATT payload.
     // ----------------------------------------------------------
 
-    const CHUNK_SIZE = 180;
+    const CHUNK_SIZE = 512; // Maximised for MTU 517 negotiated with ESP32 (was 180)
     let packetsSent = 0;
 
     const supportsWithoutResponse = this.audioCharacteristic.properties?.writeWithoutResponse &&
@@ -742,11 +719,9 @@ class DeviceService {
         await new Promise((resolve) => setTimeout(resolve, 15));
       }
 
-      // Small delay prevents BLE queue overload
-      await new Promise(
-        (resolve) =>
-          setTimeout(resolve, 6)
-      );
+      // Adaptive pacing: Every 35 packets (~200ms of audio), give GATT stack and ESP32 I2S ring buffer breathing room
+      const pacingDelay = (packetsSent % 20 === 0) ? 5 : 0; // Aggressive streaming: minimal pacing now ESP32 uses jitter buffer
+      await new Promise((resolve) => setTimeout(resolve, pacingDelay));
     }
 
     await audioContext.close();

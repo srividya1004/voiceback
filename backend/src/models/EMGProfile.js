@@ -1,6 +1,9 @@
 /**
- * EMGProfile Mongoose Model
- * Represents calibrated sEMG baseline thresholds and feature vectors for a patient
+ * @deprecated HISTORICAL / UNUSED MODEL - RETAINED FOR SCHEMA ARCHIVE ONLY.
+ * EMGProfile is no longer wired into the runtime application.
+ * BioAmp sEMG is strictly optional hardware telemetry/calibration, NOT speech recognition.
+ * Primary speech input is the Physical Microphone.
+ * Do NOT delete this file or drop the MongoDB collection without explicit authorization.
  */
 
 const mongoose = require('mongoose');

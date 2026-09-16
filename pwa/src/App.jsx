@@ -26,10 +26,13 @@ function App() {
     caregiver: '',
   });
 
-  // Pre-fetch patient voice profiles to cache cloned voice ID
+  // Pre-fetch patient voice profiles to cache cloned voice ID only when authenticated
   useEffect(() => {
-    voiceService.getVoiceProfiles().catch(() => {});
-  }, []);
+    const session = authService.getActiveSession();
+    if (session && session.token && session.role === 'patient') {
+      voiceService.getVoiceProfiles().catch(() => {});
+    }
+  }, [currentScreen]);
 
   // Role-Based Access Control (RBAC) & Protected Route Guard
   useEffect(() => {

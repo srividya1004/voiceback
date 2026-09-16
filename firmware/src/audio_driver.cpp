@@ -1,9 +1,76 @@
 #include "audio_driver.h"
-#include "test_audio.h"
 #include <math.h>
 
+// ============================================================================
+// Internal High-Performance Audio Ring Buffer (64 KB = ~2.05 sec of 16kHz mono)
+// ============================================================================
+struct CircularAudioBuffer {
+    static const size_t CAPACITY = 65536;
+    uint8_t buffer[CAPACITY];
+    size_t head = 0;
+    size_t tail = 0;
+    size_t count = 0;
+    portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+
+    size_t write(const uint8_t* data, size_t len) {
+        if (!data || len == 0) return 0;
+        portENTER_CRITICAL(&spinlock);
+        size_t written = 0;
+        for (size_t i = 0; i < len; i++) {
+            if (count >= CAPACITY) {
+                // Buffer full: drop oldest sample (2 bytes) to strictly preserve 16-bit alignment
+                tail = (tail + 2) % CAPACITY;
+                count -= 2;
+            }
+            buffer[head] = data[i];
+            head = (head + 1) % CAPACITY;
+            count++;
+            written++;
+        }
+        portEXIT_CRITICAL(&spinlock);
+        return written;
+    }
+
+    size_t read(uint8_t* dest, size_t maxLen) {
+        if (!dest || maxLen == 0) return 0;
+        portENTER_CRITICAL(&spinlock);
+        // Strictly read an even number of bytes to preserve 16-bit sample integrity
+        size_t toRead = (count < maxLen) ? count : maxLen;
+        toRead &= ~1;
+        for (size_t i = 0; i < toRead; i++) {
+            dest[i] = buffer[tail];
+            tail = (tail + 1) % CAPACITY;
+        }
+        count -= toRead;
+        portEXIT_CRITICAL(&spinlock);
+        return toRead;
+    }
+
+    size_t available() {
+        portENTER_CRITICAL(&spinlock);
+        size_t c = count;
+        portEXIT_CRITICAL(&spinlock);
+        return c;
+    }
+
+    void clear() {
+        portENTER_CRITICAL(&spinlock);
+        head = 0;
+        tail = 0;
+        count = 0;
+        portEXIT_CRITICAL(&spinlock);
+    }
+};
+
+static CircularAudioBuffer s_audioBuffer;
+static volatile bool s_chimePlaying = false;
+static volatile bool s_voicePlaying = false;
+static volatile bool s_taskRunning = false;
+static volatile uint32_t s_lastWriteTime = 0;
+static volatile bool s_ingressActive = false;
+
 AudioDriver::AudioDriver(i2s_port_t port)
-    : initialized(false), i2sPort(port), audioTaskHandle(nullptr), currentVolume(80) {}
+    : initialized(false), i2sPort(port), audioTaskHandle(nullptr), currentVolume(70) {}
 
 bool AudioDriver::begin() {
     i2s_config_t i2s_config = {
@@ -13,9 +80,11 @@ bool AudioDriver::begin() {
         .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT, // 32 BCLK 2-channel frame for MAX98357A DAC
         .communication_format = I2S_COMM_FORMAT_STAND_I2S,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count = 8,
-        .dma_buf_len = 256, // 256 samples per DMA buffer for smooth continuous playback
-        .use_apll = false
+        .dma_buf_count = 16,
+        .dma_buf_len = 128, // 128 stereo samples per buffer = 512 bytes
+        .use_apll = false,
+        .tx_desc_auto_clear = true, // Auto clear DMA descriptors on underflow to output silence
+        .fixed_mclk = 0
     };
 
     i2s_pin_config_t pin_config = {
@@ -28,7 +97,7 @@ bool AudioDriver::begin() {
 #ifdef MAX98357_SD_MODE_PIN
     if (MAX98357_SD_MODE_PIN >= 0) {
         pinMode(MAX98357_SD_MODE_PIN, OUTPUT);
-        digitalWrite(MAX98357_SD_MODE_PIN, HIGH); // Pull HIGH to enable MAX98357A amplifier
+        digitalWrite(MAX98357_SD_MODE_PIN, HIGH);
         delay(10);
     }
 #endif
@@ -49,6 +118,10 @@ bool AudioDriver::begin() {
     i2s_start(i2sPort);
     i2s_zero_dma_buffer(i2sPort);
     initialized = true;
+
+    // Start background PCM audio playback task on Core 1
+    startContinuousPlaybackTask();
+
     Serial.println("[Audio Driver] MAX98357A I2S Audio Initialized & Started Successfully.");
     return true;
 }
@@ -71,17 +144,34 @@ void AudioDriver::playTestTone(uint16_t frequencyHz, uint16_t durationMs) {
 
     size_t numSamples = (AUDIO_SAMPLE_RATE * durationMs) / 1000;
     int16_t *samples = new int16_t[numSamples];
+    if (!samples) return;
 
     float samplePeriod = 1.0f / (float)AUDIO_SAMPLE_RATE;
     float angularFreq = 2.0f * M_PI * (float)frequencyHz;
 
     for (size_t i = 0; i < numSamples; i++) {
         float t = (float)i * samplePeriod;
-        samples[i] = (int16_t)(22000.0f * sinf(angularFreq * t));
+        samples[i] = (int16_t)(20000.0f * sinf(angularFreq * t));
     }
 
-    writePCM(reinterpret_cast<const uint8_t*>(samples), numSamples * sizeof(int16_t));
-    i2s_zero_dma_buffer(i2sPort);
+    // Direct synchronous write to I2S for tones
+    float scale = (float)currentVolume / 100.0f;
+    const size_t CHUNK = 256;
+    int16_t stereoChunk[CHUNK * 2];
+
+    size_t processed = 0;
+    while (processed < numSamples) {
+        size_t c = (numSamples - processed > CHUNK) ? CHUNK : (numSamples - processed);
+        for (size_t i = 0; i < c; i++) {
+            int16_t s = (int16_t)(samples[processed + i] * scale);
+            stereoChunk[i * 2]     = s;
+            stereoChunk[i * 2 + 1] = s;
+        }
+        size_t bytesToWrite = c * 2 * sizeof(int16_t);
+        size_t bytesWritten = 0;
+        i2s_write(i2sPort, stereoChunk, bytesToWrite, &bytesWritten, portMAX_DELAY);
+        processed += c;
+    }
 
     delete[] samples;
 }
@@ -91,65 +181,53 @@ size_t AudioDriver::writePCM(const uint8_t *pcmBuffer, size_t lengthBytes) {
         return 0;
     }
 
-    float scale = (float)currentVolume / 100.0f;
-    size_t numMonoSamples = lengthBytes / sizeof(int16_t);
-    const int16_t* srcSamples = reinterpret_cast<const int16_t*>(pcmBuffer);
-
-    const size_t CHUNK_MONO_SAMPLES = 256;
-    int16_t stereoChunk[CHUNK_MONO_SAMPLES * 2]; // 512 int16_t samples in RAM
-
-    size_t totalBytesWritten = 0;
-    size_t samplesProcessed = 0;
-
-    while (samplesProcessed < numMonoSamples) {
-        size_t chunkSize = (numMonoSamples - samplesProcessed > CHUNK_MONO_SAMPLES)
-            ? CHUNK_MONO_SAMPLES
-            : (numMonoSamples - samplesProcessed);
-
-        for (size_t i = 0; i < chunkSize; i++) {
-            int16_t rawSample = srcSamples[samplesProcessed + i];
-            int32_t val = static_cast<int32_t>(rawSample * scale);
-            if (val > 32767) val = 32767;
-            if (val < -32768) val = -32768;
-
-            int16_t s = static_cast<int16_t>(val);
-            stereoChunk[i * 2]     = s; // Left Channel
-            stereoChunk[i * 2 + 1] = s; // Right Channel
-        }
-
-        size_t bytesToWrite = chunkSize * 2 * sizeof(int16_t);
-        size_t bytesWritten = 0;
-        i2s_write(i2sPort, stereoChunk, bytesToWrite, &bytesWritten, portMAX_DELAY);
-        totalBytesWritten += (bytesWritten / 2);
-        samplesProcessed += chunkSize;
-    }
-
-    return totalBytesWritten;
+    // Push raw 16-bit mono PCM bytes into circular buffer.
+    s_lastWriteTime = millis();
+    s_ingressActive = true;
+    return s_audioBuffer.write(pcmBuffer, lengthBytes);
 }
 
 void AudioDriver::playConnectedSound() {
     if (!initialized) return;
+    s_chimePlaying = true;
     Serial.println("[Audio Driver] Playing 'CONNECTED' sound chime via physical speaker...");
+
     // Professional 3-tone rising chime: C5 (523 Hz) -> E5 (659 Hz) -> G5 (784 Hz)
     playTestTone(523, 90);
     playTestTone(659, 90);
     playTestTone(784, 160);
+
+    // Ensure chime playback physically finishes clocking out of DMA/DAC
+    vTaskDelay(pdMS_TO_TICKS(180));
+    i2s_zero_dma_buffer(i2sPort);
+
+    s_chimePlaying = false;
+    Serial.println("[Audio Driver] Connection chime finished. I2S available for voice playback.");
 }
 
 void AudioDriver::playDisconnectedSound() {
     if (!initialized) return;
+    s_chimePlaying = true;
     Serial.println("[Audio Driver] Playing 'DISCONNECTED' sound chime via physical speaker...");
+
     // 2-tone falling chime: G5 (784 Hz) -> C5 (523 Hz)
     playTestTone(784, 100);
     playTestTone(523, 150);
+
+    // Drain and clear
+    vTaskDelay(pdMS_TO_TICKS(170));
+    i2s_zero_dma_buffer(i2sPort);
+
+    s_chimePlaying = false;
 }
 
 void AudioDriver::playVoice() {
+    // Retained for interface compatibility
     startContinuousPlaybackTask();
 }
 
 bool AudioDriver::isPlaying() const {
-    return (audioTaskHandle != nullptr);
+    return s_voicePlaying || s_chimePlaying;
 }
 
 bool AudioDriver::startContinuousPlaybackTask() {
@@ -159,18 +237,18 @@ bool AudioDriver::startContinuousPlaybackTask() {
     }
 
     if (audioTaskHandle != nullptr) {
-        Serial.println("[Audio Driver] Voice audio playback is already in progress.");
         return true;
     }
 
+    s_taskRunning = true;
     BaseType_t res = xTaskCreatePinnedToCore(
         AudioDriver::audioTaskWrapper,
         "Audio_Play_Task",
         4096,
         this,
-        1,
+        5, // Priority 5
         &audioTaskHandle,
-        1
+        1  // Core 1 (separate from NimBLE host task on Core 0)
     );
 
     if (res == pdPASS) {
@@ -192,22 +270,108 @@ void AudioDriver::audioTaskWrapper(void* parameter) {
 }
 
 void AudioDriver::audioTaskLoop() {
-    Serial.println("[Audio Task] Starting voice audio playback via physical speaker (MAX98357A)...");
-    const size_t chunkSize = 1024;
+    Serial.println("[Audio Task] Voice audio playback task started on Core 1.");
 
-    size_t offset = 0;
-    while (offset < TEST_AUDIO_PCM_LEN) {
-        size_t bytesToWrite = (TEST_AUDIO_PCM_LEN - offset > chunkSize) ? chunkSize : (TEST_AUDIO_PCM_LEN - offset);
-        writePCM(&TEST_AUDIO_PCM[offset], bytesToWrite);
-        offset += bytesToWrite;
-        // i2s_write blocks smoothly until DMA space is ready. No vTaskDelay here to eliminate audio glitching!
+    const size_t CHUNK_MONO_SAMPLES = 256;
+    const size_t CHUNK_BYTES = CHUNK_MONO_SAMPLES * sizeof(int16_t); // 512 bytes mono
+    uint8_t monoBytes[CHUNK_BYTES];
+    int16_t stereoChunk[CHUNK_MONO_SAMPLES * 2]; // 512 int16_t samples = 1024 bytes stereo
+
+    // Ingress pause threshold: if no new BLE packet for 180ms, the phrase transfer has completed!
+    const uint32_t INGRESS_PAUSE_MS = 180;
+
+    bool streamActive = false;
+    uint32_t totalStreamBytes = 0;
+
+    while (s_taskRunning) {
+        // CRITICAL AUDIO EXCLUSIVITY:
+        // Connection chime has exclusive ownership of I2S while active.
+        if (s_chimePlaying) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        size_t avail = s_audioBuffer.available();
+        uint32_t now = millis();
+
+        if (!streamActive) {
+            // Determine if we should begin I2S playback:
+            // Condition 1: Buffer near capacity (safety to prevent dropping packets on huge utterances)
+            // Condition 2: Ingress was active, we have audio in buffer, and the BLE sender paused for > 180ms
+            //              (meaning the PWA has finished sending the complete speech phrase into RAM!)
+            bool bufferNearCapacity = (avail >= (CircularAudioBuffer::CAPACITY - 4096));
+            bool ingressFinished = (s_ingressActive && avail >= 180 && (now - s_lastWriteTime >= INGRESS_PAUSE_MS));
+
+            if (bufferNearCapacity || ingressFinished) {
+                streamActive = true;
+                s_voicePlaying = true;
+                s_ingressActive = false;
+                totalStreamBytes = 0;
+                Serial.printf("[Audio Task] Utterance ready (%u bytes buffered, reason: %s). Starting continuous I2S voice playback...\n",
+                              (unsigned int)avail, bufferNearCapacity ? "buffer near capacity" : "transmission complete");
+            } else {
+                vTaskDelay(pdMS_TO_TICKS(5));
+                continue;
+            }
+        }
+
+        // Active voice playback: continuously stream from ring buffer to I2S
+        if (avail >= 2) {
+            size_t toRead = (avail > CHUNK_BYTES) ? CHUNK_BYTES : (avail & ~1);
+            size_t bytesRead = s_audioBuffer.read(monoBytes, toRead);
+            size_t numSamples = bytesRead / sizeof(int16_t);
+
+            if (numSamples > 0) {
+                int32_t vol = (int32_t)currentVolume; // 0 to 100
+
+                for (size_t i = 0; i < numSamples; i++) {
+                    // Safe, unaligned, little-endian signed 16-bit PCM unpacking
+                    size_t offset = i * 2;
+                    int16_t rawSample = (int16_t)((uint16_t)monoBytes[offset] | ((uint16_t)monoBytes[offset + 1] << 8));
+
+                    // Fast integer volume scaling preserving exact waveform shape and harmonics
+                    int32_t val = ((int32_t)rawSample * vol) / 100;
+                    if (val > 32767) val = 32767;
+                    if (val < -32768) val = -32768;
+
+                    int16_t s = (int16_t)val;
+                    stereoChunk[i * 2]     = s; // Left Channel
+                    stereoChunk[i * 2 + 1] = s; // Right Channel
+                }
+
+                size_t bytesToWrite = numSamples * 2 * sizeof(int16_t);
+                size_t bytesWritten = 0;
+                i2s_write(i2sPort, stereoChunk, bytesToWrite, &bytesWritten, portMAX_DELAY);
+                totalStreamBytes += bytesRead;
+            }
+        } else {
+            // Ring buffer has been completely consumed!
+            // Wait 140ms for the hardware DMA buffer (128ms) to finish physically clocking out through MAX98357A
+            vTaskDelay(pdMS_TO_TICKS(140));
+
+            // Utterance complete: output clean silence and reset state cleanly
+            streamActive = false;
+            s_voicePlaying = false;
+            i2s_zero_dma_buffer(i2sPort);
+
+            // Safe index reset: only zero head/tail if no new packet arrived during DMA drain delay
+            portENTER_CRITICAL(&s_audioBuffer.spinlock);
+            if (s_audioBuffer.count == 0) {
+                s_audioBuffer.head = 0;
+                s_audioBuffer.tail = 0;
+            }
+            portEXIT_CRITICAL(&s_audioBuffer.spinlock);
+
+            Serial.printf("[Audio Task] Voice playback complete (%u PCM bytes clocked). Physical speaker silent.\n",
+                          (unsigned int)totalStreamBytes);
+        }
     }
-
-    Serial.println("[Audio Task] Voice audio playback completed via physical speaker.");
-    stop();
 }
 
 void AudioDriver::stop() {
+    s_audioBuffer.clear();
+    s_voicePlaying = false;
+    s_ingressActive = false;
     if (initialized) {
         i2s_zero_dma_buffer(i2sPort);
     }

@@ -3133,6 +3133,30 @@ html, body, #root {
   border-color: var(--color-blue-primary) !important;
 }
 
+.ultra-btn-cancel {
+  flex: 0 0 auto;
+  background: #FFFFFF !important;
+  border: 1.5px solid rgba(220, 38, 38, 0.3) !important;
+  color: #DC2626 !important;
+  font-weight: 800 !important;
+  font-size: 0.9rem !important;
+  border-radius: 16px !important;
+  padding: 0.85rem 1rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.4rem !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.08) !important;
+  transition: all 0.2s ease !important;
+}
+
+.ultra-btn-cancel:hover {
+  background: rgba(220, 38, 38, 0.06) !important;
+  border-color: #DC2626 !important;
+}
+
+
 /* Soundwave Equalizer Animations */
 .soundwave-bars {
   display: inline-flex;

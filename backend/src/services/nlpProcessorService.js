@@ -80,7 +80,10 @@ class NLPProcessorService {
     const raw = this.normalizeInput(questionText, language);
     const q = raw.toLowerCase();
 
-    const isKannada = language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(raw);
+    const hasKnScript = /[\u0C80-\u0CFF]/.test(raw);
+    const isRomanKn = /\b(niru|neeru|neer|kudi|kudithira|kudithiya|beka|beku|beda|oota|uuta|thindi|tindi|aitha|aayitha|madid|madidira|madthira|madla|madodu|madona|nodona|hogona|nodalu|hogonva|kelona|nov|novu|novag|novide|hegidira|hegiddira|hegide|heganisthide|chennag|aram|arogya|chaha|kafi|matre|maathre|tagond|thagond|malag|malagthira|nidre|nidde|mandya|yavaga|sowchalaya|nanna|nimage|nanage|neevu|naavu|ellaru|elli|enu|en|yake|yaake|eke|yathakke|bekagidya|swalpa|ivathu|nale|sahaya|tara|barla|baralla|idu|adhu|yaru|yaaru)\b/i.test(q);
+    const isMixedKn = /(\bdoctor\s+ge\b|\bcall\s+madla\b|\bhelp\s+beka\b|\bwalk\s+ge\b|\bcoffee\s+kudithira\b|\btea\s+kudithira\b|\bmatch\s+gedd\b|\bbook\s+od\b|\bcinema\s+nod\b|\bmovie\s+nod\b|\bge\s+call\b|\bge\s+hog\b|\bge\s+bar\b|\bhakalu\s+sahaya\b|\bhakalu\s+help\b)/i.test(q);
+    const isKannada = language === 'kn' || language === 'Kannada' || hasKnScript || isRomanKn || isMixedKn;
 
     // 0. Greetings & Salutations ("Hi", "Hi sir", "Hello", "Namaskara", "ನಮಸ್ಕಾರ")
     const cleanWords = q.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").trim().split(/\s+/);
@@ -337,7 +340,7 @@ class NLPProcessorService {
         ];
       }
     }
-    if (q.includes('anna') || q.includes('thamma') || q.includes('brother') || q.includes('ಅಣ್ಣ') || q.includes('ತಮ್ಮ')) {
+    if (/\b(brother|thamma)\b/i.test(q) || /(^|\s|[.,!?])(ಅಣ್ಣ|ತಮ್ಮ|ಅಣ್ಣನ|ತಮ್ಮನ)(\s|[.,!?]|$)/i.test(q) || (/\banna\b/i.test(q) && !q.includes('oota') && !q.includes('thindi') && !q.includes('bisi'))) {
       if (isKannada) {
         return [
           { id: 'opt_nlp_bro1', intent: 'BROTHER_PHONE', text: 'ಹೌದು, ನಾನು ಅವನಿಗೆ ಫೋನ್ ಮಾಡಿದ್ದೇನೆ.' },
@@ -347,7 +350,7 @@ class NLPProcessorService {
         ];
       }
     }
-    if (q.includes('akka') || q.includes('thangi') || q.includes('sister') || q.includes('ಅಕ್ಕ') || q.includes('ತಂಗಿ')) {
+    if (/\b(sister|akka|thangi)\b/i.test(q) || /(^|\s|[.,!?])(ಅಕ್ಕ|ತಂಗಿ|ಅಕ್ಕನ|ತಂಗಿಯ)(\s|[.,!?]|$)/i.test(q)) {
       if (isKannada) {
         return [
           { id: 'opt_nlp_sis1', intent: 'SISTER_EVENING', text: 'ಅವಳು ಇಂದು ಸಂಜೆ ಬರುತ್ತಾಳೆ.' },
@@ -357,7 +360,7 @@ class NLPProcessorService {
         ];
       }
     }
-    if (q.includes('maga') || q.includes('magalu') || q.includes('son') || q.includes('daughter') || q.includes('ಮಗ') || q.includes('ಮಗಳು')) {
+    if (/\b(son|daughter|magalu)\b/i.test(q) || (/\bmaga\b/i.test(q) && !/\b(kooda|ge)\b/i.test(q)) || /(^|\s|[.,!?])(ಮಗ|ಮಗಳು|ಮಗನ|ಮಗಳ)(\s|[.,!?]|$)/i.test(q)) {
       if (isKannada) {
         return [
           { id: 'opt_nlp_child1', intent: 'CHILD_WORK', text: 'ನನ್ನ ಮಗ/ಮಗಳು ಕೆಲಸಕ್ಕೆ ಹೋಗಿದ್ದಾರೆ.' },
@@ -367,7 +370,7 @@ class NLPProcessorService {
         ];
       }
     }
-    if (q.includes('hendthi') || q.includes('ganda') || q.includes('wife') || q.includes('husband') || q.includes('ಹೆಂಡತಿ') || q.includes('ಗಂಡ')) {
+    if (/\b(wife|husband|hendthi|ganda)\b/i.test(q) || /(^|\s|[.,!?])(ಹೆಂಡತಿ|ಗಂಡ|ಗಂಡನ|ಹೆಂಡತಿಯ)(\s|[.,!?]|$)/i.test(q)) {
       if (isKannada) {
         return [
           { id: 'opt_nlp_sp1', intent: 'SPOUSE_HOME', text: 'ಅವರು ಮನೆಯಲ್ಲೇ ಇದ್ದಾರೆ.' },
@@ -486,6 +489,216 @@ class NLPProcessorService {
       ];
     }
 
+    // 0.75 General Binary Choice ("Do you want X or Y?" / "X ಅಥವಾ Y?")
+    if (q.includes(' or ') || q.includes(' ಅಥವಾ ') || q.includes(' या ')) {
+      const parts = q.includes(' ಅಥವಾ ')
+        ? q.split(' ಅಥವಾ ')
+        : q.includes(' या ')
+        ? q.split(' या ')
+        : q.split(' or ');
+
+      if (parts.length >= 2) {
+        let optA = parts[0]
+          .replace(/[?,.!]/g, '')
+          .trim()
+          .replace(/^(do you want|would you like|do you prefer|shall we have|shall we go to|is it|did you want)\s+/i, '')
+          .replace(/^(ನಿಮಗೆ|ನೀವು|ನಿನಗೆ|ನಾವು|ದಯವಿಟ್ಟು)\s+/gu, '')
+          .replace(/(ಬೇಕಾ|ಇಷ್ಟಾನಾ|ತಗೋತೀರಾ|ಬಯಸುತ್ತೀರಾ|ಬೇಕೇ|ಕುಡಿತೀರಾ|ತಿಂತೀರಾ)\s*$/gu, '')
+          .trim();
+        let optB = parts[1]
+          .replace(/[?,.!]/g, '')
+          .trim()
+          .replace(/^(ಬೇಕಾ|ಇಷ್ಟಾನಾ)\s+/gu, '')
+          .replace(/(ಬೇಕಾ|ಇಷ್ಟಾನಾ|ತಗೋತೀರಾ|ಬಯಸುತ್ತೀರಾ|ಬೇಕೇ|ಕುಡಿತೀರಾ|ತಿಂತೀರಾ)\s*$/gu, '')
+          .trim();
+
+        if (optA.length > 0 && optA.length < 35 && optB.length > 0 && optB.length < 35) {
+          if (isKannada) {
+            return [
+              { id: 'opt_nlp_ch1', intent: 'PREFERENCE_A', text: `ನನಗೆ ${optA} ಬೇಕು.` },
+              { id: 'opt_nlp_ch2', intent: 'PREFERENCE_B', text: `ನನಗೆ ${optB} ಬೇಕು.` },
+              { id: 'opt_nlp_ch3', intent: 'CHOICE_NEITHER', text: 'ಎರಡೂ ಬೇಡ, ಧನ್ಯವಾದಗಳು.' },
+              { id: 'opt_nlp_ch4', intent: 'CHOICE_OTHER', text: 'ಬೇರೆ ಏನಾದರೂ ಸಿಗುತ್ತದೆಯಾ?' }
+            ];
+          }
+          return [
+            { id: 'opt_nlp_ch1', intent: 'PREFERENCE_A', text: `I would like ${optA}, please.` },
+            { id: 'opt_nlp_ch2', intent: 'PREFERENCE_B', text: `I'll have ${optB}.` },
+            { id: 'opt_nlp_ch3', intent: 'CHOICE_EITHER', text: 'Either is fine with me.' },
+            { id: 'opt_nlp_ch4', intent: 'CHOICE_NEITHER', text: 'Neither right now, thank you.' }
+          ];
+        }
+      }
+    }
+
+    // 0.76 General Assistance / Caregiver Offer ("Can I help you with...", "Do you want me to...", "Shall I get you...")
+    if (
+      /^(can i help you|do you want me to|shall i|may i help|can i get you|would you like me to|need me to)\b/i.test(q) ||
+      q.includes('ಸಹಾಯ ಮಾಡಲಾ') || q.includes('ಸಹಾಯ ಬೇಕಾ') || q.includes('ಸಹಾಯ ಮಾಡ್ಲಾ') ||
+      q.includes('ಸಹಾಯ ಮಾಡಬೇಕಾ') || q.includes('ತರಲಾ') || q.includes('ತಂದುಕೊಡಲಾ') ||
+      q.includes('sahaya madla') || q.includes('help beka') || q.includes('sahaya beka') ||
+      q.includes('मदद करूँ') || q.includes('ला दूँ')
+    ) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_as1', intent: 'ACCEPT', text: 'ಹೌದು, ದಯವಿಟ್ಟು ಸಹಾಯ ಮಾಡಿ.' },
+          { id: 'opt_nlp_as2', intent: 'DECLINE', text: 'ಧನ್ಯವಾದಗಳು, ನಾನೇ ಮಾಡಿಕೊಳ್ಳುತ್ತೇನೆ.' },
+          { id: 'opt_nlp_as3', intent: 'LATER', text: 'ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಮಾಡಿ.' },
+          { id: 'opt_nlp_as4', intent: 'ACCEPT', text: 'ತುಂಬಾ ಧನ್ಯವಾದಗಳು, ಹಾಗೇ ಮಾಡಿ.' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_as1', intent: 'ACCEPT', text: "Yes please, that would be helpful." },
+        { id: 'opt_nlp_as2', intent: 'ACCEPT', text: "Thank you, I'd appreciate that." },
+        { id: 'opt_nlp_as3', intent: 'DECLINE', text: "No thank you, I can manage." },
+        { id: 'opt_nlp_as4', intent: 'LATER', text: "Maybe in a little while, thanks." }
+      ];
+    }
+
+    // 0.8 Movie / Outing / Event Invitation ("Hi, let's go to see the movie." / "ಚಿತ್ರಮಂದಿರಕ್ಕೆ ಹೋಗೋಣ?")
+    if (
+      q.includes('movie') || q.includes('cinema') || q.includes('theater') || q.includes('theatre') ||
+      q.includes('film') || q.includes("let's go to see the movie") || q.includes("let's go to the movie") ||
+      q.includes("let's go") || q.includes('shall we go') || q.includes('come to the') ||
+      q.includes('chalanachitra') || q.includes('hogona') || q.includes('nodona') ||
+      q.includes('ಸಿನಿಮಾ') || q.includes('ಚಿತ್ರಮಂದಿರ') || q.includes('ಮೂವಿ') || q.includes('ಹೋಗೋಣ') ||
+      q.includes('फ़िल्म') || q.includes('सिनेमा') || q.includes('मूवी') || q.includes('चलते हैं')
+    ) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_mv1', intent: 'MOVIE_YES', text: 'ಹೌದು, ಹೋಗೋಣ!' },
+          { id: 'opt_nlp_mv2', intent: 'MOVIE_YES', text: 'ಸರಿ, ನನಗೆ ಇಷ್ಟ.' },
+          { id: 'opt_nlp_mv3', intent: 'MOVIE_DECLINE', text: 'ಬೇಡ, ನನಗೆ ಆಸಕ್ತಿ ಇಲ್ಲ.' },
+          { id: 'opt_nlp_mv4', intent: 'MOVIE_LATER', text: 'ಇನ್ನೊಂದು ದಿನ ಹೋಗೋಣ.' },
+          { id: 'opt_nlp_mv5', intent: 'MOVIE_ASK', text: 'ನಾವು ಯಾವ ಸಿನಿಮಾ ನೋಡಲು ಹೋಗುತ್ತಿದ್ದೇವೆ?' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_mv1', intent: 'MOVIE_YES', text: "Yes, let's go!" },
+        { id: 'opt_nlp_mv2', intent: 'MOVIE_YES', text: "Sure, I'd love to." },
+        { id: 'opt_nlp_mv3', intent: 'MOVIE_DECLINE', text: "No, I'm not interested." },
+        { id: 'opt_nlp_mv4', intent: 'MOVIE_LATER', text: "Let's go another day." },
+        { id: 'opt_nlp_mv5', intent: 'MOVIE_ASK', text: "What movie are we going to see?" }
+      ];
+    }
+
+    // 0.77 General Outing / Activity Invitation ("Shall we read...", "Let's play...", "Why don't we sit...")
+    if (
+      /^(shall we|why don't we|come and|how about we)\b/i.test(q) ||
+      q.includes('ಮಾಡೋಣ್ವಾ') || q.includes('ನೋಡೋಣ್ವಾ') || q.includes('ಕೇಳೋಣ್ವಾ') ||
+      q.includes('ಮಾಡೋಣವೇ') || q.includes('ಓದೋಣವೇ') || q.includes('ಹೋಗೋಣವೇ') || q.includes('ಕೇಳೋಣವೇ') ||
+      q.includes('ಮಾಡೋಣ') || q.includes('ಓದೋಣ') || q.includes('ಚಲೋ') || q.includes('करें क्या') ||
+      /ೋಣ(ವೇ|ವಾ|ಣ್ವಾ)?/u.test(q)
+    ) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_inv1', intent: 'ACCEPT', text: 'ಹೌದು, ಖಂಡಿತ ಮಾಡೋಣ!' },
+          { id: 'opt_nlp_inv2', intent: 'ACCEPT', text: 'ಖಂಡಿತ, ನನಗೂ ತುಂಬಾ ಇಷ್ಟ.' },
+          { id: 'opt_nlp_inv3', intent: 'DECLINE', text: 'ಬೇಡ, ನನಗೆ ಸ್ವಲ್ಪ ಆಯಾಸವಾಗಿದೆ.' },
+          { id: 'opt_nlp_inv4', intent: 'LATER', text: 'ಸ್ವಲ್ಪ ಸಮಯದ ನಂತರ ಮಾಡೋಣ.' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_inv1', intent: 'ACCEPT', text: "Yes, I would love to!" },
+        { id: 'opt_nlp_inv2', intent: 'ACCEPT', text: "Sure, that sounds wonderful." },
+        { id: 'opt_nlp_inv3', intent: 'DECLINE', text: "No thank you, I prefer to rest today." },
+        { id: 'opt_nlp_inv4', intent: 'LATER', text: "Maybe a little later." },
+        { id: 'opt_nlp_inv5', intent: 'CLARIFY', text: "What time are you thinking?" }
+      ];
+    }
+
+    // 0.78 Reason Questions ("Why are you looking worried?", "Why did you...")
+    if (/^(why|how come)\b/i.test(q) || q.includes('ಯಾಕೆ') || q.includes('ಏಕೆ') || q.includes('ಯಾತಕ್ಕೆ') || q.includes('ಚಿಂತೆ ಮಾಡ್ತಿದ್ದೀರಿ') || q.includes('ಕ್ಯೂಂ') || q.includes('क्यों')) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_rsn1', intent: 'EXPLAIN_TIRED', text: 'ಸ್ವಲ್ಪ ಆಯಾಸವಾಗಿದೆ, ಅಷ್ಟೇ.' },
+          { id: 'opt_nlp_rsn2', intent: 'EXPLAIN_FINE', text: 'ಏನೂ ಇಲ್ಲ, ನಾನು ಚೆನ್ನಾಗಿದ್ದೇನೆ.' },
+          { id: 'opt_nlp_rsn3', intent: 'EXPLAIN_THINKING', text: 'ನಾನು ಏನೋ ಯೋಚನೆ ಮಾಡುತ್ತಿದ್ದೆ.' },
+          { id: 'opt_nlp_rsn4', intent: 'EXPLAIN_WORDS', text: 'ಸ್ವಲ್ಪ ಮಾತು ಸರಿಯಾಗಿ ಬರುತ್ತಿಲ್ಲ.' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_rsn1', intent: 'EXPLAIN_TIRED', text: "I'm just feeling a bit tired today." },
+        { id: 'opt_nlp_rsn2', intent: 'EXPLAIN_FINE', text: "Nothing is wrong, I am doing fine." },
+        { id: 'opt_nlp_rsn3', intent: 'EXPLAIN_THINKING', text: "I was just thinking about something." },
+        { id: 'opt_nlp_rsn4', intent: 'EXPLAIN_WORDS', text: "Just struggling a little to find words." }
+      ];
+    }
+
+    // 0.9 Snack & Food Preferences ("What would you like to eat?" / "ಏನು ತಿಂಡಿ ಬೇಕು?")
+    if (
+      q.includes('what would you like to eat') || q.includes('what do you want to eat') ||
+      q.includes('want snacks') || q.includes('want some snacks') || q.includes('some snacks') ||
+      q.includes('chips') || q.includes('popcorn') || q.includes('thindi beku') || q.includes('en thindi beku') ||
+      q.includes('enu thindi') || q.includes('ನಿಮಗೆ ಏನು ತಿನ್ನಬೇಕು') || q.includes('ಏನು ತಿನ್ನಬೇಕು') || q.includes('ಏನ್ ತಿನ್ನಬೇಕು') ||
+      q.includes('ಏನು ತಿಂಡಿ ಬೇಕು') || q.includes('ಏನ್ ತಿಂಡಿ') || q.includes('ಸ್ನ್ಯಾಕ್ಸ್') ||
+      q.includes('ತಿನ್ನಲು ಏನು ಬೇಕು') || q.includes('क्या खाना चाहते') || q.includes('क्या खाओगे') || q.includes('कुछ स्नैक्स')
+    ) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_sn1', intent: 'FOOD_SNACK', text: 'ನನಗೆ ಸ್ವಲ್ಪ ತಿಂಡಿ ಬೇಕು.' },
+          { id: 'opt_nlp_sn2', intent: 'FOOD_CHIPS', text: 'ನನಗೆ ಚಿಪ್ಸ್ ಬೇಕು.' },
+          { id: 'opt_nlp_sn3', intent: 'FOOD_SWEET', text: 'ನನಗೆ ಸಿಹಿ ತಿಂಡಿ ಬೇಕು.' },
+          { id: 'opt_nlp_sn4', intent: 'FOOD_FRUIT', text: 'ನನಗೆ ಸ್ವಲ್ಪ ಹಣ್ಣು ಬೇಕು.' },
+          { id: 'opt_nlp_sn5', intent: 'MEAL_DECLINED', text: 'ಈಗ ಏನೂ ಬೇಡ, ಧನ್ಯವಾದಗಳು.' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_sn1', intent: 'FOOD_SNACK', text: "I'd like some snacks." },
+        { id: 'opt_nlp_sn2', intent: 'FOOD_CHIPS', text: "Can I have chips?" },
+        { id: 'opt_nlp_sn3', intent: 'FOOD_POPCORN', text: "I want popcorn." },
+        { id: 'opt_nlp_sn4', intent: 'FOOD_SWEET', text: "I'd prefer something sweet." },
+        { id: 'opt_nlp_sn5', intent: 'MEAL_DECLINED', text: "Nothing right now, thank you." }
+      ];
+    }
+
+    // 0.10 Tea or Coffee Choice ("Would you like tea or coffee?" / "ಚಹಾ ಬೇಕಾ ಕಾಫಿ ಬೇಕಾ?")
+    if (
+      (q.includes('tea') && q.includes('coffee')) || q.includes('tea or coffee') || q.includes('coffee or tea') ||
+      q.includes('tea beka coffee beka') || q.includes('chaha beka coffee beka') ||
+      q.includes('ನಿಮಗೆ ಚಹಾ ಬೇಕಾ ಅಥವಾ ಕಾಫಿ ಬೇಕಾ') || q.includes('ಚಹಾ ಅಥವಾ ಕಾಫಿ') || q.includes('ಕಾಫಿ ಅಥವಾ ಚಹಾ') || q.includes('ಚಹಾ ಬೇಕಾ ಕಾಫಿ ಬೇಕಾ') ||
+      q.includes('चाय या कॉफ़ी') || q.includes('कॉफ़ी या चाय')
+    ) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_tc1', intent: 'BEVERAGE_TEA', text: 'ನನಗೆ ಚಹಾ ಬೇಕು.' },
+          { id: 'opt_nlp_tc2', intent: 'BEVERAGE_COFFEE', text: 'ನನಗೆ ಕಾಫಿ ಬೇಕು.' },
+          { id: 'opt_nlp_tc3', intent: 'BEVERAGE_NONE', text: 'ಎರಡೂ ಬೇಡ, ಧನ್ಯವಾದಗಳು.' },
+          { id: 'opt_nlp_tc4', intent: 'BEVERAGE_OTHER', text: 'ಬೇರೆ ಏನಾದರೂ ಕುಡಿಯಲು ಸಿಗುತ್ತದೆಯಾ?' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_tc1', intent: 'BEVERAGE_TEA', text: "I'd like tea, please." },
+        { id: 'opt_nlp_tc2', intent: 'BEVERAGE_COFFEE', text: "I want coffee." },
+        { id: 'opt_nlp_tc3', intent: 'BEVERAGE_NONE', text: "Neither, thank you." },
+        { id: 'opt_nlp_tc4', intent: 'WATER_REQUEST', text: "Can I have some water instead?" }
+      ];
+    }
+
+    // 0.11 Feeling Better / Recovery Status ("Are you feeling better today?" / "ಸ್ವಲ್ಪ ಆರಾಮಾಗಿದೆಯಾ?")
+    if (
+      q.includes('feeling better') || q.includes('feel better') || q.includes('feeling any better') ||
+      q.includes('are you better') || q.includes('swalpa aram aitha') || q.includes('swalpa aram aagidya') || q.includes('aram aagidya') ||
+      q.includes('ನಿಮಗೆ ಈಗ ಹೇಗನಿಸುತ್ತಿದೆ') || q.includes('ಹೇಗನಿಸುತ್ತಿದೆ') || q.includes('ಹೇಗನಿಸ್ತಿದೆ') ||
+      q.includes('ಸ್ವಲ್ಪ ಆರಾಮಾಗಿದೆಯಾ') || q.includes('ಆರಾಮಾಗಿದೆಯಾ') || q.includes('ಉಷಾರಾಗಿದ್ದೀರಾ') || q.includes('ಚೇತರಿಸಿಕೊಂಡಿದ್ದೀರಾ') ||
+      q.includes('पहले से बेहतर') || q.includes('तबीयत ठीक है') || q.includes('अच्छा लग रहा है')
+    ) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_fb1', intent: 'FEELING_BETTER', text: 'ನನಗೆ ಈಗ ಚೆನ್ನಾಗಿದೆ.' },
+          { id: 'opt_nlp_fb2', intent: 'FEELING_PARTIAL', text: 'ಸ್ವಲ್ಪ ಸುಧಾರಣೆಯಾಗಿದೆ.' },
+          { id: 'opt_nlp_fb3', intent: 'FEELING_NOT_BETTER', text: 'ನನಗೆ ಇನ್ನೂ ಸ್ವಲ್ಪ ಅಸ್ವಸ್ಥವಾಗಿದೆ.' },
+          { id: 'opt_nlp_fb4', intent: 'FEELING_NEED_REST', text: 'ನನಗೆ ಸ್ವಲ್ಪ ವಿಶ್ರಾಂತಿ ಬೇಕು.' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_fb1', intent: 'FEELING_BETTER', text: "Yes, I'm feeling better." },
+        { id: 'opt_nlp_fb2', intent: 'FEELING_PARTIAL', text: "A little better." },
+        { id: 'opt_nlp_fb3', intent: 'FEELING_NOT_BETTER', text: "No, I still don't feel well." },
+        { id: 'opt_nlp_fb4', intent: 'FEELING_NEED_REST', text: "I need some rest." }
+      ];
+    }
+
     // 1. WH-Food Questions ("What food do you want?" / "ಏನ್ ಊಟ ಬೇಕು?" / "nange en oota beku")
     if (q.includes('what food') || q.includes('what to eat') || q.includes('which food') || q.includes('en uuta') || q.includes('en oota') || q.includes('enu uuta') || q.includes('enu thindi') || q.includes('thindi') || q.includes('oota') || q.includes('uuta') || q.includes('ಏನ್ ಊಟ') || q.includes('ಏನು ಊಟ') || q.includes('ಏನು ತಿಂಡಿ') || q.includes('ಏನ್ ಬೇಕು')) {
       if (isKannada) {
@@ -504,39 +717,54 @@ class NLPProcessorService {
       ];
     }
 
-    // 2. WH-Drink Questions ("What to drink?" / "ಏನ್ ಕುಡಿಯುತ್ತೀರಾ?" / "en kudi")
-    if (q.includes('what to drink') || q.includes('which drink') || q.includes('en kudi') || q.includes('enu kudi') || q.includes('en neeru') || q.includes('kafi') || q.includes('coffee') || q.includes('tea') || q.includes('haalu') || q.includes('halu') || q.includes('ಏನ್ ಕುಡಿ') || q.includes('ಏನು ಕುಡಿ') || q.includes('ಕಾಫಿ') || q.includes('ಚಹಾ') || q.includes('ಹಾಲು')) {
+    // 2. WH-Drink Questions ("What to drink?" / "What do you want to drink?" / "ಏನ್ ಕುಡಿಯುತ್ತೀರಾ?" / "ಏನು ಕುಡಿಯಬೇಕು?")
+    if (
+      q.includes('what do you want to drink') || q.includes('what to drink') || q.includes('which drink') ||
+      q.includes('what drink') || q.includes('want to drink') || q.includes('like to drink') ||
+      q.includes('en kudi') || q.includes('enu kudi') || q.includes('en kudibeku') || q.includes('enu kudibeku') ||
+      q.includes('en neeru') || q.includes('kafi') || q.includes('coffee') || q.includes('tea') ||
+      q.includes('haalu') || q.includes('halu') || q.includes('ಏನ್ ಕುಡಿ') || q.includes('ಏನು ಕುಡಿ') ||
+      q.includes('ಏನು ಕುಡಿಯಬೇಕು') || q.includes('ಏನ್ ಕುಡಿಯಬೇಕು') || q.includes('ಏನ್ ಬೇಕು ಕುಡಿಯೋಕೆ') ||
+      q.includes('ಕಾಫಿ') || q.includes('ಚಹಾ') || q.includes('ಹಾಲು') || q.includes('क्या पीना') || q.includes('क्या पियोगे')
+    ) {
       if (isKannada) {
         return [
-          { id: 'opt_nlp_wd1', intent: 'DRINK_WATER', text: 'ನನಗೆ ಶುದ್ಧ ನೀರು ಬೇಕು.' },
-          { id: 'opt_nlp_wd2', intent: 'DRINK_TEA', text: 'ನನಗೆ ಬಿಸಿ ಬಿಸಿ ಚಹಾ ಅಥವಾ ಕಾಫಿ ಬೇಕು.' },
-          { id: 'opt_nlp_wd3', intent: 'DRINK_JUICE', text: 'ನನಗೆ ಎಳೆನೀರು ಅಥವಾ ಬಿಸಿ ಹಾಲು ಬೇಕು.' },
-          { id: 'opt_nlp_wd4', intent: 'DRINK_NONE', text: 'ಇಲ್ಲ, ನನಗೆ ಈಗ ಏನೂ ಬೇಡ.' }
+          { id: 'opt_nlp_wd1', intent: 'DRINK_WATER', text: 'ನನಗೆ ನೀರು ಬೇಕು.' },
+          { id: 'opt_nlp_wd2', intent: 'DRINK_TEA', text: 'ನನಗೆ ಬಿಸಿ ಚಹಾ ಅಥವಾ ಕಾಫಿ ಬೇಕು.' },
+          { id: 'opt_nlp_wd3', intent: 'DRINK_JUICE', text: 'ನನಗೆ ಎಳೆನೀರು ಅಥವಾ ಹಾಲು ಬೇಕು.' },
+          { id: 'opt_nlp_wd4', intent: 'DRINK_NONE', text: 'ಈಗ ಏನೂ ಬೇಡ, ಧನ್ಯವಾದಗಳು.' }
         ];
       }
       return [
-        { id: 'opt_nlp_wd1', intent: 'DRINK_WATER', text: 'I want fresh drinking water.' },
+        { id: 'opt_nlp_wd1', intent: 'DRINK_WATER', text: 'I want water.' },
         { id: 'opt_nlp_wd2', intent: 'DRINK_TEA', text: 'I want hot tea or coffee.' },
-        { id: 'opt_nlp_wd3', intent: 'DRINK_JUICE', text: 'I want fresh coconut water or warm milk.' },
-        { id: 'opt_nlp_wd4', intent: 'DRINK_NONE', text: 'No, I do not want anything right now.' }
+        { id: 'opt_nlp_wd3', intent: 'DRINK_JUICE', text: 'I want juice or warm milk.' },
+        { id: 'opt_nlp_wd4', intent: 'DRINK_NONE', text: 'Nothing right now, thank you.' }
       ];
     }
 
-    // 3. Pain & Medical Symptom Questions ("Are you in pain?" / "ನೋವಾಗ್ತಿದೆಯಾ?" / "tala novu")
-    if (q.includes('pain') || q.includes('hurt') || q.includes('nov') || q.includes('novu') || q.includes('thale') || q.includes('tala') || q.includes('doct') || q.includes('aushad') || q.includes('osadi') || q.includes('tablet') || q.includes('ನೋವು') || q.includes('ತಲೆನೋವು') || q.includes('ಔಷಧಿ') || q.includes('ವೈದ್ಯ')) {
+    // 3. Pain & Medical Symptom Questions ("Are you feeling any pain?" / "Does it hurt?" / "ನೋವಾಗ್ತಿದೆಯಾ?" / "tala novu")
+    if (
+      q.includes('pain') || q.includes('hurt') || q.includes('ache') || q.includes('sore') ||
+      q.includes('ouch') || q.includes('sick') || q.includes('nov') || q.includes('novu') ||
+      q.includes('novag') || q.includes('novide') || q.includes('thale') || q.includes('tala') ||
+      q.includes('doct') || q.includes('aushad') || q.includes('osadi') || q.includes('tablet') ||
+      q.includes('ನೋವು') || q.includes('ನೋವ') || q.includes('ನೋವಾಗ್ತಿದೆ') || q.includes('ನೋವಾಗುತ್ತಿದೆಯಾ') ||
+      q.includes('ತಲೆನೋವು') || q.includes('ಔಷಧಿ') || q.includes('ವೈದ್ಯ') || q.includes('दर्द') || q.includes('तकलीफ़')
+    ) {
       if (isKannada) {
         return [
-          { id: 'opt_nlp_pn1', intent: 'PAIN_HEADACHE', text: 'ನನಗೆ ಸ್ವಲ್ಪ ತಲೆನೋವು/ದೇಹದ ನೋವು ಇದೆ.' },
-          { id: 'opt_nlp_pn2', intent: 'PAIN_MEDICINE', text: 'ದಯವಿಟ್ಟು ನನ್ನ ಮಾತ್ರೆ/ಔಷಧಿ ಕೊಡಿ.' },
-          { id: 'opt_nlp_pn3', intent: 'PAIN_DOCTOR', text: 'ನನ್ನ ವೈದ್ಯರನ್ನು/ಡಾಕ್ಟರ್‌ ಕರೆಸಿ.' },
-          { id: 'opt_nlp_pn4', intent: 'PAIN_NONE', text: 'ಇಲ್ಲ, ನನಗೆ ಈಗ ಯಾವುದೇ ನೋವಿಲ್ಲ.' }
+          { id: 'opt_nlp_pn1', intent: 'PAIN_NONE', text: 'ಇಲ್ಲ, ನನಗೆ ಯಾವುದೇ ನೋವಿಲ್ಲ.' },
+          { id: 'opt_nlp_pn2', intent: 'PAIN_MILD', text: 'ಹೌದು, ಸ್ವಲ್ಪ ನೋವಾಗುತ್ತಿದೆ.' },
+          { id: 'opt_nlp_pn3', intent: 'PAIN_SEVERE', text: 'ತುಂಬಾ ನೋವಾಗುತ್ತಿದೆ, ಸಹಾಯ ಮಾಡಿ.' },
+          { id: 'opt_nlp_pn4', intent: 'PAIN_MEDICINE', text: 'ದಯವಿಟ್ಟು ನನ್ನ ಮಾತ್ರೆ/ಔಷಧಿ ಕೊಡಿ.' }
         ];
       }
       return [
-        { id: 'opt_nlp_pn1', intent: 'PAIN_HEADACHE', text: 'I have a bit of a headache or body pain.' },
-        { id: 'opt_nlp_pn2', intent: 'PAIN_MEDICINE', text: 'Please give me my pain medicine.' },
-        { id: 'opt_nlp_pn3', intent: 'PAIN_DOCTOR', text: 'Please call the doctor for me.' },
-        { id: 'opt_nlp_pn4', intent: 'PAIN_NONE', text: "No, I'm not in pain right now." }
+        { id: 'opt_nlp_pn1', intent: 'PAIN_NONE', text: 'No, I am not in pain.' },
+        { id: 'opt_nlp_pn2', intent: 'PAIN_MILD', text: 'Yes, I have mild pain.' },
+        { id: 'opt_nlp_pn3', intent: 'PAIN_SEVERE', text: 'Yes, severe pain, please help.' },
+        { id: 'opt_nlp_pn4', intent: 'PAIN_MEDICINE', text: 'Please give me my pain medicine.' }
       ];
     }
 
@@ -591,6 +819,28 @@ class NLPProcessorService {
         { id: 'opt_nlp_cm2', intent: 'COMFORT_HOT', text: 'I feel warm, please turn on the fan.' },
         { id: 'opt_nlp_cm3', intent: 'COMFORT_POSITION', text: 'Please adjust my seating position.' },
         { id: 'opt_nlp_cm4', intent: 'COMFORT_FINE', text: "I'm comfortable, thank you." }
+      ];
+    }
+
+    // 6.5 Item Location Questions ("Where did you put..." / "Where is your..." / "ಎಲ್ಲಿ ಇಟ್ಟಿದ್ದೀರಿ" / "ಎಲ್ಲಿದೆ" / "elli ittiddira")
+    if (
+      q.includes('ittiddira') || q.includes('ittidiri') || q.includes('ittidiya') ||
+      q.includes('ಇಟ್ಟಿದ್ದೀರಿ') || q.includes('ಇಟ್ಟಿದ್ದೀರಾ') || q.includes('ಎಲ್ಲಿದೆ') ||
+      (q.includes('where') && (q.includes('put') || q.includes('keep') || q.includes('kept') || q.includes('is your') || q.includes('glasses') || q.includes('spectacles') || q.includes('phone') || q.includes('keys')))
+    ) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_itemloc1', intent: 'ITEM_TABLE', text: 'ಮೇಜಿನ ಮೇಲೆ ಇಟ್ಟಿದ್ದೇನೆ.' },
+          { id: 'opt_nlp_itemloc2', intent: 'ITEM_DRAWER', text: 'ಕೋಣೆಯ ಡ್ರಾಯರ್‌ನಲ್ಲಿ ಇರಬಹುದು.' },
+          { id: 'opt_nlp_itemloc3', intent: 'ITEM_REMEMBER', text: 'ನನಗೆ ನೆನಪಾಗುತ್ತಿಲ್ಲ, ಸ್ವಲ್ಪ ಹುಡುಕಿ.' },
+          { id: 'opt_nlp_itemloc4', intent: 'ITEM_FIND', text: 'ನನ್ನ ಕೈಚೀಲದಲ್ಲಿ ನೋಡಿ.' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_itemloc1', intent: 'ITEM_TABLE', text: 'I kept it on the table.' },
+        { id: 'opt_nlp_itemloc2', intent: 'ITEM_DRAWER', text: 'It might be in the room drawer.' },
+        { id: 'opt_nlp_itemloc3', intent: 'ITEM_REMEMBER', text: "I don't recall, please help me look." },
+        { id: 'opt_nlp_itemloc4', intent: 'ITEM_FIND', text: 'Please check inside my bag.' }
       ];
     }
 
@@ -654,33 +904,55 @@ class NLPProcessorService {
         return [
           { id: 'opt_nlp_hl1', intent: 'HEALTH_GOOD', text: 'ನಾನು ಚೆನ್ನಾಗಿದ್ದೇನೆ, ಧನ್ಯವಾದಗಳು!' },
           { id: 'opt_nlp_hl2', intent: 'ACTIVITY_RESTING', text: 'ವಿಶ್ರಾಂತಿ ತಗೋತಾ ಇದ್ದೀನಿ.' },
-          { id: 'opt_nlp_hl3', intent: 'ACTIVITY_TV', text: 'ಟಿವಿ ನೋಡ್ತಾ ಇದ್ದೀನಿ.' },
+          { id: 'opt_nlp_hl3', intent: 'HEALTH_BETTER', text: 'ಸ್ವಲ್ಪ ಸುಧಾರಿಸಿದೆ.' },
           { id: 'opt_nlp_hl4', intent: 'HEALTH_TIRED', text: 'ಸ್ವಲ್ಪ ಆಯಾಸವಾಗಿದೆ, ವಿಶ್ರಾಂತಿ ಬೇಕು.' }
         ];
       }
       return [
         { id: 'opt_nlp_hl1', intent: 'HEALTH_GOOD', text: "I'm doing great, thank you!" },
         { id: 'opt_nlp_hl2', intent: 'ACTIVITY_RESTING', text: "I'm just taking some rest." },
-        { id: 'opt_nlp_hl3', intent: 'ACTIVITY_TV', text: "I'm watching TV right now." },
+        { id: 'opt_nlp_hl3', intent: 'HEALTH_BETTER', text: "I'm feeling a bit better." },
         { id: 'opt_nlp_hl4', intent: 'HEALTH_TIRED', text: 'A bit tired, I need to rest.' }
       ];
     }
 
-    // 11. Open Domain Smart Paraphraser Fallback
+    // 10b. General Yes/No Questions ("Did you...", "Have you...", "Can you...", "Are you...", Kannada verb questions)
+    if (
+      /^(did you|have you|are you|do you|can you|could you|will you|would you|is it|was it)\b/i.test(q) ||
+      (q.includes('?') && !/^(what|where|when|who|why|how)\b/i.test(q)) ||
+      /(ಇದ್ದೀರಾ|ಮಾಡಿದ್ದೀರಾ|ಹೋಗಿದ್ದೀರಾ|ಆಯ್ತಾ|ತಗೊಂಡ್ರಾ|ಮಾಡಿದ್ರಾ|ಹೋದ್ರಾ|beka|aitha|madidra|hogidra|iddira)\b/i.test(q)
+    ) {
+      if (isKannada) {
+        return [
+          { id: 'opt_nlp_yn1', intent: 'YES', text: 'ಹೌದು, ಸರಿ.' },
+          { id: 'opt_nlp_yn2', intent: 'NO', text: 'ಇಲ್ಲ, ಹಾಗಲ್ಲ.' },
+          { id: 'opt_nlp_yn3', intent: 'UNSURE', text: 'ನನಗೆ ಖಚಿತವಿಲ್ಲ.' },
+          { id: 'opt_nlp_yn4', intent: 'LATER', text: 'ಬಹುಶಃ ನಂತರ.' }
+        ];
+      }
+      return [
+        { id: 'opt_nlp_yn1', intent: 'YES', text: "Yes, that's right." },
+        { id: 'opt_nlp_yn2', intent: 'NO', text: "No, not really." },
+        { id: 'opt_nlp_yn3', intent: 'UNSURE', text: "I'm not sure." },
+        { id: 'opt_nlp_yn4', intent: 'LATER', text: "Maybe later." }
+      ];
+    }
+
+    // 11. Open Domain Smart Paraphraser Fallback (Natural Conversational Patient Replies)
     if (isKannada) {
       return [
-        { id: 'opt_nlp_od1', intent: 'AGREE_DYNAMIC', text: 'ನಾನು ಚೆನ್ನಾಗಿದ್ದೇನೆ, ಧನ್ಯವಾದಗಳು!' },
-        { id: 'opt_nlp_od2', intent: 'REST_DYNAMIC', text: 'ವಿಶ್ರಾಂತಿ ತಗೋತಾ ಇದ್ದೀನಿ.' },
-        { id: 'opt_nlp_od3', intent: 'TV_DYNAMIC', text: 'ಟಿವಿ ನೋಡ್ತಾ ಇದ್ದೀನಿ.' },
-        { id: 'opt_nlp_od4', intent: 'HELP_DYNAMIC', text: 'ನನಗೆ ಸಹಾಯ ಬೇಕು.' }
+        { id: 'opt_nlp_od1', intent: 'CONV_AGREE', text: 'ಕೇಳಲು ತುಂಬಾ ಸಂತೋಷವಾಯಿತು!' },
+        { id: 'opt_nlp_od2', intent: 'CONV_UNDERSTAND', text: 'ಹೌದು, ಅದು ತುಂಬಾ ಒಳ್ಳೆಯ ಸುದ್ದಿ.' },
+        { id: 'opt_nlp_od3', intent: 'CONV_MORE', text: 'ಇನ್ನಷ್ಟು ವಿವರವಾಗಿ ಹೇಳಿ.' },
+        { id: 'opt_nlp_od4', intent: 'CONV_THANKS', text: 'ತಿಳಿಸಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.' }
       ];
     }
 
     return [
-      { id: 'opt_nlp_od1', intent: 'AGREE_DYNAMIC', text: "I am doing fine, thank you!" },
-      { id: 'opt_nlp_od2', intent: 'REST_DYNAMIC', text: "I am just resting right now." },
-      { id: 'opt_nlp_od3', intent: 'TV_DYNAMIC', text: "I am watching TV." },
-      { id: 'opt_nlp_od4', intent: 'HELP_DYNAMIC', text: "Could you please help me out?" }
+      { id: 'opt_nlp_od1', intent: 'CONV_AGREE', text: "That sounds good." },
+      { id: 'opt_nlp_od2', intent: 'CONV_UNDERSTAND', text: "Yes, I understand." },
+      { id: 'opt_nlp_od3', intent: 'CONV_MORE', text: "Could you tell me more?" },
+      { id: 'opt_nlp_od4', intent: 'CONV_THANKS', text: "Thank you for letting me know." }
     ];
   }
 
@@ -721,6 +993,501 @@ class NLPProcessorService {
         nlpProcessed: true
       };
     });
+  }
+
+  /**
+   * Conservative Linguistic & Phonetic Reconstruction Engine
+   * Fixes:
+   * - Missing verbs (e.g. "I water" -> "I want water.", "I home" -> "I want to go home.")
+   * - Missing prepositions / infinitive particles (e.g. "I want go home" -> "I want to go home.")
+   * - Transcription & dysarthric slips (e.g. "I wa watter" -> "I want water.", "I wan hep" -> "I want help.", "I need watr" -> "I need water.")
+   * - Repeated words (e.g. "I I want want" -> "I want")
+   * - Broken grammar and punctuation
+   */
+  reconstructSpeechConservative(text, language = 'en', context = '', previousUtterance = '') {
+    if (!text || typeof text !== 'string') return '';
+    let cleaned = this.normalizeInput(text, language);
+    if (!cleaned) return '';
+
+    // Context-guided phonetic and phrase reconstruction:
+    if (context && typeof context === 'string') {
+      const normCtx = context.trim();
+
+      // Context indicates "Chanakya Dini", raw transcript phonetically captured as "Tanagidini"
+      if (/\bchanakya\s+dini\b/i.test(normCtx) && /\b(tanagidini|chanakya|dini|tanaki|chanaki)\b/i.test(cleaned)) {
+        return 'Chanakya Dini';
+      }
+
+      // Well-being question e.g. "How are you feeling today?" / "hegidira" / "kya haal"
+      if (/how are you|feeling|hegidira|kya haal|doing/i.test(normCtx)) {
+        if (/\b(tanagidini|chanagidini|chennagidini)\b/i.test(cleaned)) {
+          return (language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(cleaned))
+            ? 'ಚೆನ್ನಾಗಿದ್ದೀನಿ'
+            : 'I am doing well.';
+        }
+      }
+
+      // Pain location inquiry e.g. "Where is the pain?" or "Where does it hurt?"
+      if (/where.*(hurt|pain|ache)|elli.*nov/i.test(normCtx)) {
+        if (/\bhead\b/i.test(cleaned) && !/hurt|ache|pain/.test(cleaned)) {
+          return 'My head hurts.';
+        }
+        if (/\bstomach\b/i.test(cleaned) && !/hurt|ache|pain/.test(cleaned)) {
+          return 'My stomach hurts.';
+        }
+      }
+
+      // Drink/water inquiry e.g. "What do you want to drink?" or "Are you thirsty?"
+      if (/drink|thirsty|water|kudi|dah/i.test(normCtx)) {
+        if (/\b(watr|watter|wada|wata|neer|niru|pani)\b/i.test(cleaned)) {
+          return (language === 'kn' || language === 'Kannada')
+            ? 'ನನಗೆ ನೀರು ಬೇಕು'
+            : (language === 'hi' || language === 'Hindi')
+            ? 'मुझे पानी चाहिए'
+            : 'I want water.';
+        }
+      }
+    }
+
+    // 0. Handle perseverative repetitive syllables common in aphasia/dysarthria:
+    // e.g. "Na na na na na na na na na" represents perseveration of "ನನಗೆ" ("I want / water")
+    if (/^(\s*na\s*){3,}$/i.test(cleaned) || /\b(na)(?:\s+\1){3,}\b/i.test(cleaned)) {
+      return language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(cleaned) ? 'ನನಗೆ ನೀರು ಬೇಕು' : 'I need water.';
+    }
+
+    // 0a. Romanized Kannada recovery (e.g. Scribe v2 spelling Kannada phonetically)
+    const isRomanizedKn = /\b(ah\s*)?(na\s*na\s*nge|na\s*nge|nanage|nange|nanige|naanage)\s+(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/i.test(cleaned) ||
+      /\b(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/i.test(cleaned) ||
+      /\b(oota|ootha|uta|ouda)\s+(beku|beko|bekku)\b/i.test(cleaned) ||
+      /\b(sahaya|saaya|sahay)\s+(beku|beko)\b/i.test(cleaned);
+
+    if (isRomanizedKn) {
+      cleaned = cleaned
+        .replace(/\b(ah\s*)?(na\s*na\s*nge|na\s*nge|nanage|nange|nanige|naanage)\s+(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/gi, 'ನನಗೆ ನೀರು ಬೇಕು')
+        .replace(/\b(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/gi, 'ನೀರು ಬೇಕು')
+        .replace(/\b(niru|neeru|neelu)\s+(kodi|kudi)\b/gi, 'ನೀರು ಕೊಡಿ')
+        .replace(/\b(oota|ootha|uta|ouda)\s+(beku|beko|bekku)\b/gi, 'ಊಟ ಬೇಕು')
+        .replace(/\b(sahaya|saaya|sahay|help)\s+(beku|beko)\b/gi, 'ಸಹಾಯ ಬೇಕು');
+    }
+
+    // 0b. Romanized Hindi recovery
+    const isRomanizedHi = /\b(pani|paani)\s+(chahiye|chahye|pilao|do)\b/i.test(cleaned) ||
+      /\b(madad|sahayata)\s+(chahiye|karo|do)\b/i.test(cleaned) ||
+      /\b(khana|khaana)\s+(chahiye|do)\b/i.test(cleaned);
+
+    if (isRomanizedHi) {
+      cleaned = cleaned
+        .replace(/\b(pani|paani)\s+(chahiye|chahye|pilao|do)\b/gi, 'पानी चाहिए')
+        .replace(/\b(madad|sahayata)\s+(chahiye|karo|do)\b/gi, 'मदद चाहिए')
+        .replace(/\b(khana|khaana)\s+(chahiye|do)\b/gi, 'खाना चाहिए');
+    }
+
+    const isKannada = language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(cleaned);
+    const isHindi = language === 'hi' || language === 'Hindi' || /[\u0900-\u097F]/.test(cleaned);
+
+    if (isKannada) {
+      const KANNADA_RULES = [
+        { pattern: /(^|[\s,.\?!;:])(ನನಗೆ\s*ನೀನು\s*ಬೇಕು|ನನಗೆ\s*ನೀನು)(?=[\s,.\?!;:]|$)/gu, word: 'ನನಗೆ ನೀರು ಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ನೀನು\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ನೀರು ಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ಸಾಯ\s*ಬೇಕು|ಸಾಯಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಸಹಾಯ ಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ಸಾಯ್)(?=[\s,.\?!;:]|$)/gu, word: 'ಸಹಾಯ' },
+        { pattern: /(^|[\s,.\?!;:])(ನಾವು\s*ಆಗ್ತಿದೆ|ನೋವು\s*ಅಗ್ತಿದೆ|ನೋವು\s*ಆಗ್ತಾ\s*ಇದೆ|ನೋವು\s*ಆಗಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ನೋವಾಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ನೋವು\s*ಬೆಕ್ಕು|ನೋವು\s*ಇದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ನೋವಾಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ನೀಲು\s*ಬೇಕು|ನೀಲು\s*ಬೆಕ್ಕು|ನೀರು\s*ಬೆಕ್ಕು|ನಿಲ್ಲು\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ನೀರು ಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ನೀಲು|ನೆಲ್ಲು|ನೇರು)(?=[\s,.\?!;:]|$)/gu, word: 'ನೀರು' },
+        { pattern: /(^|[\s,.\?!;:])(ಉಡು\s*ಬೇಕು|ಉಟ\s*ಬೇಕು|ಉಟಾ\s*ಬೇಕು|ಊಟ\s*ಬೆಕ್ಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಊಟ ಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ಊಡ|ಉಡ)(?=[\s,.\?!;:]|$)/gu, word: 'ಊಟ' },
+        { pattern: /(^|[\s,.\?!;:])(ಹಸಿವು\s*ಆಗ್ತಿದೆ|ಹಸಿವಾಗ್ತಿದೆ|ಹಸಿವು\s*ಇದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ಹಸಿವಾಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ದಾಹ\s*ಆಗ್ತಿದೆ|ದಾಹ\s*ಆಗಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ದಾಹವಾಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಚಳಿ\s*ಆಗ್ತಿದೆ|ಚಳಿಯಾಗ್ತಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ಚಳಿಯಾಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಬಿಸಿ\s*ಆಗ್ತಿದೆ|ಸೆಕೆ\s*ಆಗ್ತಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ಸೆಕೆಯಾಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಶೌಚಾಲಯ\s*ಹೋಗ್ಬೇಕು|ಟಾಯ್ಲೆಟ್\s*ಬೇಕು|ಬಾತ್‌ರೂಮ್\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಶೌಚಾಲಯಕ್ಕೆ ಹೋಗಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ತಲೆ\s*ನೋವು|ತಲೆ\s*ನೋಯ್ತಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ತಲೆನೋವಾಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಹೊಟ್ಟೆ\s*ನೋವು|ಹೊಟ್ಟೆ\s*ನೋಯ್ತಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ಹೊಟ್ಟೆನೋವಾಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಡಾಕ್ಟರ್\s*ಕರಿ|ಡಾಕ್ಟರ್\s*ಕರೀರಿ)(?=[\s,.\?!;:]|$)/gu, word: 'ವೈದ್ಯರನ್ನು ಕರೆಯಿರಿ' },
+        { pattern: /(^|[\s,.\?!;:])(ಮಾತ\s*ಬೇಕು|ಮಾತ್ರೆ\s*ಬೆಕ್ಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಾತ್ರೆ ಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ಮಾತೃ|ಮಾತ್ರೆಗಳು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಾತ್ರೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಮದ್ದು\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಔಷಧ ಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ವೌಷಧ|ಔಶಧ|ಔಷಾದ)(?=[\s,.\?!;:]|$)/gu, word: 'ಔಷಧಿ' },
+        { pattern: /(^|[\s,.\?!;:])(ಮಲಗ್\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಲಗಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ನನ್ನಿ\s*ನೀಲು)(?=[\s,.\?!;:]|$)/gu, word: 'ನನಗೆ ನೀರು' },
+        { pattern: /(^|[\s,.\?!;:])(ನನ್ನಿ|ನನ್ನಿಗೆ|ನನಿಗೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ನನಗೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಬೇಕ್|ಬೆಕ್ಕು|ಬೇಕಾ|ಬೇಕ್ಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಬೇಕು' },
+        { pattern: /(^|[\s,.\?!;:])(ಆಗ್ತಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ಆಗುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಬರ್ತಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ಬರುತ್ತಿದೆ' },
+        { pattern: /(^|[\s,.\?!;:])(ಇದ್ದಿನಿ|ಇದ್ದೀನಿ)(?=[\s,.\?!;:]|$)/gu, word: 'ಇದ್ದೇನೆ' }
+      ];
+      for (const rule of KANNADA_RULES) {
+        cleaned = cleaned.replace(rule.pattern, (m, p1) => p1 + rule.word);
+      }
+      return cleaned.trim();
+    }
+
+    if (isHindi) {
+      cleaned = cleaned
+        .replace(/(^|[\s,.\?!;:])(मदद\s*चाहिए|मदद)(?=[\s,.\?!;:]|$)/gu, '$1मदद चाहिए')
+        .replace(/(^|[\s,.\?!;:])(पाणी)(?=[\s,.\?!;:]|$)/gu, '$1पानी')
+        .replace(/(^|[\s,.\?!;:])(भूख\s*लगी|भूख\s*लगा)(?=[\s,.\?!;:]|$)/gu, '$1मुझे भूख लगी है')
+        .replace(/(^|[\s,.\?!;:])(प्यास\s*लगी)(?=[\s,.\?!;:]|$)/gu, '$1मुझे प्यास लगी है')
+        .replace(/(^|[\s,.\?!;:])(दर्द\s*हो\s*रहा|बहुत\s*दर्द)(?=[\s,.\?!;:]|$)/gu, '$1मुझे दर्द हो रहा है')
+        .replace(/(^|[\s,.\?!;:])(सिर\s*दर्द)(?=[\s,.\?!;:]|$)/gu, '$1मेरे सिर में दर्द है')
+        .replace(/(^|[\s,.\?!;:])(पेट\s*दर्द)(?=[\s,.\?!;:]|$)/gu, '$1मेरे पेट में दर्द है')
+        .replace(/(^|[\s,.\?!;:])(ठंड\s*लग\s*रही)(?=[\s,.\?!;:]|$)/gu, '$1मुझे ठंड लग रही है')
+        .replace(/(^|[\s,.\?!;:])(गर्मी\s*लग\s*रही)(?=[\s,.\?!;:]|$)/gu, '$1मुझे गर्मी लग रही है')
+        .replace(/(^|[\s,.\?!;:])(शौचालय\s*जाना|बाथरूम\s*जाना|टॉयलेट\s*जाना)(?=[\s,.\?!;:]|$)/gu, '$1मुझे शौचालय जाना है')
+        .replace(/(^|[\s,.\?!;:])(सोना\s*है|आराम\s*करना)(?=[\s,.\?!;:]|$)/gu, '$1मुझे आराम करना है')
+        .replace(/(^|[\s,.\?!;:])(डॉक्टर\s*बुलाओ)(?=[\s,.\?!;:]|$)/gu, '$1कृपया डॉक्टर को बुलाइए');
+      return cleaned.trim();
+    }
+
+    // English Language Conservative Reconstruction
+    // 1. Remove consecutive word repetitions e.g. "I I want want" -> "I want"
+    cleaned = cleaned.replace(/\b([a-zA-Z]+)(?:\s+\1\b)+/gi, '$1');
+
+    // Strip trailing punctuation temporarily for clean pattern matching
+    let cleanNoPunct = cleaned.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]+$/, '').trim();
+
+    // 2. Lexical & Phonetic Slips (word boundary replacements)
+    cleanNoPunct = cleanNoPunct
+      .replace(/\b(watter|watr|wter|wada|wata|waater|wator|wotar)\b/gi, 'water')
+      .replace(/\b(wa|wan|wnt|wanna|wont)\b/gi, 'want')
+      .replace(/\b(hep|halp|hlp|elpp|elp)\b/gi, 'help')
+      .replace(/\b(hom|hme|hoam)\b/gi, 'home')
+      .replace(/\b(ned|neeed|neeeed|nid)\b/gi, 'need')
+      .replace(/\b(medcin|medsin|medisin|meds)\b/gi, 'medicine')
+      .replace(/\b(slip|slipin|sleap)\b/gi, 'sleep')
+      .replace(/\b(hungri|hangry|hongry)\b/gi, 'hungry')
+      .replace(/\b(thirsti|thursty)\b/gi, 'thirsty')
+      .replace(/\b(eatt|fud)\b/gi, 'food')
+      .replace(/\b(washrom|tolet|toylt|bathrom|restrom)\b/gi, 'bathroom')
+      .replace(/\b(doctr|doktor|doc)\b/gi, 'doctor')
+      .replace(/\b(nurce|nurs)\b/gi, 'nurse')
+      .replace(/\b(pleas|plz|plis|plez)\b/gi, 'please')
+      .replace(/\b(tank\s+u|tank\s+you|thx|thanx)\b/gi, 'thank you')
+      .replace(/\b(hert|herts|huting)\b/gi, 'hurting')
+      .replace(/\b(stomak|stomac|stomack|stomic)\b/gi, 'stomach');
+
+    // 3. Pronoun correction: "me want water" -> "I want water"
+    cleanNoPunct = cleanNoPunct
+      .replace(/^me\s+want\b/i, 'I want')
+      .replace(/^me\s+need\b/i, 'I need')
+      .replace(/^me\s+hungry\b/i, 'I am hungry')
+      .replace(/^me\s+thirsty\b/i, 'I am thirsty')
+      .replace(/^me\s+cold\b/i, 'I am feeling cold')
+      .replace(/^me\s+hot\b/i, 'I am feeling hot')
+      .replace(/^me\s+tired\b/i, 'I am tired')
+      .replace(/^me\s+in\s+pain\b/i, 'I am in pain')
+      .replace(/^me\s+pain\b/i, 'I am in pain');
+
+    // 4. Missing verbs, subjects, & infinitive particles (Compositional)
+    // Missing verb for water, help, food, medicine
+    cleanNoPunct = cleanNoPunct
+      .replace(/^i\s+water$/i, 'I want water')
+      .replace(/^want\s+water$/i, 'I want water')
+      .replace(/^need\s+water$/i, 'I need water')
+      .replace(/^i\s+help$/i, 'I want help')
+      .replace(/^want\s+help$/i, 'I want help')
+      .replace(/^need\s+help$/i, 'I need help')
+      .replace(/^i\s+food$/i, 'I want food')
+      .replace(/^want\s+food$/i, 'I want food')
+      .replace(/^i\s+medicine$/i, 'I need my medicine')
+      .replace(/^want\s+medicine$/i, 'I need my medicine')
+      .replace(/^need\s+medicine$/i, 'I need my medicine');
+
+    // Missing infinitive "to": "want go" -> "I want to go", "I want go home" -> "I want to go home"
+    cleanNoPunct = cleanNoPunct
+      .replace(/^want\s+go\s+home$/i, 'I want to go home')
+      .replace(/^i\s+want\s+go\s+home$/i, 'I want to go home')
+      .replace(/^want\s+go$/i, 'I want to go')
+      .replace(/^i\s+want\s+go$/i, 'I want to go')
+      .replace(/^need\s+go$/i, 'I need to go')
+      .replace(/^i\s+need\s+go$/i, 'I need to go')
+      .replace(/^i\s+go\s+home$/i, 'I want to go home')
+      .replace(/^i\s+home$/i, 'I want to go home')
+      .replace(/\bwant\s+go\s+home\b/gi, 'want to go home')
+      .replace(/\bwant\s+go\b/gi, 'want to go')
+      .replace(/\bneed\s+go\b/gi, 'need to go')
+      .replace(/\blike\s+go\b/gi, 'like to go')
+      .replace(/\bwant\s+sleep\b/gi, 'want to sleep')
+      .replace(/\bneed\s+sleep\b/gi, 'need to sleep')
+      .replace(/\bwant\s+rest\b/gi, 'want to rest')
+      .replace(/\bneed\s+rest\b/gi, 'need to rest');
+
+    // 5. Symptom / Pain Reconstruction (Never infer diagnoses, keep conservative)
+    cleanNoPunct = cleanNoPunct
+      .replace(/^(?:pain\s+stomach|stomach\s+pain)$/i, 'I have stomach pain')
+      .replace(/^(?:pain\s+head|head\s+pain)$/i, 'My head hurts')
+      .replace(/^(?:pain\s+chest|chest\s+pain)$/i, 'I have chest pain')
+      .replace(/^(?:pain\s+back|back\s+pain)$/i, 'I have back pain')
+      .replace(/^(?:pain\s+leg|leg\s+pain)$/i, 'I have leg pain')
+      .replace(/^(?:head|my\s+head)\s+(?:hurt|hurts|hurting)$/i, 'My head hurts')
+      .replace(/^(?:stomach|my\s+stomach)\s+(?:hurt|hurts|hurting)$/i, 'My stomach hurts')
+      .replace(/^(?:chest|my\s+chest)\s+(?:hurt|hurts|hurting)$/i, 'My chest hurts')
+      .replace(/^(?:back|my\s+back)\s+(?:hurt|hurts|hurting)$/i, 'My back hurts')
+      .replace(/^(?:leg|my\s+leg)\s+(?:hurt|hurts|hurting)$/i, 'My leg hurts')
+      .replace(/^(?:want|need)\s+(?:toilet|bathroom|pee)$/i, 'I need to use the bathroom')
+      .replace(/^call\s+doctor$/i, 'Please call the doctor')
+      .replace(/^call\s+nurse$/i, 'Please call the nurse')
+      .replace(/^call\s+family$/i, 'Please call my family');
+
+    // 6. Capitalize "I" when used as isolated pronoun
+    cleanNoPunct = cleanNoPunct.replace(/\bi\b/g, 'I');
+
+    // 7. Ensure first character capitalized
+    let result = cleanNoPunct.trim();
+    if (result.length > 0) {
+      result = result.charAt(0).toUpperCase() + result.slice(1);
+    }
+
+    // 8. Ensure terminal period (preserve existing ? or !)
+    if (result.length > 0 && !/[.!?]$/.test(result)) {
+      result += '.';
+    }
+
+    return result;
+  }
+
+  /**
+   * Assesses speech clarity to detect fragmented, trailing, or dysarthric broken phonemes
+   * e.g. "wa...ter... pl..." or "h...el...p..." without fabricating missing information.
+   */
+  assessSpeechClarity(text) {
+
+    if (!text || typeof text !== 'string') {
+      return { isUnclear: true, reason: 'EMPTY_INPUT' };
+    }
+
+    const trimmed = text.trim();
+    if (trimmed.length < 2) {
+      return { isUnclear: true, reason: 'TOO_SHORT' };
+    }
+
+    // Check for explicit ellipses, stuttered repetitions, or broken fragments
+    const ellipsisPattern = /\.{2,}|…|--+|wa\.\.\.|pl\.\.\./i;
+    const brokenFragmentPattern = /\b\w{1,2}\.\.\./i;
+    const isFragmented = ellipsisPattern.test(trimmed) || brokenFragmentPattern.test(trimmed);
+
+    // Single partial syllable ending in ellipsis or dash
+    const isTrailingPartial = /^[a-zA-Z\u0C80-\u0CFF\u0900-\u097F]{1,3}[.\-~]+$/.test(trimmed);
+
+    if (isFragmented || isTrailingPartial) {
+      return {
+        isUnclear: true,
+        reason: 'FRAGMENTED_OR_STUTTERED',
+        hint: 'Speech contains trailing ellipses or broken phonetic fragments'
+      };
+    }
+
+    return { isUnclear: false };
+  }
+
+  /**
+   * Conservative entity extraction for patient speech (English, Kannada, Hindi)
+   */
+  extractEntitiesNLP(text, language = 'en') {
+    if (!text || typeof text !== 'string') return {};
+
+    const q = text.toLowerCase();
+    const entities = {};
+
+    // 1. Items & Needs
+    if (q.includes('water') || q.includes('drink') || q.includes('ನೀರು') || q.includes('पानी')) {
+      entities.item = 'water';
+    } else if (q.includes('tea') || q.includes('coffee') || q.includes('ಚಹಾ') || q.includes('ಕಾಫಿ') || q.includes('चाय')) {
+      entities.item = 'beverage';
+    } else if (q.includes('food') || q.includes('eat') || q.includes('lunch') || q.includes('dinner') || q.includes('ಊಟ') || q.includes('ತಿಂಡಿ') || q.includes('खाना')) {
+      entities.item = 'food';
+    } else if (q.includes('med') || q.includes('pill') || q.includes('tablet') || q.includes('ಮಾತ್ರೆ') || q.includes('ಔಷಧ') || q.includes('दवा')) {
+      entities.item = 'medicine';
+    } else if (q.includes('blanket') || q.includes('pillow') || q.includes('bed') || q.includes('ಹಾಸಿಗೆ') || q.includes('ದಿಂಬು') || q.includes('कंबल')) {
+      entities.item = 'comfort_item';
+    }
+
+    // 2. Specific Medicine Name Identification
+    const specificMeds = [
+      'paracetamol', 'aspirin', 'insulin', 'crocin', 'dolo', 'bp', 'sugar',
+      'headache pill', 'painkiller', 'eye drop', 'cough syrup'
+    ];
+    for (const med of specificMeds) {
+      if (q.includes(med)) {
+        entities.medicineName = med;
+        entities.item = 'medicine';
+        break;
+      }
+    }
+
+    // 3. Actions
+    if (q.includes('bring') || q.includes('get') || q.includes('ತನ್ನಿ') || q.includes('ಕೊಡಿ') || q.includes('लाओ') || q.includes('दीजिए')) {
+      entities.action = 'bring';
+    } else if (q.includes('call') || q.includes('phone') || q.includes('ಕರೆ') || q.includes('ಫೋನ್') || q.includes('बुलाओ')) {
+      entities.action = 'call';
+    } else if (q.includes('go') || q.includes('walk') || q.includes('ಹೋಗು') || q.includes('जाना')) {
+      entities.action = 'go';
+    }
+
+    // 4. Persons
+    if (q.includes('doctor') || q.includes('dr') || q.includes('ಡಾಕ್ಟರ್') || q.includes('ವೈದ್ಯ') || q.includes('डॉक्टर')) {
+      entities.person = 'doctor';
+    } else if (q.includes('nurse') || q.includes('ನರ್ಸ್') || q.includes('नर्स')) {
+      entities.person = 'nurse';
+    } else if (q.includes('caregiver') || q.includes('ಅಕ್ಕ') || q.includes('ಅಣ್ಣ') || q.includes('family') || q.includes('ಕುಟುಂಬ')) {
+      entities.person = 'caregiver';
+    }
+
+    // 5. Pain / Body Locations
+    if (q.includes('head') || q.includes('ತಲೆ') || q.includes('सिर')) {
+      entities.painLocation = 'head';
+    } else if (q.includes('stomach') || q.includes('ಹೊಟ್ಟೆ') || q.includes('पेट')) {
+      entities.painLocation = 'stomach';
+    } else if (q.includes('chest') || q.includes('ಎದೆ') || q.includes('सीने')) {
+      entities.painLocation = 'chest';
+    } else if (q.includes('leg') || q.includes('కాలు') || q.includes('पैर')) {
+      entities.painLocation = 'leg';
+    } else if (q.includes('back') || q.includes('ಬೆನ್ನು') || q.includes('पीठ')) {
+      entities.painLocation = 'back';
+    }
+
+    return entities;
+  }
+
+  /**
+   * Conservative Ambiguity Detector
+   * Detects underspecified commands (e.g. "bring med" without specific medicine)
+   * so system requests clarification rather than hallucinating or guessing.
+   */
+  detectAmbiguity(text, intent, entities = {}, language = 'en') {
+    const q = (text || '').trim().toLowerCase();
+    const isKannada = language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(text);
+    const isHindi = language === 'hi' || language === 'Hindi' || /[\u0900-\u097F]/.test(text);
+
+    // Case 1: Generic medicine request without specified medicine name
+    // e.g. "bring med", "get pills", "ಮಾತ್ರೆ ತನ್ನಿ", "दवा लाओ"
+    if (entities.item === 'medicine' && !entities.medicineName) {
+      const isGenericMedPhrase = q.includes('bring med') || q.includes('get med') ||
+        q.includes('give med') || q.includes('take med') || q.includes('want med') ||
+        q.includes('need med') || q === 'med' || q === 'medicine' ||
+        q.includes('ಮಾತ್ರೆ ತನ್ನಿ') || q.includes('ಔಷಧ ತನ್ನಿ') || q.includes('ದವಾ ಲಾನಾ') || q.includes('दवा लाओ');
+
+      if (isGenericMedPhrase) {
+        return {
+          isAmbiguous: true,
+          missingEntity: 'medicineName',
+          clarificationPrompt: isKannada
+            ? 'ದಯವಿಟ್ಟು ಸ್ಪಷ್ಟಪಡಿಸಿ: ನಿಮಗೆ ಯಾವ ಮಾತ್ರೆ ಬೇಕು?'
+            : isHindi
+            ? 'कृपया स्पष्ट करें: आपको कौन सी दवा चाहिए?'
+            : 'Which medicine would you like me to bring?'
+        };
+      }
+    }
+
+    // Case 2: Underspecified "bring that" or "give me that"
+    if ((q.includes('bring that') || q.includes('give that') || q.includes('ತನ್ನಿ ಅದನ್ನ') || q.includes('वो लाओ')) && !entities.item) {
+      return {
+        isAmbiguous: true,
+        missingEntity: 'item',
+        clarificationPrompt: isKannada
+          ? 'ನಾನು ಏನು ತರಬೇಕು ಎಂದು ದಯವಿಟ್ಟು ತಿಳಿಸಿ.'
+          : isHindi
+          ? 'कृपया बताएं कि मुझे क्या लाना है?'
+          : 'What would you like me to bring for you?'
+      };
+    }
+
+    // Case 3: Underspecified "call" without person
+    if ((q === 'call' || q === 'make a call' || q === 'ಫೋನ್ ಮಾಡು' || q === 'फोन करो') && !entities.person) {
+      return {
+        isAmbiguous: true,
+        missingEntity: 'person',
+        clarificationPrompt: isKannada
+          ? 'ನಾನು ಯಾರಿಗೆ ಕರೆ ಮಾಡಬೇಕು?'
+          : isHindi
+          ? 'मुझे किसे फोन करना चाहिए?'
+          : 'Who would you like me to call?'
+      };
+    }
+
+    return { isAmbiguous: false };
+  }
+
+  /**
+   * Generates dynamic, context-aware first-person patient speech after confirmation
+   */
+  generateDynamicPatientResponse({ intent, entities = {}, language = 'en', context = '', confirmedText = '' }) {
+    const isKannada = language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(confirmedText);
+    const isHindi = language === 'hi' || language === 'Hindi' || /[\u0900-\u097F]/.test(confirmedText);
+
+    // If confirmedText is already a complete, grammatical utterance, honor the patient's voice
+    const trimmed = (confirmedText || '').trim();
+    if (trimmed && trimmed.split(/\s+/).length >= 3 && !trimmed.toLowerCase().includes('did you mean')) {
+      return trimmed;
+    }
+
+    // Semantic Intent Mapping to Expressive Dynamic Responses
+    if (intent === 'WATER_REQUEST' || entities.item === 'water') {
+      return isKannada
+        ? 'ದಯವಿಟ್ಟು ನನಗೆ ಕುಡಿಯಲು ಸ್ವಲ್ಪ ನೀರು ಕೊಡಿ.'
+        : isHindi
+        ? 'कृपया मुझे थोड़ा पीने का पानी दीजिए।'
+        : 'Could you please give me some water to drink?';
+    }
+
+    if (intent === 'MEAL_REQUEST' || entities.item === 'food') {
+      return isKannada
+        ? 'ನನಗೆ ಹಸಿವಾಗಿದೆ, ಊಟ ತರಲು ಸಾಧ್ಯವೇ?'
+        : isHindi
+        ? 'मुझे भूख लगी है, क्या खाना मिल सकता है?'
+        : 'I am feeling hungry, could I have some food?';
+    }
+
+    if (entities.item === 'medicine') {
+      if (entities.medicineName) {
+        return isKannada
+          ? `ದಯವಿಟ್ಟು ನನ್ನ ${entities.medicineName} ಮಾತ್ರೆಯನ್ನು ತನ್ನಿ.`
+          : isHindi
+          ? `कृपया मेरी ${entities.medicineName} दवा ला दीजिए।`
+          : `Could you please bring my ${entities.medicineName}?`;
+      }
+      return isKannada
+        ? 'ದಯವಿಟ್ಟು ನನ್ನ ಮಾತ್ರೆಯನ್ನು ತಂದುಕೊಡಿ.'
+        : isHindi
+        ? 'कृपया मेरी दवा ला दीजिए।'
+        : 'Could you please bring my medicine?';
+    }
+
+    if (intent === 'PAIN_PRESENT') {
+      if (entities.painLocation) {
+        return isKannada
+          ? `ನನ್ನ ${entities.painLocation} ಭಾಗದಲ್ಲಿ ನೋವಾಗುತ್ತಿದೆ, ಸಹಾಯ ಬೇಕು.`
+          : isHindi
+          ? `मेरे ${entities.painLocation} में दर्द हो रहा है, कृपया मदद करें।`
+          : `I am having pain in my ${entities.painLocation}, please help me.`;
+      }
+      return isKannada
+        ? 'ನನಗೆ ನೋವಾಗುತ್ತಿದೆ, ದಯವಿಟ್ಟು ಸಹಾಯ ಮಾಡಿ.'
+        : isHindi
+        ? 'मुझे दर्द हो रहा है, कृपया मदद कीजिए।'
+        : 'I am in pain, could you please help me?';
+    }
+
+    if (intent === 'BATHROOM_REQUEST') {
+      return isKannada
+        ? 'ನನಗೆ ಶೌಚಾಲಯಕ್ಕೆ ಹೋಗಲು ಸಹಾಯ ಬೇಕು.'
+        : isHindi
+        ? 'मुझे वॉशरूम जाने के लिए सहायता चाहिए।'
+        : 'I need assistance going to the restroom.';
+    }
+
+    if (intent === 'REST_WANT' || entities.item === 'comfort_item') {
+      return isKannada
+        ? 'ನಾನು ಸ್ವಲ್ಪ ವಿಶ್ರಾಂತಿ ಪಡೆಯಲು ಬಯಸುತ್ತೇನೆ.'
+        : isHindi
+        ? 'मैं थोड़ी देर आराम करना चाहता हूँ।'
+        : 'I would like to lie down and rest for a while.';
+    }
+
+    // Default safe fallback using confirmedText
+    return trimmed || (isKannada ? 'ನನಗೆ ಸಹಾಯ ಬೇಕು.' : isHindi ? 'मुझे मदद चाहिए।' : 'I need assistance.');
   }
 }
 

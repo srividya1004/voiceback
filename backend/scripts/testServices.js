@@ -4,14 +4,13 @@
  */
 
 const mongoose = require('mongoose');
-const connectDB = require('../src/config/database');
+const { connectTestDB } = require('../src/config/database');
 const {
   userLoginService,
   doctorService,
   caregiverService,
   patientService,
   voiceProfileService,
-  emgProfileService,
   therapyProgressService,
   communicationHistoryService,
   appointmentService
@@ -19,16 +18,9 @@ const {
 
 const runServiceTest = async () => {
   try {
-    console.log('🔄 Connecting to MongoDB...');
-    try {
-      await connectDB();
-    } catch (dbErr) {
-      console.warn('⚠️ Atlas connection unavailable (IP Whitelist). Starting local MongoMemoryServer for tests...');
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      const mongod = await MongoMemoryServer.create();
-      await mongoose.connect(mongod.getUri());
-      console.log('✅ Connected to local MongoMemoryServer!');
-    }
+    console.log('🔄 Connecting to ISOLATED Test Database for Service Testing...');
+    await connectTestDB();
+
 
     console.log('\n--- 1. Testing UserLogin Service ---');
     const user = await userLoginService.create({
@@ -85,15 +77,7 @@ const runServiceTest = async () => {
     });
     console.log(`✅ voiceProfileService.create() success -> ID: ${voiceProfile._id}`);
 
-    console.log('\n--- 6. Testing EMGProfile Service ---');
-    const emgProfile = await emgProfileService.create({
-      patientId: patient._id,
-      baselineVoltage: 0.18,
-      maxVoluntaryContraction: 3.10
-    });
-    console.log(`✅ emgProfileService.create() success -> ID: ${emgProfile._id}`);
-
-    console.log('\n--- 7. Testing TherapyProgress Service ---');
+    console.log('\n--- 6. Testing TherapyProgress Service ---');
     const therapyProgress = await therapyProgressService.create({
       patientId: patient._id,
       exercisesCompleted: 20,
@@ -135,7 +119,6 @@ const runServiceTest = async () => {
     await appointmentService.delete(appointment._id.toString());
     await communicationHistoryService.delete(commHistory._id.toString());
     await therapyProgressService.delete(therapyProgress._id.toString());
-    await emgProfileService.delete(emgProfile._id.toString());
     await voiceProfileService.delete(voiceProfile._id.toString());
     await patientService.delete(patient._id.toString());
     await caregiverService.delete(caregiver._id.toString());
@@ -143,7 +126,7 @@ const runServiceTest = async () => {
     await userLoginService.delete(user._id.toString());
     console.log('🧹 All test documents cleaned up via services.');
 
-    console.log('\n🎉 ALL 9 SERVICES TESTED & PASSED SUCCESSFULLY!');
+    console.log('\n🎉 ALL 8 ACTIVE SERVICES TESTED & PASSED SUCCESSFULLY!');
     process.exit(0);
   } catch (error) {
     console.error('\n❌ Service Test Failed:', error.message);

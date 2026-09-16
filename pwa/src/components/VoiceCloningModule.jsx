@@ -63,8 +63,8 @@ export const VoiceCloningModule = ({
     : 'P';
 
   // Voice Profile Status & Synthesis Engine State
-  const [voiceProfileStatus, setVoiceProfileStatus] = useState('Not Configured'); // 'Ready' | 'Ready (Local Demo)' | 'Not Configured' | 'Processing'
-  const [voiceEngine, setVoiceEngine] = useState('local_demo'); // 'elevenlabs' | 'local_demo'
+  const [voiceProfileStatus, setVoiceProfileStatus] = useState('Not Configured'); // 'Ready' | 'Not Configured' | 'Processing' | 'Failed'
+  const [voiceEngine, setVoiceEngine] = useState('elevenlabs'); // 'elevenlabs' | 'elevenlabs_fallback'
   const [lastClonedAt, setLastClonedAt] = useState(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
@@ -81,7 +81,7 @@ export const VoiceCloningModule = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Speech Synthesis Playground State (eleven_v3 & Local Fallback)
+  // Speech Synthesis Playground State (ElevenLabs Cloud eleven_v3 & Demographic Fallback)
   const [synthesisText, setSynthesisText] = useState('Hello, I am using VoiceBack to speak naturally in my own cloned voice.');
   const [selectedLanguage, setSelectedLanguage] = useState('English'); // 'English' | 'Hindi' | 'Kannada'
   const [selectedEmotion, setSelectedEmotion] = useState('neutral'); // 'neutral' | 'calm' | 'urgent' | 'happy'
@@ -100,23 +100,30 @@ export const VoiceCloningModule = ({
     try {
       const profiles = await voiceService.getVoiceProfiles();
       if (Array.isArray(profiles) && profiles.length > 0) {
-        const readyProfile = profiles.find((p) => p.status === 'Ready') || profiles[0];
-        if (readyProfile && (readyProfile.status === 'Ready' || readyProfile.voiceId)) {
+        const readyProfile = profiles.find((p) => p.status === 'Ready' && p.voiceId);
+        if (readyProfile) {
           setVoiceProfileStatus('Ready');
           setVoiceEngine('elevenlabs');
           setLastClonedAt(readyProfile.lastClonedAt || readyProfile.updatedAt);
         } else {
-          setVoiceProfileStatus('Not Configured');
-          setVoiceEngine('local_demo');
+          const failedProfile = profiles.find((p) => p.status === 'Failed');
+          if (failedProfile) {
+            setVoiceProfileStatus('Failed');
+            setVoiceEngine('elevenlabs_fallback');
+            setLastClonedAt(null);
+          } else {
+            setVoiceProfileStatus('Not Configured');
+            setVoiceEngine('elevenlabs_fallback');
+          }
         }
       } else {
         setVoiceProfileStatus('Not Configured');
-        setVoiceEngine('local_demo');
+        setVoiceEngine('elevenlabs_fallback');
       }
     } catch (e) {
       console.warn('Voice profile fetch notice:', e.message);
       setVoiceProfileStatus('Not Configured');
-      setVoiceEngine('local_demo');
+      setVoiceEngine('elevenlabs_fallback');
     } finally {
       setIsLoadingProfile(false);
     }
@@ -125,24 +132,6 @@ export const VoiceCloningModule = ({
   useEffect(() => {
     fetchVoiceProfile();
   }, []);
-
-  // Local Demo SpeechSynthesis Fallback (Web Speech API)
-  const speakLocalDemo = async (text, emotion) => {
-    setIsSynthesizing(true);
-    try {
-      const result = await voiceService.speakNativeTTS(text, { emotion, language: 'English' });
-      if (result?.success) {
-        setSuccessMessage(`Speech synthesized using ${result.provider}.`);
-      } else {
-        setErrorMessage('Local speech synthesis encountered an issue.');
-      }
-    } catch (e) {
-      console.error('Local Speech Synthesis Error:', e);
-      setErrorMessage('Local speech synthesis encountered an issue.');
-    } finally {
-      setIsSynthesizing(false);
-    }
-  };
 
   // Voice Assistant greeting
   useEffect(() => {
@@ -237,7 +226,13 @@ export const VoiceCloningModule = ({
 
     try {
       const formData = new FormData();
-      const patientId = session.patientId || session.id || '';
+      const patientId =
+        session.user?.profile?._id ||
+        session.user?.profile?.id ||
+        session.patientId ||
+        session.user?.id ||
+        session.id ||
+        '';
 
       if (recordedAudioBlob) {
         const audioFile = new File([recordedAudioBlob], `patient-recording-${Date.now()}.webm`, {
@@ -265,21 +260,12 @@ export const VoiceCloningModule = ({
       setSuccessMessage('Voice Profile created successfully! Your cloned natural human voice is saved and active.');
       handleClearSample();
     } catch (err) {
-      console.warn('ElevenLabs Voice Cloning Cloud Notice:', err.message);
-      const isQuotaOrSubError = err.message?.toLowerCase().includes('subscription') ||
-        err.message?.toLowerCase().includes('free') ||
-        err.message?.toLowerCase().includes('quota') ||
-        err.message?.toLowerCase().includes('401') ||
-        err.message?.toLowerCase().includes('403');
-
-      const noticeMsg = isQuotaOrSubError
-        ? 'ElevenLabs Instant Voice Cloning is unavailable on the current Cloud tier. Activated Local Demo Voice mode for speech synthesis.'
-        : `ElevenLabs IVC error (${err.message}). Activated Local Demo Voice mode for speech synthesis.`;
-
+      console.warn('ElevenLabs Voice Cloning Failure:', err.message);
+      const noticeMsg = `Voice cloning failed: ${err.message}. Standard natural demographic voice will be used for speech output.`;
       setErrorMessage(noticeMsg);
-      setVoiceEngine('local_demo');
-      setVoiceProfileStatus('Ready (Local Demo)');
-      setLastClonedAt(new Date());
+      setVoiceEngine('elevenlabs_fallback');
+      setVoiceProfileStatus('Failed');
+      setLastClonedAt(null);
       handleClearSample();
     } finally {
       setIsCloning(false);
@@ -287,7 +273,7 @@ export const VoiceCloningModule = ({
     }
   };
 
-  // Trigger Speech Synthesis (ElevenLabs Cloud or Local Demo Fallback)
+  // Trigger Speech Synthesis (ElevenLabs Cloud Cloned Voice or Demographic Fallback)
   const handleSynthesizeSpeech = async () => {
     if (!synthesisText || !synthesisText.trim()) {
       setErrorMessage('Please enter text to speak.');
@@ -297,23 +283,16 @@ export const VoiceCloningModule = ({
     setErrorMessage('');
     setSynthesizedAudioUrl('');
 
-    // If active engine is Local Demo Voice, synthesize directly via browser SpeechSynthesis
-    if (voiceEngine === 'local_demo') {
-      setIsSynthesizing(true);
-      speakLocalDemo(synthesisText, selectedEmotion);
-      return;
-    }
-
-    // ElevenLabs Cloud Synthesis
-    if (voiceProfileStatus !== 'Ready' && voiceProfileStatus !== 'Ready (Local Demo)') {
-      setErrorMessage('Voice Profile is not ready. Please record/upload a voice sample first.');
-      return;
-    }
-
     setIsSynthesizing(true);
 
     try {
-      const patientId = session.patientId || session.id || '';
+      const patientId =
+        session.user?.profile?._id ||
+        session.user?.profile?.id ||
+        session.patientId ||
+        session.user?.id ||
+        session.id ||
+        '';
       const audioBlob = await voiceService.synthesizeSpeech({
         patientId,
         text: synthesisText,
@@ -325,15 +304,16 @@ export const VoiceCloningModule = ({
       setSynthesizedAudioUrl(audioUrl);
       setSuccessMessage('Audio synthesized using ElevenLabs Cloud (`eleven_v3`)!');
 
-      // Auto-play synthesized audio
+      // Auto-play synthesized audio at slow, gentle pace
       const audioObj = new Audio(audioUrl);
+      const configuredAudioRate = typeof window !== 'undefined' && localStorage.getItem('voiceback_speech_rate')
+        ? parseFloat(localStorage.getItem('voiceback_speech_rate'))
+        : null;
+      audioObj.playbackRate = (typeof configuredAudioRate === 'number' && !isNaN(configuredAudioRate)) ? configuredAudioRate : 0.82;
       audioObj.play().catch((e) => console.warn('Audio auto-play blocked by browser:', e));
     } catch (err) {
-      console.warn('ElevenLabs Cloud synthesis unavailable. Falling back to Local Demo Voice:', err.message);
-      setErrorMessage(`ElevenLabs cloud synthesis unavailable (${err.message}). Switched active engine to Local Demo Voice.`);
-      setVoiceEngine('local_demo');
-      // Execute local demo fallback speech immediately
-      speakLocalDemo(synthesisText, selectedEmotion);
+      console.warn('ElevenLabs Cloud synthesis notice:', err.message);
+      setErrorMessage(`Speech synthesis notice: ${err.message}`);
     } finally {
       setIsSynthesizing(false);
     }
@@ -510,72 +490,40 @@ export const VoiceCloningModule = ({
                 <UserCheck size={18} color="var(--color-blue-primary)" />
                 <h3 className="profile-section-title" style={{ margin: 0 }}>Voice Profile & Engine</h3>
               </div>
-              <span className={`device-name-badge ${voiceProfileStatus.startsWith('Ready') ? 'connected' : 'disconnected'}`} style={{ fontSize: '0.825rem', fontWeight: 700 }}>
-                {voiceEngine === 'local_demo'
-                  ? 'Engine: Local Demo Voice ✓'
-                  : voiceProfileStatus === 'Ready'
+              <span className={`device-name-badge ${voiceProfileStatus.startsWith('Ready') ? 'connected' : voiceEngine === 'elevenlabs_fallback' ? 'connected' : 'disconnected'}`} style={{ fontSize: '0.825rem', fontWeight: 700 }}>
+                {voiceProfileStatus === 'Ready'
                   ? 'Voice Profile: Ready ✓'
+                  : voiceEngine === 'elevenlabs_fallback'
+                  ? 'Demographic Voice: Active ✓'
                   : 'Voice Profile: Not Configured'}
               </span>
-            </div>
-
-            {/* VOICE ENGINE SWITCHER TOGGLE */}
-            <div style={{ padding: '0.65rem', borderRadius: '12px', background: 'rgba(241, 245, 249, 0.9)', border: '1px solid var(--border-color)', marginBottom: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <label style={{ fontSize: '0.775rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                Active Synthesis Engine Mode
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setVoiceEngine('elevenlabs')}
-                  style={{
-                    flex: 1,
-                    padding: '0.45rem 0.6rem',
-                    borderRadius: '8px',
-                    border: '1px solid',
-                    borderColor: voiceEngine === 'elevenlabs' ? 'var(--color-blue-primary)' : 'var(--border-color)',
-                    background: voiceEngine === 'elevenlabs' ? 'rgba(2, 132, 199, 0.1)' : '#ffffff',
-                    color: voiceEngine === 'elevenlabs' ? 'var(--color-blue-primary)' : 'var(--color-brand-tagline)',
-                    fontWeight: voiceEngine === 'elevenlabs' ? 700 : 500,
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  ElevenLabs Cloud (`eleven_v3`)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVoiceEngine('local_demo')}
-                  style={{
-                    flex: 1,
-                    padding: '0.45rem 0.6rem',
-                    borderRadius: '8px',
-                    border: '1px solid',
-                    borderColor: voiceEngine === 'local_demo' ? 'var(--color-green-primary)' : 'var(--border-color)',
-                    background: voiceEngine === 'local_demo' ? 'rgba(34, 197, 94, 0.1)' : '#ffffff',
-                    color: voiceEngine === 'local_demo' ? 'var(--color-green-primary)' : 'var(--color-brand-tagline)',
-                    fontWeight: voiceEngine === 'local_demo' ? 700 : 500,
-                    fontSize: '0.8rem',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Local Demo Voice (Browser TTS)
-                </button>
-              </div>
             </div>
 
             <div className="profile-info-grid">
               <div className="profile-field-group">
                 <span className="profile-field-label">Status</span>
-                <span className="profile-field-value" style={{ color: voiceProfileStatus.startsWith('Ready') ? 'var(--color-green-primary)' : 'var(--color-red-primary)', fontWeight: 700 }}>
-                  {voiceProfileStatus.startsWith('Ready') ? `${voiceProfileStatus} ✓` : 'Not Configured'}
+                <span className="profile-field-value" style={{
+                  color: voiceProfileStatus.startsWith('Ready')
+                    ? 'var(--color-green-primary)'
+                    : voiceProfileStatus === 'Failed'
+                    ? '#f59e0b'
+                    : 'var(--color-red-primary)',
+                  fontWeight: 700
+                }}>
+                  {voiceProfileStatus.startsWith('Ready')
+                    ? `${voiceProfileStatus} ✓`
+                    : voiceProfileStatus === 'Failed'
+                    ? 'IVC Plan Limit (Demographic Voice Active)'
+                    : 'Not Configured'}
                 </span>
               </div>
 
               <div className="profile-field-group">
                 <span className="profile-field-label">Active Engine</span>
                 <span className="profile-field-value" style={{ fontWeight: 600 }}>
-                  {voiceEngine === 'elevenlabs' ? 'ElevenLabs Cloud (eleven_v3)' : 'Local Demo Voice (Web Speech API)'}
+                  {voiceProfileStatus === 'Ready'
+                    ? 'ElevenLabs Cloud (Cloned Voice)'
+                    : 'ElevenLabs Natural Demographic Voice'}
                 </span>
               </div>
 
@@ -802,7 +750,10 @@ export const VoiceCloningModule = ({
                 type="button"
                 className="btn-continue"
                 onClick={handleSynthesizeSpeech}
-                disabled={isSynthesizing || (voiceEngine === 'elevenlabs' && !voiceProfileStatus.startsWith('Ready'))}
+                disabled={
+                  isSynthesizing ||
+                  (voiceProfileStatus !== 'Ready' && voiceEngine !== 'elevenlabs_fallback' && voiceProfileStatus !== 'Failed')
+                }
                 style={{
                   width: '100%',
                   marginTop: '0.25rem',
@@ -810,15 +761,17 @@ export const VoiceCloningModule = ({
                   alignItems: 'center',
                   justify: 'center',
                   gap: '0.5rem',
-                  background: voiceEngine === 'local_demo' ? 'var(--color-green-primary)' : undefined,
-                  borderColor: voiceEngine === 'local_demo' ? 'var(--color-green-primary)' : undefined,
                 }}
               >
                 <Sparkles size={18} />
                 <span>
                   {isSynthesizing
-                    ? voiceEngine === 'local_demo' ? 'Speaking in Local Demo Voice...' : 'Synthesizing in Cloned Voice...'
-                    : voiceEngine === 'local_demo' ? 'Synthesize Speech (Local Demo Voice)' : 'Synthesize Speech in My Voice (ElevenLabs Cloud)'}
+                    ? voiceProfileStatus === 'Ready'
+                      ? 'Synthesizing in Cloned Voice...'
+                      : 'Synthesizing in Natural Demographic Voice...'
+                    : voiceProfileStatus === 'Ready'
+                    ? 'Synthesize Speech in My Voice (ElevenLabs Cloud)'
+                    : 'Synthesize Speech (Natural Demographic Voice)'}
                 </span>
               </button>
 

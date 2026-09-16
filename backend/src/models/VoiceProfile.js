@@ -10,7 +10,9 @@ const voiceProfileSchema = new mongoose.Schema(
     patientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Patient',
-      required: [true, 'Patient ID is required']
+      required: [true, 'Patient ID is required'],
+      unique: true,
+      index: true
     },
     pitch: {
       type: Number,
@@ -41,6 +43,10 @@ const voiceProfileSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: ''
+    },
+    voiceProvider: {
+      type: String,
+      enum: ['cartesia', 'elevenlabs']
     },
     status: {
       type: String,

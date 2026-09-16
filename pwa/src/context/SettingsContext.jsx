@@ -102,7 +102,7 @@ export const SettingsProvider = ({ children }) => {
    * - Locales: English -> en-IN, Kannada -> kn-IN, Hindi -> hi-IN.
    * - Fallback: If kn-IN voice is unavailable, fall back to en-IN.
    */
-  const speak = (text, overrideLang) => {
+  const speak = (text, overrideLang, options = {}) => {
     if (!voiceAssistant || !text) {
       return;
     }
@@ -110,13 +110,24 @@ export const SettingsProvider = ({ children }) => {
     const targetLang = overrideLang || language;
     const formattedLang = targetLang === 'kannada' || targetLang === 'kn' ? 'Kannada' : 'English';
 
+    // Safely associate patient context ONLY when session role is patient
+    const session = typeof window !== 'undefined' ? (() => {
+      try {
+        return JSON.parse(localStorage.getItem('voiceback_active_session') || 'null');
+      } catch (e) {
+        return null;
+      }
+    })() : null;
+
+    const effectivePatientId = options?.patientId || (session?.role === 'patient' ? (session?.user?.profile?._id || session?.user?.id) : undefined);
+
     voiceService.playSynthesizedAudio({
+      patientId: effectivePatientId,
       text,
       language: formattedLang,
       emotion: 'neutral'
     }).catch((e) => {
       console.warn('⚠️ Voice Assistant ElevenLabs speech playback notice:', e);
-      voiceService.speakNativeTTS(text, { language: targetLang });
     });
   };
 
@@ -124,8 +135,7 @@ export const SettingsProvider = ({ children }) => {
     setSettings((prev) => ({ ...prev, language: newLang }));
 
     // Speak confirmation ONLY if Voice Assistant is ON
-    if (voiceAssistant && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    if (voiceAssistant) {
       const confirmationText = getTranslation(newLang, 'languageChangedConfirmation');
       if (confirmationText) {
         speak(confirmationText, newLang);
@@ -143,18 +153,9 @@ export const SettingsProvider = ({ children }) => {
       },
     }));
 
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      if (enabled) {
-        const text = getTranslation(language, 'voiceAssistantEnabled');
-        speak(text, language);
-      } else {
-        const text = getTranslation(language, 'voiceAssistantDisabled');
-        // Temporarily speak disable message before closing
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = language === 'hindi' ? 'hi-IN' : language === 'kannada' ? 'kn-IN' : 'en-IN';
-        window.speechSynthesis.speak(utterance);
-      }
+    if (enabled) {
+      const text = getTranslation(language, 'voiceAssistantEnabled');
+      speak(text, language);
     }
   };
 
@@ -200,4 +201,5 @@ export const SettingsProvider = ({ children }) => {
 };
 
 export const useSettings = () => useContext(SettingsContext);
-export default SettingsContext;
+export { SettingsContext };
+export default SettingsProvider;

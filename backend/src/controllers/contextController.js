@@ -107,8 +107,92 @@ const geminiSpeechRecognize = async (req, res) => {
   }
 };
 
+/**
+ * Contextual Aphasia Speech Interpretation & Correction
+ * @route POST /api/context/correct-speech
+ */
+const correctSpeech = async (req, res) => {
+  try {
+    const { rawTranscript, language = 'en', context = '', previousUtterance = '' } = req.body || {};
+
+    if (!rawTranscript || typeof rawTranscript !== 'string' || !rawTranscript.trim()) {
+      return sendError(res, 400, 'rawTranscript is required and must be a non-empty string');
+    }
+
+    const result = await contextEngineService.correctAphasicSpeech({
+      rawTranscript: rawTranscript.trim(),
+      language: (language || 'en').toLowerCase(),
+      context,
+      previousUtterance
+    });
+
+    return sendSuccess(res, 200, 'Speech interpreted and corrected successfully', result);
+  } catch (error) {
+    console.error('Error in correctSpeech:', error);
+    return sendError(res, 500, 'Failed to interpret speech', error.message);
+  }
+};
+
+/**
+ * Dynamic Response Generation after Confirmation
+ * @route POST /api/context/dynamic-response
+ */
+const dynamicResponse = async (req, res) => {
+  try {
+    const { confirmedText, intent, entities = {}, language = 'en', context = '' } = req.body || {};
+
+    if (!confirmedText || typeof confirmedText !== 'string' || !confirmedText.trim()) {
+      return sendError(res, 400, 'confirmedText is required and must be a non-empty string');
+    }
+
+    const result = await contextEngineService.generateDynamicResponse({
+      confirmedText: confirmedText.trim(),
+      intent,
+      entities,
+      language: (language || 'en').toLowerCase(),
+      context
+    });
+
+    return sendSuccess(res, 200, 'Dynamic response generated successfully', result);
+  } catch (error) {
+    console.error('Error in dynamicResponse:', error);
+    return sendError(res, 500, 'Failed to generate dynamic response', error.message);
+  }
+};
+
+/**
+ * Python FastAPI Bridge Pipeline Endpoint
+ * @route POST /api/context/python-pipeline
+ */
+const pythonPipeline = async (req, res) => {
+  try {
+    const axios = require('axios');
+    const pythonUrl = process.env.PYTHON_PIPELINE_URL || 'http://localhost:8000/api/speech/process-text';
+    const response = await axios.post(pythonUrl, req.body, { timeout: 3500 });
+    return sendSuccess(res, 200, 'Python speech pipeline processed successfully', response.data);
+  } catch (error) {
+    // Non-destructive fallback to active Node.js speech intelligence engine
+    try {
+      const fallbackResult = await contextEngineService.correctAphasicSpeech({
+        rawTranscript: req.body?.text || '',
+        language: req.body?.language || 'en'
+      });
+      return sendSuccess(res, 200, 'Speech processed via Node.js intelligence engine (Python bridge fallback)', {
+        ...fallbackResult,
+        source: 'node_fallback'
+      });
+    } catch (fbErr) {
+      return sendError(res, 500, 'Speech processing error', fbErr.message);
+    }
+  }
+};
+
 module.exports = {
   generateOptions,
   submitIntent,
-  geminiSpeechRecognize
+  geminiSpeechRecognize,
+  correctSpeech,
+  dynamicResponse,
+  pythonPipeline
 };
+

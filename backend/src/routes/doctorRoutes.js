@@ -7,6 +7,7 @@ const router = express.Router();
 const doctorController = require('../controllers/doctorController');
 
 router.get('/', doctorController.getAll);
+router.get('/:id/patients/:patientId/medical-record', doctorController.getPatientMedicalRecord);
 router.get('/:id', doctorController.getById);
 router.post('/', doctorController.create);
 router.put('/:id/assign-patient', doctorController.assignPatient);

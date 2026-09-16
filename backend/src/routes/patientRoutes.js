@@ -5,7 +5,12 @@
 const express = require('express');
 const router = express.Router();
 const patientController = require('../controllers/patientController');
+const authMiddleware = require('../middleware/authMiddleware');
 
+// Protect all Patient routes with JWT Bearer authentication
+router.use(authMiddleware);
+
+router.get('/me', patientController.getMe);
 router.get('/', patientController.getAll);
 router.get('/:id', patientController.getById);
 router.post('/', patientController.create);

@@ -105,12 +105,21 @@ const autoHealAllUserLogins = async () => {
 const createUserLogin = async (userData) => {
     const normalizedEmail = (userData.email || '').trim().toLowerCase();
     
-    // Check if account already exists
+    // Check if account already exists in UserLogin or Patient
     const existing = await UserLogin.findOne({ email: normalizedEmail });
     if (existing) {
       const err = new Error('Email address already exists');
       err.code = 11000;
       throw err;
+    }
+
+    if (userData.role === 'Patient') {
+      const existingPatientWithUser = await Patient.findOne({ email: normalizedEmail });
+      if (existingPatientWithUser && existingPatientWithUser.userId) {
+        const err = new Error('Email address already exists');
+        err.code = 11000;
+        throw err;
+      }
     }
 
     // Hash the password before saving (handling both password and passwordHash input properties)
@@ -124,8 +133,81 @@ const createUserLogin = async (userData) => {
 
     const userLogin = await UserLogin.create(userData);
 
+    // Atomically create authoritative Patient clinical record if registering as Patient
+    let patient = null;
+    if (userData.role === 'Patient') {
+      try {
+        const validAphasiaTypes = [
+          "Broca's", "Wernicke's", "Global", "Anomic",
+          "Transcortical Motor", "Transcortical Sensory", "Conduction", "Mixed", "Other"
+        ];
+        let aphasiaType = "Broca's";
+        if (userData.aphasiaType) {
+          const raw = userData.aphasiaType.replace(/\s+Aphasia$/i, '').trim();
+          aphasiaType = validAphasiaTypes.includes(raw) ? raw : (validAphasiaTypes.includes(userData.aphasiaType) ? userData.aphasiaType : "Broca's");
+        }
+
+        const rawAge = parseInt(userData.age, 10);
+        const patientAge = (!isNaN(rawAge) && rawAge >= 0 && rawAge <= 120) ? rawAge : 25;
+
+        const patientPayload = {
+          userId: userLogin._id,
+          email: normalizedEmail,
+          fullName: (userData.fullName || 'Patient').trim(),
+          age: patientAge,
+          aphasiaType,
+          gender: userData.gender || null,
+          preferredLanguage: userData.preferredLanguage || 'English',
+          phone: userData.phone || userData.mobileNumber || null,
+          emergencyContact: userData.emergencyContact || null
+        };
+
+        // Idempotent find-or-create: update existing if already present, or create new
+        const existingPatient = await Patient.findOne({
+          $or: [
+            { email: normalizedEmail },
+            { userId: userLogin._id }
+          ]
+        });
+
+        if (existingPatient) {
+          existingPatient.userId = userLogin._id;
+          if (patientPayload.fullName) existingPatient.fullName = patientPayload.fullName;
+          if (patientPayload.age) existingPatient.age = patientPayload.age;
+          if (patientPayload.aphasiaType) existingPatient.aphasiaType = patientPayload.aphasiaType;
+          if (patientPayload.gender) existingPatient.gender = patientPayload.gender;
+          if (patientPayload.preferredLanguage) existingPatient.preferredLanguage = patientPayload.preferredLanguage;
+          if (patientPayload.phone) existingPatient.phone = patientPayload.phone;
+          if (patientPayload.emergencyContact) existingPatient.emergencyContact = patientPayload.emergencyContact;
+          await existingPatient.save();
+          patient = existingPatient;
+        } else {
+          patient = await Patient.create(patientPayload);
+        }
+      } catch (patientErr) {
+        // Rollback userLogin to guarantee no orphan or decoupled records
+        await UserLogin.findByIdAndDelete(userLogin._id);
+        throw patientErr;
+      }
+    }
+
+    // Generate JWT Token for newly registered user
+    const token = jwt.sign(
+      {
+        id: userLogin._id,
+        email: userLogin.email,
+        role: userLogin.role
+      },
+      process.env.JWT_SECRET || 'voiceback_secret_key',
+      {
+        expiresIn: "7d"
+      }
+    );
+
     const result = userLogin.toObject();
     delete result.passwordHash;
+    result.token = token;
+    result.profile = patient ? patient.toObject() : null;
 
     return result;
 };

@@ -24,10 +24,10 @@ const appointmentSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['Scheduled', 'Completed', 'Cancelled'],
+        values: ['Pending', 'Accepted', 'Confirmed', 'Scheduled', 'Completed', 'Cancelled'],
         message: '{VALUE} is not a valid appointment status'
       },
-      default: 'Scheduled'
+      default: 'Pending'
     },
     clinicalNotes: {
       type: String,

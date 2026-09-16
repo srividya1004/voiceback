@@ -6,6 +6,7 @@
 const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
+const https = require('https');
 const config = require('../config');
 
 const ELEVENLABS_BASE_URL = 'https://api.elevenlabs.io/v1';
@@ -72,15 +73,9 @@ const createInstantVoiceClone = async ({ voiceName, audioFilePath }) => {
     }
   } catch (error) {
     const rawError = error.response?.data?.detail || error.response?.data || {};
-    const errorDetails = rawError.message || error.message;
-
-    if (rawError.code === 'paid_plan_required' || rawError.status === 'can_not_use_instant_voice_cloning' || errorDetails.includes('subscription does not include instant voice cloning')) {
-      console.warn(`ℹ️ ElevenLabs IVC Free-Tier Notice: Instant voice cloning requires a paid ElevenLabs plan. Activating High-Fidelity Voice Profile mapping to Voice ID "EXAVITQu4vr4xnSDxMaL".`);
-      return 'EXAVITQu4vr4xnSDxMaL';
-    }
-
+    const errorDetails = rawError.message || error.message || 'Instant voice cloning failed on provider.';
     console.error('ElevenLabs IVC API Error:', errorDetails);
-    return 'EXAVITQu4vr4xnSDxMaL';
+    throw new Error(`ElevenLabs IVC Error: ${errorDetails}`);
   } finally {
     // PATIENT AUDIO PRIVACY PROTECTION: Immediately delete temporary audio recording from disk
     try {
@@ -95,15 +90,71 @@ const createInstantVoiceClone = async ({ voiceName, audioFilePath }) => {
 };
 
 /**
+ * High-fidelity fallback to Google Neural TTS MP3 audio
+ * Provides warm, fluent human native speech for Kannada (kn), Hindi (hi), and English (en)
+ * @param {String} text
+ * @param {String} language
+ * @returns {Promise<Buffer>}
+ */
+const fetchGoogleTtsAudioBuffer = (text, language = 'en') => {
+  return new Promise((resolve, reject) => {
+    if (!text || !text.trim()) {
+      return reject(new Error('Empty text for Google TTS'));
+    }
+    const clean = text.replace(/\[[^\]]+\]/g, '').trim();
+    const langLower = (language || '').toLowerCase();
+    const isKannada = langLower.includes('kan') || langLower.includes('kn') || /[\u0C80-\u0CFF]/.test(clean);
+    const isHindi = langLower.includes('hin') || langLower.includes('hi') || /[\u0900-\u097F]/.test(clean);
+    const tl = isKannada ? 'kn' : (isHindi ? 'hi' : 'en');
+    
+    // Google Translate TTS direct CDN endpoint provides clean, natural human MP3 stream
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encodeURIComponent(clean.slice(0, 200))}`;
+    
+    const req = https.get(
+      url,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'audio/mpeg, audio/*',
+        },
+        timeout: 10000,
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          return reject(new Error(`Google TTS HTTP error: ${res.statusCode}`));
+        }
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          if (buf.length > 500) {
+            resolve(buf);
+          } else {
+            reject(new Error('Google TTS payload too small'));
+          }
+        });
+      }
+    );
+
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Google TTS request timed out'));
+    });
+  });
+};
+
+/**
  * Generate speech in patient's cloned voice using eleven_v3 model
  * @param {Object} params - Synthesis params
  * @param {String} params.voiceId - ElevenLabs voice_id
  * @param {String} params.text - Patient intended text
  * @param {String} params.language - Language ('English', 'Hindi', 'Kannada')
  * @param {String} params.emotion - Delivery style ('neutral', 'calm', 'urgent', 'happy')
+ * @param {Number} [params.speed] - Speed multiplier (0.7 to 1.1, default 0.88 for clear patient delivery)
  * @returns {Promise<Buffer>} Audio MP3 binary buffer
  */
-const generateSpeech = async ({ voiceId, text, language, emotion }) => {
+const generateSpeech = async ({ voiceId, text, language, emotion, speed }) => {
   const apiKey = config.elevenLabsApiKey || process.env.ELEVENLABS_API_KEY;
   // Use ElevenLabs flagship ultra-realistic human voice model (eleven_multilingual_v2) for Kannada and English
   const modelId = config.elevenLabsTtsModel || process.env.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2';
@@ -119,30 +170,55 @@ const generateSpeech = async ({ voiceId, text, language, emotion }) => {
   }
 
   // Format clean text without bracketed tags when using eleven_multilingual_v2 for maximum human voice naturalness
-  const cleanText = text.replace(/\[(calm|urgent|happy|neutral|pause|cough)\]/gi, '').trim();
+  let cleanText = text.replace(/\[(calm|urgent|happy|neutral|pause|cough)\]/gi, '').trim();
+
+  // Detect if text is in an Indic script (Kannada or Hindi/Devanagari)
+  const isIndicText = /[\u0C80-\u0CFF\u0900-\u097F]/.test(cleanText) ||
+    language === 'Kannada' || language === 'kn' || language === 'Hindi' || language === 'hi';
 
   // Use ElevenLabs flagship ultra-realistic human voice model (eleven_multilingual_v2) for natural human voice cloning
   const selectedModelId = 'eleven_multilingual_v2';
 
-  // Dynamic Emotion & Warmth Parameter Tuning for Flagship Human Voice Synthesis
-  // Stability ~0.38 provides dynamic human pitch inflection and warmth (prevents flat robotic monotone)
-  let stability = 0.38;
-  let similarityBoost = 0.85;
-  let style = 0.25;
+  // Dynamic Emotion, Warmth & Humanization Parameter Tuning for Flagship Voice Synthesis
+  // Stability ~0.44 provides lifelike dynamic intonation, breathing micro-pauses, and organic vocal timbre.
+  // SimilarityBoost ~0.90 locks in the natural acoustic resonance without synthetic flatness.
+  let stability = isIndicText ? 0.44 : 0.38;
+  let similarityBoost = 0.90;
+  let style = isIndicText ? 0.0 : 0.20;
 
-  if (emotion === 'calm') {
-    stability = 0.45;
-    style = 0.15;
-  } else if (emotion === 'urgent') {
-    stability = 0.25;
-    style = 0.45;
-  } else if (emotion === 'happy') {
-    stability = 0.32;
-    style = 0.35;
+  if (!isIndicText) {
+    if (emotion === 'calm') {
+      stability = 0.45;
+      style = 0.15;
+    } else if (emotion === 'urgent') {
+      stability = 0.30;
+      style = 0.40;
+    } else if (emotion === 'happy') {
+      stability = 0.35;
+      style = 0.30;
+    }
+  }
+
+  // Clamped patient-friendly speed: 0.88 is calm, natural, and gentle for aphasia comprehension
+  const effectiveSpeed = typeof speed === 'number' && !isNaN(speed)
+    ? Math.max(0.70, Math.min(1.2, speed))
+    : 0.88;
+
+  const isKannada = /[\u0C80-\u0CFF]/.test(cleanText) || (language || '').toLowerCase().includes('kan');
+  if (isKannada) {
+    // ElevenLabs models do not support Kannada (kn) and distort pronunciation with an American English accent.
+    // Automatically delegate Kannada synthesis to Google Neural Kannada TTS for authentic, fluent human speech.
+    return fetchGoogleTtsAudioBuffer(cleanText, 'kn');
+  }
+
+  // Ensure clean single terminal punctuation without trailing duplicate dots (which cause stutter or hesitation artifacts)
+  cleanText = cleanText.replace(/[.!?।,]+$/, '').trim();
+  if (cleanText.length > 0) {
+    cleanText = cleanText + (isIndicText && !isKannada ? '।' : '.');
   }
 
   try {
-    console.log(`🎙️ ElevenLabs Human Voice TTS Request: "${cleanText.substring(0, 40)}..." (Lang: ${language || 'en'}, Model: ${selectedModelId}, Voice: ${targetVoiceId})`);
+    console.log(`🎙️ ElevenLabs Human Voice TTS Request: "${cleanText.substring(0, 40)}..." (Lang: ${language || 'en'}, Model: ${selectedModelId}, Voice: ${targetVoiceId}, Style: ${style}, Stability: ${stability}, Speed: ${effectiveSpeed})`);
     const response = await axios.post(
       `${ELEVENLABS_BASE_URL}/text-to-speech/${targetVoiceId}`,
       {
@@ -153,6 +229,7 @@ const generateSpeech = async ({ voiceId, text, language, emotion }) => {
           similarity_boost: similarityBoost,
           style: style,
           use_speaker_boost: true,
+          speed: effectiveSpeed,
         },
       },
       {
@@ -188,9 +265,10 @@ const generateSpeech = async ({ voiceId, text, language, emotion }) => {
  * Transcribe recorded patient audio using ElevenLabs Scribe v2 Speech-to-Text
  * @param {Object} params
  * @param {String} params.audioFilePath - Path to temporary recorded audio file on disk
+ * @param {String} [params.language] - Optional language code ('en', 'kn', 'hi', or 'auto')
  * @returns {Promise<String>} Recognized text transcript
  */
-const transcribeSpeech = async ({ audioFilePath, language = 'kn' }) => {
+const transcribeSpeech = async ({ audioFilePath, language = 'auto' }) => {
   const apiKey = config.elevenLabsApiKey || process.env.ELEVENLABS_API_KEY;
 
   if (!apiKey) {
@@ -206,10 +284,16 @@ const transcribeSpeech = async ({ audioFilePath, language = 'kn' }) => {
     formData.append('file', fs.createReadStream(audioFilePath));
     formData.append('model_id', 'scribe_v2');
 
-    const targetLangCode = (language === 'en' || language === 'English') ? 'eng' : 'kan';
-    formData.append('language_code', targetLangCode);
-
-    console.log(`🎙️ ElevenLabs Scribe v2 STT API Request starting (language_code: ${targetLangCode}) for file: ${audioFilePath}`);
+    // Only supply language_code if explicitly specified and not 'auto'
+    if (language && language !== 'auto') {
+      const targetLangCode = (language === 'en' || language === 'English') ? 'eng' : (language === 'hi' || language === 'Hindi') ? 'hin' : (language === 'kn' || language === 'Kannada') ? 'kan' : null;
+      if (targetLangCode) {
+        formData.append('language_code', targetLangCode);
+        console.log(`🎙️ ElevenLabs Scribe v2 STT API Request starting (language_code: ${targetLangCode}) for file: ${audioFilePath}`);
+      }
+    } else {
+      console.log(`🎙️ ElevenLabs Scribe v2 STT API Request starting (auto language detection) for file: ${audioFilePath}`);
+    }
 
     const response = await axios.post(`${ELEVENLABS_BASE_URL}/speech-to-text`, formData, {
       headers: {
@@ -222,19 +306,11 @@ const transcribeSpeech = async ({ audioFilePath, language = 'kn' }) => {
     if (response.data && typeof response.data.text === 'string') {
       let transcript = response.data.text.trim();
       
-      // Clean script artifacts: if non-Kannada Dravidian characters (Tamil/Malayalam/Telugu) appear when language is Kannada, clean them
-      if (targetLangCode === 'kan') {
-        const hasTamilMalayalamTelugu = /[\u0B80-\u0BFF\u0C00-\u0C7F\u0D00-\u0D7F]/.test(transcript);
-        if (hasTamilMalayalamTelugu) {
-          console.warn(`⚠️ Non-Kannada script detected in STT transcript: "${transcript}". Sanitizing to Kannada.`);
-          // If transcript is purely non-Kannada script, default to Kannada prompt
-          const hasKannadaOrAscii = /[\u0C80-\u0CFFa-zA-Z0-9]/.test(transcript);
-          if (!hasKannadaOrAscii) {
-            transcript = 'ನಿಮಗೆ ಏನು ಬೇಕು?';
-          } else {
-            transcript = transcript.replace(/[\u0B80-\u0BFF\u0C00-\u0C7F\u0D00-\u0D7F]+/g, '').trim() || 'ನಿಮಗೆ ಏನು ಬೇಕು?';
-          }
-        }
+      // Clean script artifacts: if non-Kannada Dravidian characters (Tamil/Malayalam/Telugu) appear, clean them
+      const hasTamilMalayalamTelugu = /[\u0B80-\u0BFF\u0C00-\u0C7F\u0D00-\u0D7F]/.test(transcript);
+      if (hasTamilMalayalamTelugu) {
+        console.warn(`⚠️ Non-Kannada Dravidian script detected in STT transcript: "${transcript}". Sanitizing.`);
+        transcript = transcript.replace(/[\u0B80-\u0BFF\u0C00-\u0C7F\u0D00-\u0D7F]+/g, '').trim();
       }
 
       console.log(`✅ ElevenLabs Scribe v2 STT Success: "${transcript}"`);
@@ -263,35 +339,54 @@ const ELEVENLABS_PREMADE_VOICES = {
   male: {
     child: 'IKne3meq5aSn9XLyUdCD',  // Charlie - Young energetic male human voice
     young: 'ErXwobaYiN019PkySvjV',  // Antoni - Young male conversational voice
-    adult: 'pNInz6obpgDQGcFmaJgB',  // Adam - Natural adult male human voice
-    senior: '2EiwWnXFnvU5JabPnv8n', // Clyde - Warm mature senior male human voice
+    adult: 'nPczCjzI2devNBz1zQrb',  // Brian - Deep, resonant and comforting male human voice
+    senior: 'pqHfZKP75CvOlQylNhV4', // Bill - Wise mature senior male human voice
   },
   female: {
     child: 'hpp4J3VqNfWAUOO0d1Us',  // Bella - Soft young female human voice
-    young: 'cgSgspJ2msm6clMCkdW9',  // Jessica - Playful young female voice
+    young: 'EXAVITQu4vr4xnSDxMaL',  // Sarah - Reassuring, mature, human conversational voice
     adult: 'EXAVITQu4vr4xnSDxMaL',  // Sarah - Expressive adult female human voice
-    senior: '21m00Tcm4TlvDq8ikWAM', // Rachel - Calm warm senior female human voice
+    senior: 'XrExE9yKIg1WjnnlVkGX', // Matilda - Mature senior female human voice
   }
+};
+
+/**
+ * Standard age band resolution helper
+ * Child: < 18 (e.g. 1-17)
+ * Young: 18 - 34
+ * Adult: 35 - 60
+ * Senior: > 60 (e.g. 61+)
+ */
+const resolveAgeGroup = (age) => {
+  const num = parseInt(age, 10);
+  if (isNaN(num)) return 'adult';
+  if (num < 18) return 'child';
+  if (num < 35) return 'young';
+  if (num > 60) return 'senior';
+  return 'adult';
 };
 
 /**
  * Resolve target voice ID based on patient profile (IVC custom voice -> age/gender matching standard pool -> default)
  */
-const resolveProfileVoiceId = ({ customVoiceId, gender = 'female', ageGroup = 'adult' }) => {
+const resolveProfileVoiceId = ({ customVoiceId, gender = 'female', ageGroup, age }) => {
   if (customVoiceId && typeof customVoiceId === 'string' && customVoiceId.trim()) {
     return customVoiceId.trim();
   }
   const normGender = (gender || 'female').toLowerCase().includes('male') && !gender.toLowerCase().includes('female') ? 'male' : 'female';
-  const normAge = (ageGroup || 'adult').toLowerCase();
+  const effectiveAgeGroup = ageGroup ? ageGroup.toLowerCase() : resolveAgeGroup(age);
   const pool = ELEVENLABS_PREMADE_VOICES[normGender] || ELEVENLABS_PREMADE_VOICES.female;
-  return pool[normAge] || pool.adult || 'EXAVITQu4vr4xnSDxMaL';
+  return pool[effectiveAgeGroup] || pool.adult || 'EXAVITQu4vr4xnSDxMaL';
 };
 
 module.exports = {
   createInstantVoiceClone,
   generateSpeech,
   transcribeSpeech,
+  fetchGoogleTtsAudioBuffer,
   resolveProfileVoiceId,
+  resolveAgeGroup,
   ELEVENLABS_PREMADE_VOICES,
 };
+
 

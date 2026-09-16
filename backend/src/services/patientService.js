@@ -101,7 +101,7 @@ const assignDoctor = async (patientId, doctorId) => {
   const updatedPatient = await Patient.findByIdAndUpdate(
     patientId,
     { assignedDoctorId: doctor._id },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   )
     .populate('userId', 'email role')
     .populate('assignedDoctorId', 'fullName specialization licenseNumber hospitalAffiliation email phone')
@@ -150,7 +150,7 @@ const assignCaregiver = async (patientId, caregiverId) => {
   const updatedPatient = await Patient.findByIdAndUpdate(
     patient._id,
     { assignedCaregiverId: caregiver._id },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   )
     .populate('userId', 'email role')
     .populate('assignedDoctorId', 'fullName specialization licenseNumber hospitalAffiliation email phone')
@@ -226,7 +226,7 @@ const updatePatient = async (id, updateData) => {
   }
 
   const patient = await Patient.findByIdAndUpdate(id, updateData, {
-    new: true,
+    returnDocument: 'after',
     runValidators: true
   })
     .populate('userId', 'email role')
@@ -261,10 +261,33 @@ const deletePatient = async (id) => {
   return patient;
 };
 
+/**
+ * Retrieve patient profile for authenticated user ID or email
+ */
+const getMeByUserId = async (userId, email) => {
+  const query = {};
+  if (userId) {
+    query.$or = [{ userId }];
+    if (email) query.$or.push({ email: email.toLowerCase().trim() });
+  } else if (email) {
+    query.email = email.toLowerCase().trim();
+  } else {
+    throw new Error('User identity required');
+  }
+
+  const patient = await Patient.findOne(query)
+    .populate('userId', 'email role')
+    .populate('assignedDoctorId', 'fullName specialization licenseNumber hospitalAffiliation email phone')
+    .populate('assignedCaregiverId', 'fullName phone relationshipToPatient email');
+
+  return patient;
+};
+
 module.exports = {
   create: createPatient,
   getAll: getAllPatients,
   getById: getPatientById,
+  getMeByUserId,
   assignDoctor,
   assignCaregiver,
   assignDoctorByEmail,

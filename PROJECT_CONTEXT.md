@@ -1,184 +1,149 @@
 # VoiceBack – Comprehensive Project Context & Specifications
 
-> **Document Status:** Permanent Source of Truth  
-> **Last Updated:** 2026-07-31  
-> **Target Audience:** Developers, Hardware Engineers, AI Researchers, Speech Pathologists  
+> **Document Status:** Active Technical Reference (Aligned with Canonical Architecture)  
+> **Source of Truth:** [VOICEBACK_FINAL_PRD.md](VOICEBACK_FINAL_PRD.md) (Version 1.0) | [VOICEBACK_FINAL_ARCHITECTURE_SPEC.md](VOICEBACK_FINAL_ARCHITECTURE_SPEC.md) | [VOICEBACK_END_TO_END_WORKFLOW.md](VOICEBACK_END_TO_END_WORKFLOW.md) | [firmware/README.md](firmware/README.md) | [docs/DATABASE.md](docs/DATABASE.md)  
+> **Target Audience:** Developers, Clinical Researchers, Hardware Engineers, Speech Pathologists  
 
 ---
 
 ## 1. Domain Background & Problem Statement
 
-**Aphasia** is a neuro-cognitive language disorder caused by damage to speech centers in the brain (most commonly resulting from strokes, traumatic brain injury, or brain tumors). Patients affected by aphasia frequently experience severe loss or impairment of verbal articulation. However, the neuromuscular intent to speak often persists, causing subtle laryngeal and vocal muscle contractions even when audible speech is weak, whispered, silent, or unintelligible.
+**Aphasia** is a neuro-cognitive language disorder resulting from damage to speech and language centers in the brain (most frequently induced by stroke, traumatic brain injury, or neurological lesions). Individuals with aphasia often experience severe difficulty in motor articulation, verbal expression, or word retrieval, even though cognitive intent and contextual awareness remain largely intact. Speech output is frequently characterized as weak, whispered, dysarthric, or fragmented.
 
-**VoiceBack** bridges this communication gap by capturing surface electromyography (**sEMG**) signals from the anterior neck muscles. The system:
-1. Detects neuromuscular speech attempts (silent, whispered, weak, unclear).
-2. Extracts signal features in real time.
-3. Decodes intended speech via an AI classifier engine.
-4. Generates synthesized audio locally through a neckband speaker and on an accompanying Progressive Web App (PWA).
+**VoiceBack** bridges this communication barrier through an integrated wearable and mobile ecosystem:
+1. **Primary Speech Capture:** Captures patient vocalizations directly using a **Physical Microphone** as the primary speech input.
+2. **Speech-to-Text Layer:** Transcribes raw acoustic signals via **Wispr Flow** (or approved cloud STT provider).
+3. **Speech Cleanup & Meaning Reconstruction:** Normalizes dysarthric and noisy transcripts into clear semantic intent.
+4. **Context & Intent Understanding:** Leverages a dynamic Context Engine (Gemini LLM) to generate contextually relevant conversational responses based on caregiver prompts and patient history.
+5. **Patient Agency:** Presents ephemeral dynamic response choices; the patient selects and explicitly confirms their intended answer.
+6. **Voice Synthesis & Output:** Synthesizes speech using the patient's enrolled ElevenLabs voice clone (`eleven_v3`), transferring audio via Web Bluetooth Low Energy (BLE) to an ESP32 wearable neckband speaker for physical playback.
+7. **Telemetry Tracking:** Monitors muscular effort and electrode impedance using a **BioAmp EXG Pill** strictly for hardware telemetry and baseline calibration.
 
 ---
 
 ## 2. Hardware Architecture & Wiring Matrix
 
-The wearable component is an ergonomic neckband built from accessible, high-performance prototype modules.
+The wearable component is an ergonomic neckband built from accessible, high-performance embedded prototype modules.
 
 ```mermaid
 graph TD
-    subgraph Sensors & Signal Conditioning
-        H1[Surface EMG Electrodes] --> H2[AD620 Instrumentation Amp Module]
-        H2 -- Analog Output (GPIO34) --> ESP32[ESP32 Dev Board]
+    subgraph Sensors & Telemetry Subsystem
+        H1[Surface EMG Electrodes] --> H2[BioAmp EXG Pill]
+        H2 -- Analog OUT (GPIO34) --> ESP32[ESP32 Dev Board]
     end
 
     subgraph Audio Playback Subsystem
-        ESP32 -- I2S BCLK/LRC/DOUT --> H3[MAX98357A I2S Class-D Amp]
+        ESP32 -- BCLK (GPIO26) --> H3[MAX98357A I2S Class-D Amp]
+        ESP32 -- LRC/WS (GPIO25) --> H3
+        ESP32 -- DIN/DOUT (GPIO22) --> H3
         H3 --> H4[3W 4Ω Dynamic Mini Speaker]
     end
 
     subgraph Power & Charging Subsystem
-        H5[USB-C / Micro-USB] --> H6[TP4056 Li-Po Charger]
+        H5[USB 5V Charger] --> H6[TP4056 Li-Po Charger]
         H6 <--> H7[3.7V 800mAh Li-Po Battery]
         H6 --> H8[SPST Power Toggle Switch]
         H8 --> ESP32
     end
 ```
 
-### Complete Hardware Wiring Table
+### Complete Hardware Wiring Table (Compiled Firmware Baseline)
 
 | Hardware Module | Module Pin | ESP32 GPIO Pin | Function |
 | :--- | :--- | :--- | :--- |
-| **AD620 EMG Sensor** | `VOUT` (Analog) | `GPIO34` (ADC1_CH6) | Differential analog sEMG voltage input |
-| | `VCC` | `3.3V` / `5V` | System power rail |
-| | `GND` | `GND` | Common system ground |
-| **MAX98357A I2S Amp** | `BCLK` | `GPIO4` | I2S Bit Clock |
-| | `LRC` / `WS` | `GPIO5` | Left/Right Word Select Clock |
-| | `DIN` / `DOUT` | `GPIO6` | Serial PCM Audio Data Output |
-| | `GAIN` | `GND` / `3.3V` | Gain control setting (12dB / 6dB) |
-| | `VIN` | `3.3V` / `5V` | Amplifier power supply |
-| **TP4056 PMIC** | `BAT+` / `BAT-` | Battery Terminals | 3.7V Li-Po Cell Connection |
-| | `OUT+` | Power Switch -> `VIN` | Switched battery rail |
+| **BioAmp EXG Pill** | `OUT` (Analog) | `GPIO34` (ADC1_CH6) | sEMG analog voltage input (telemetry & calibration only) |
+| | `VCC` | `3.3V` | System positive 3.3V power rail |
+| | `GND` | `GND` | Common system ground rail |
+| **MAX98357A I2S Amp** | `BCLK` | `GPIO26` | I2S Bit Clock |
+| | `LRC` / `WS` | `GPIO25` | I2S Left/Right Word Select Clock |
+| | `DIN` / `DOUT` | `GPIO22` | Serial PCM Audio Data line |
+| | `GAIN` | `GND` / `3.3V` | Hardware gain configuration (GND = 12dB, 3.3V = 6dB) |
+| | `VIN` | `3.3V` / `5V` | Amplifier positive power supply rail |
+| | `GND` | `GND` | Common system ground rail |
+| **TP4056 PMIC** | `BAT+` / `BAT-` | Battery Terminals | 3.7V 800mAh Li-Po Cell Connection |
+| | `OUT+` | Power Switch -> `VIN` | Switched battery positive rail |
+| | `OUT-` | `GND` | Common system ground rail |
+| **Mini Speaker** | `+` / `-` | MAX98357A OUT | Differential audio output driving 4Ω 3W dynamic speaker |
 
 ---
 
-## 3. Firmware Architecture (ESP32 C++ - Implemented v0.1)
+## 3. Firmware Architecture (ESP32 C++ PlatformIO)
 
-Located in [firmware/](firmware), the firmware is modularized into discrete drivers:
+Located in [firmware/](firmware), the firmware is organized into modular subsystems:
 
-- **Config Module (`include/config.h`)**: Defines hardware pins, ADC 12-bit parameters, sample rate (50Hz / 20ms interval), EMA smoothing coefficient ($\alpha = 0.15$), and NimBLE GATT UUIDs.
-- **EMG Subsystem (`include/emg_sensor.h`, `src/emg_sensor.cpp`)**: Reads raw ADC values from GPIO34 ($0-4095$), applies Exponential Moving Average (EMA) filtering:
-  $$S_t = \alpha \cdot X_t + (1 - \alpha) \cdot S_{t-1}$$
-  and calculates equivalent analog voltage ($0 - 3.3\text{V}$).
-- **BLE Telemetry Engine (`include/ble_service.h`, `src/ble_service.cpp`)**: Implements NimBLE GATT Server under device name `VoiceBack-Neckband`. Packets stream JSON telemetry:
-  ```json
-  { "raw": 1842, "flt": 1835.45, "vlt": 1.479 }
-  ```
-- **Audio DAC Driver (`include/audio_driver.h`, `src/audio_driver.cpp`)**: Driver for MAX98357A via ESP32 I2S peripherals (`I2S_NUM_0`, 16kHz 16-bit mono PCM), including a 440Hz test sine-wave generator.
+- **Configuration Module (`include/config.h`)**: Defines pin mappings (`BIOAMP_ANALOG_PIN = 34`, `MAX98357_I2S_BCLK = 26`, `MAX98357_I2S_LRC = 25`, `MAX98357_I2S_DOUT = 22`), ADC parameters (12-bit resolution, 500Hz sampling), EMA smoothing coefficient ($\alpha = 0.15$), and BLE GATT UUIDs.
+- **BioAmp Subsystem (`include/emg_sensor.h`, `src/emg_sensor.cpp`)**: Reads raw ADC values from `GPIO34`, executes Exponential Moving Average (EMA) filtering, and scales voltage ($0 - 3.3\text{V}$) for telemetry. *BioAmp is not used for speech recognition.*
+- **BLE GATT Server (`include/ble_service.h`, `src/ble_service.cpp`)**: Implements NimBLE GATT Server under device name `VoiceBack-Neckband`. Streams telemetry JSON packets (`beb5483e-36e1-4688-b7f5-ea07361b26a8`) and receives 180-byte 16kHz PCM audio packets (`cba1483e-36e1-4688-b7f5-ea07361b26b9`).
+- **Audio DAC Driver (`include/audio_driver.h`, `src/audio_driver.cpp`)**: Configures hardware I2S DMA on GPIO26, GPIO25, and GPIO22 for 16kHz 16-bit mono PCM playback.
 
 ---
 
-## 4. Software Architecture & Ecosystem (Backend Implemented v0.2)
+## 4. Software Architecture & Ecosystem
 
 ```mermaid
 graph LR
-    subgraph Firmware Layer [ESP32 Dev Board - Implemented]
-        A1[AD620 Analog Input] --> A2[EMA Filter Engine]
-        A2 --> A3[NimBLE Telemetry Service]
-        A4[I2S Audio Driver] <-- PCM Samples --> A3
+    subgraph Wearable Firmware [ESP32 Dev Board]
+        A1[BioAmp Analog Input GPIO34] --> A2[EMA Telemetry Filter]
+        A2 --> A3[NimBLE GATT Server]
+        A4[MAX98357A I2S DAC GPIO26/25/22] <-- 16kHz PCM -- A3
     end
 
-    subgraph Client Layer [React Progressive Web App - Planned]
-        B1[Web Bluetooth Client] --> B2[EMG Waveform Canvas]
-        B2 --> B3[AI Inference Trigger Service]
-        B3 --> B4[Web Speech TTS Engine]
-        B5[JWT Auth & Multi-Role UI]
+    subgraph Client Application [React 19 Progressive Web App]
+        B1[Microphone Capture] --> B2[Wispr Flow STT Gateway]
+        B2 --> B3[Context Engine / Ephemeral Choices]
+        B3 --> B4[Patient Selection & Confirmation]
+        B4 --> B5[Web Bluetooth GATT Audio Stream]
+        B5 -- Chunks to ESP32 --> A3
     end
 
-    subgraph Backend Services [Node.js Implemented / FastAPI Planned]
-        C1[Node.js Express REST API] <--> C2[FastAPI AI Classifier Engine]
-        C1 <--> C3[Socket.io Relay]
+    subgraph Backend Services [Node.js Express REST API]
+        C1[Express API Core & JWT Auth]
+        C2[Gemini Context Engine Service]
+        C3[ElevenLabs Voice Synthesis Service]
+        C4[Emergency SOS Dispatch Service]
     end
 
-    subgraph Database [Implemented]
-        D1[(MongoDB Atlas - 9 Collections)]
+    subgraph Database Tier [MongoDB Atlas]
+        D1[(10 Mongoose Collections)]
     end
 
-    A3 -- Web Bluetooth BLE Stream --> B1
-    B3 -- Inference Request --> C2
-    B1 -- JWT REST / WSS --> C1
-    C1 --> D1
+    B1 -- Speech Audio --> C2
+    B4 -- Synthesis Request --> C3
+    C1 <--> D1
+    C3 -- Stored voiceId --> D1
 ```
 
-### Backend REST API & Authentication Architecture (`backend/src/`)
-- **Express App Setup (`app.js`)**: CORS middleware configured via `CLIENT_ORIGIN`, JSON body parsing, HTTP logging (`logger.js`), and centralized error handling (`errorHandler.js`).
-- **User Authentication (`userLoginService.js`, `userLoginController.js`)**:
-  - Passwords hashed using `bcrypt` with 10 salt rounds upon creation.
-  - Password hashes automatically excluded from queries (`.select('-passwordHash')`).
-  - JWT Authentication endpoint `POST /api/user-logins/login` validates credentials and issues a signed JWT token valid for 7 days (`expiresIn: "7d"`).
-- **Environment Configuration (`.env`)**: Manages `PORT=5000`, `NODE_ENV`, `MONGODB_URI` (MongoDB Atlas), `JWT_SECRET`, and `CLIENT_ORIGIN`.
+### Backend Services & Authentication Architecture (`backend/src/`)
+- **Express Core (`app.js`, `server.js`)**: CORS protection, JSON payload parsing, structured logging (`logger.js`), and centralized error handling (`errorHandler.js`).
+- **Authentication & RBAC (`userLoginService.js`, `authMiddleware.js`)**: Passwords hashed with `bcrypt` (10 rounds), query password exclusion (`.select('-passwordHash')`), and JWT session tokens (7d validity) enforcing role isolation across Patient, Doctor, and Caregiver portals.
+- **Context Engine (`contextEngineService.js`)**: Interfaces with Gemini LLM (`gemini-3.5-flash` / `gemini-3.6-flash`) to generate ephemeral 3–4 choice response cards; includes deterministic fallback rules for offline or unconfigured environments.
+- **Voice Synthesis (`elevenLabsService.js`)**: Generates high-fidelity speech using patient's stored ElevenLabs `voiceId` via `eleven_v3` or `eleven_multilingual_v2`.
+  - *Kannada Policy:* ElevenLabs `eleven_v3` synthesizes Kannada, but ElevenLabs PVC does not officially support Kannada for voice clone training. The system uses an approved fallback voice for Kannada rather than claiming unverified patient voice cloning.
+- **Emergency Dispatch (`emergencySOSService.js`)**: Logs patient panic alerts and coordinates notifications to assigned caregivers and doctors.
 
 ---
 
-## 5. AI Module & Signal Processing Pipeline
+## 5. Database Schema Architecture (MongoDB Atlas - 10 Collections)
 
-1. **EMG Acquisition & Filtering (Implemented)**:
-   - Sampling rate: 50 Hz (20ms interval).
-   - Smoothing: Exponential Moving Average (EMA, $\alpha = 0.15$).
-2. **Windowing & Feature Extraction (Planned)**:
-   - Window size: 200 ms sliding window with 50 ms overlap.
-   - Feature vector: Mean Absolute Value (MAV), Root Mean Square (RMS), Zero Crossing Rate (ZCR), and Waveform Length (WL).
-3. **Speech Attempt Classification (Planned)**:
-   - Model: Lightweight Random Forest / CNN classifier running inside `ai_engine/` (FastAPI).
-   - Categorization: Silent Speech, Whispered Speech, Weak Speech, Unclear Speech.
-4. **Speech Output Generation**:
-   - Text-to-Speech engine triggers audio playback via Mobile App and streams PCM back to ESP32 MAX98357A neckband speaker.
+The database utilizes **10 Collections** structured in `backend/src/models/`:
 
----
-
-## 6. Database Schema Architecture (MongoDB Atlas - Implemented)
-
-The system utilizes **9 MongoDB Collections** designed for clinical and assistive tracking:
-
-```mermaid
-erDiagram
-    UserLogin ||--|| Patient : "authenticates"
-    UserLogin ||--|| Doctor : "authenticates"
-    UserLogin ||--|| Caregiver : "authenticates"
-
-    Patient ||--o{ EMGProfile : "owns"
-    Patient ||--o{ VoiceProfile : "owns"
-    Patient ||--o{ TherapyProgress : "tracks"
-    Patient ||--o{ CommunicationHistory : "records"
-    Patient ||--o{ Appointment : "schedules"
-
-    Doctor ||--o{ Appointment : "conducts"
-    Caregiver ||--o{ Patient : "monitors"
-```
-
-### Collection Specifications & REST Endpoints:
-1. `UserLogin`: Credentials, role (`Patient` | `Doctor` | `Caregiver`), password hash, last login.
-   - Endpoints: `GET /api/user-logins`, `GET /api/user-logins/:id`, `POST /api/user-logins`, `POST /api/user-logins/login`, `PUT /api/user-logins/:id`, `DELETE /api/user-logins/:id`
-2. `Patient`: Clinical profile, age, aphasia type classification, assigned doctor ID, assigned caregiver ID.
-   - Endpoints: `GET /api/patients`, `GET /api/patients/:id`, `POST /api/patients`, `PUT /api/patients/:id`, `DELETE /api/patients/:id`
-3. `Doctor`: Medical credentials, specialization, hospital affiliation.
-   - Endpoints: `GET /api/doctors`, `GET /api/doctors/:id`, `POST /api/doctors`, `PUT /api/doctors/:id`, `DELETE /api/doctors/:id`
-4. `Caregiver`: Contact details, relationship to patient, assigned patient list.
-   - Endpoints: `GET /api/caregivers`, `GET /api/caregivers/:id`, `POST /api/caregivers`, `PUT /api/caregivers/:id`, `DELETE /api/caregivers/:id`
-5. `VoiceProfile`: Pitch preference, speed rate, custom synthesized voice asset URL.
-   - Endpoints: `GET /api/voice-profiles`, `GET /api/voice-profiles/:id`, `POST /api/voice-profiles`, `PUT /api/voice-profiles/:id`, `DELETE /api/voice-profiles/:id`
-6. `EMGProfile`: Baseline sEMG thresholds, Max Voluntary Contraction (MVC) values, calibrated signature vectors.
-   - Endpoints: `GET /api/emg-profiles`, `GET /api/emg-profiles/:id`, `POST /api/emg-profiles`, `PUT /api/emg-profiles/:id`, `DELETE /api/emg-profiles/:id`
-7. `TherapyProgress`: Session logs, completed exercise counts, accuracy scores over time.
-   - Endpoints: `GET /api/therapy-progress`, `GET /api/therapy-progress/:id`, `POST /api/therapy-progress`, `PUT /api/therapy-progress/:id`, `DELETE /api/therapy-progress/:id`
-8. `CommunicationHistory`: Real-time speech recognition log (timestamp, attempt type, recognized text, confidence score).
-   - Endpoints: `GET /api/communication-history`, `GET /api/communication-history/:id`, `POST /api/communication-history`, `PUT /api/communication-history/:id`, `DELETE /api/communication-history/:id`
-9. `Appointment`: Scheduling system (patient ID, doctor ID, date, status, clinical notes).
-   - Endpoints: `GET /api/appointments`, `GET /api/appointments/:id`, `POST /api/appointments`, `PUT /api/appointments/:id`, `DELETE /api/appointments/:id`
+1. `UserLogin`: Credentials, role (`Patient`, `Doctor`, `Caregiver`), password hash, last login.
+2. `Patient`: Demographic profile, aphasia type, assigned doctor ID, assigned caregiver ID.
+3. `Doctor`: Clinical credentials, specialization, hospital affiliation, license number.
+4. `Caregiver`: Contact details, phone number, relationship to patient.
+5. `VoiceProfile`: Pitch, speed, gender, ElevenLabs `voiceId`, clone status (`Not Configured`, `Processing`, `Ready`, `Failed`), `lastClonedAt`.
+6. `EMGProfile`: Baseline sEMG thresholds, MVC calibration values, calibration vector.
+7. `TherapyProgress`: Clinical therapy logs, exercises completed, accuracy scores.
+8. `CommunicationHistory`: Real-time speech recognition event logs, attempt type, recognized text, confidence score.
+9. `Appointment`: Doctor-patient session scheduling, date, status, clinical notes.
+10. `EmergencySOS`: Patient emergency alerts, status (`Active`, `Acknowledged`, `Resolved`), location, timestamps.
 
 ---
 
-## 7. Multi-Computer Strategy & Parity Principles
+## 6. Multi-Workstation & PRD Alignment
 
-Because development alternates between a **College PC** and a **Home PC**:
-- **No Invisible State**: Decisions made in chat or memory must be immediately persisted to repository files.
-- **Git Parity**: Every session starts with `git pull` and ends with committed, pushed changes accompanied by updated documentation.
-- **Standardized Environments**: Both machines run VS Code, PlatformIO IDE, Node.js 18+, Python 3.10, and Git.
+- **Canonical Sources of Truth**: [VOICEBACK_FINAL_ARCHITECTURE_SPEC.md](VOICEBACK_FINAL_ARCHITECTURE_SPEC.md) and [VOICEBACK_END_TO_END_WORKFLOW.md](VOICEBACK_END_TO_END_WORKFLOW.md).
+- **Git Synchronization**: State is maintained in repository files with Git tracking; zero invisible memory state.
+- **No Localhost Reliance in Production**: Cloud backend connects directly to MongoDB Atlas and third-party APIs via environment variables.
+
 

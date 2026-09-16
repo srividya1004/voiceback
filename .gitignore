@@ -34,3 +34,15 @@ backend/backups/
 # Firmware development backups
 firmware/code_bkup/
 firmware/test_assets/
+
+# Temporary upload output directory (strictly scoped)
+backend/temp_uploads/*
+!backend/temp_uploads/.gitkeep
+!backend/temp_uploads/real_patient_test_sample.wav
+
+# Ad-hoc local scratch & diff dumps
+scratch/
+backend/scratch/
+game3-diff.txt
+*-diff.txt
+

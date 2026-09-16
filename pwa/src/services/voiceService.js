@@ -10,18 +10,34 @@ export const voiceService = {
   // VOICE PROFILES
   // ============================================================
 
-  getVoiceProfiles: async () => {
+  getVoiceProfiles: async (patientId) => {
     try {
-      const response =
-        await apiClient.get(
-          '/voice-profiles'
-        );
+      if (typeof window !== 'undefined') {
+        const rawSession = localStorage.getItem('voiceback_auth_session');
+        if (!rawSession) return [];
+        try {
+          const session = JSON.parse(rawSession);
+          if (!session || !session.token) return [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      const response = await apiClient.get('/voice-profiles', {
+        params: patientId ? { patientId } : {}
+      });
 
       const profiles = response.data?.data || [];
-      if (Array.isArray(profiles) && profiles.length > 0) {
-        const readyProfile = profiles.find((p) => p.status === 'Ready' && p.voiceId) || profiles.find((p) => p.voiceId);
+      if (Array.isArray(profiles) && profiles.length > 0 && patientId) {
+        const readyProfile = profiles.find((p) => {
+          const profilePatientId = p.patientId?._id || p.patientId;
+          return profilePatientId === patientId && p.status === 'Ready' && p.voiceId;
+        }) || profiles.find((p) => {
+          const profilePatientId = p.patientId?._id || p.patientId;
+          return profilePatientId === patientId && p.voiceId;
+        });
         if (readyProfile && readyProfile.voiceId && typeof window !== 'undefined') {
-          localStorage.setItem('voiceback_cloned_voice_id', readyProfile.voiceId);
+          localStorage.setItem(`voiceback_cloned_voice_id_${patientId}`, readyProfile.voiceId);
         }
       }
       return profiles;
@@ -83,21 +99,36 @@ export const voiceService = {
     text,
     language,
     emotion,
+    speed,
   }) => {
-    const activeClonedVoiceId = voiceId || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_cloned_voice_id') : null);
+    const session = typeof window !== 'undefined' ? (() => {
+      try {
+        return JSON.parse(localStorage.getItem('voiceback_active_session') || 'null');
+      } catch (e) {
+        return null;
+      }
+    })() : null;
+
+    const effectivePatientId = patientId || (session?.role === 'patient' ? (session?.user?.profile?._id || session?.user?.id || session?.patientId) : null);
+    const patientVoiceKey = effectivePatientId ? `voiceback_cloned_voice_id_${effectivePatientId}` : null;
+    const activeClonedVoiceId = voiceId || (patientVoiceKey && typeof window !== 'undefined' ? localStorage.getItem(patientVoiceKey) : null) || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_cloned_voice_id') : null);
     const activeGender = gender || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_patient_gender') : null) || 'female';
     const activeAgeGroup = ageGroup || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_patient_age_group') : null) || 'adult';
+
+    const hasKannadaScript = /[\u0C80-\u0CFF]/.test(text || '');
+    const normLang = hasKannadaScript ? 'Kannada' : (language === 'kn' || language === 'kannada') ? 'Kannada' : (language === 'hi' || language === 'hindi') ? 'Hindi' : (language || 'English');
 
     const response = await apiClient.post(
       '/voice-profiles/synthesize',
       {
-        patientId,
+        patientId: effectivePatientId,
         voiceId: activeClonedVoiceId,
         gender: activeGender,
         ageGroup: activeAgeGroup,
         text,
-        language,
+        language: normLang,
         emotion,
+        speed,
       },
       {
         responseType: 'blob',
@@ -223,39 +254,29 @@ export const voiceService = {
     const langLower =
       (language || '').toLowerCase();
 
+    // Prioritize High-Quality Human / Neural / Natural Voices
+    const neuralOrNatural = (list) => list.find(v => {
+      const name = (v.name || '').toLowerCase();
+      return name.includes('natural') || name.includes('neural') || name.includes('online') || name.includes('google');
+    }) || list[0];
+
     if (
       langLower.includes('hindi') ||
       langLower.includes('hi')
     ) {
-      const hiVoice =
-        voices.find((v) =>
-          v.lang
-            .toLowerCase()
-            .replace('_', '-')
-            .includes('hi')
-        );
-
-      if (hiVoice) return hiVoice;
+      const hiVoices = voices.filter((v) =>
+        v.lang.toLowerCase().replace('_', '-').includes('hi')
+      );
+      if (hiVoices.length > 0) return neuralOrNatural(hiVoices);
     } else if (
       langLower.includes('kannada') ||
       langLower.includes('kn')
     ) {
-      const knVoice =
-        voices.find((v) =>
-          v.lang
-            .toLowerCase()
-            .replace('_', '-')
-            .includes('kn')
-        );
-
-      if (knVoice) return knVoice;
+      const knVoices = voices.filter((v) =>
+        v.lang.toLowerCase().replace('_', '-').includes('kn')
+      );
+      if (knVoices.length > 0) return neuralOrNatural(knVoices);
     }
-
-    // Prioritize High-Quality Human / Neural / Natural Voices
-    const neuralOrNatural = (list) => list.find(v => {
-      const name = (v.name || '').toLowerCase();
-      return name.includes('natural') || name.includes('neural') || name.includes('google') || name.includes('online');
-    }) || list[0];
 
     const enInVoice = voices.filter((v) => {
       const l = v.lang.toLowerCase().replace('_', '-');
@@ -379,18 +400,23 @@ export const voiceService = {
           ? volume
           : 1.0;
 
+      const configuredRate = typeof window !== 'undefined' && localStorage.getItem('voiceback_speech_rate')
+        ? parseFloat(localStorage.getItem('voiceback_speech_rate'))
+        : null;
+      const defaultRate = (typeof configuredRate === 'number' && !isNaN(configuredRate)) ? configuredRate : 0.80;
+
       if (typeof rate === 'number') {
         utterance.rate = rate;
       } else if (
         emotion === 'urgent'
       ) {
-        utterance.rate = 1.15;
+        utterance.rate = Math.min(defaultRate * 1.15, 0.95);
       } else if (
         emotion === 'calm'
       ) {
-        utterance.rate = 0.9;
+        utterance.rate = Math.max(defaultRate * 0.9, 0.72);
       } else {
-        utterance.rate = 1.0;
+        utterance.rate = defaultRate;
       }
 
       if (
@@ -491,11 +517,15 @@ export const voiceService = {
   playSynthesizedAudio: async ({
     patientId,
     voiceId,
+    gender,
+    ageGroup,
     text,
     language = 'English',
     emotion = 'neutral',
+    speed,
   }) => {
-    const normLang = (language === 'kn' || language === 'kannada') ? 'Kannada' : (language === 'hi' || language === 'hindi') ? 'Hindi' : (language || 'English');
+    const hasKannadaScript = /[\u0C80-\u0CFF]/.test(text || '');
+    const normLang = hasKannadaScript ? 'Kannada' : (language === 'kn' || language === 'kannada') ? 'Kannada' : (language === 'hi' || language === 'hindi') ? 'Hindi' : (language || 'English');
     if (
       !text ||
       !text.trim()
@@ -507,40 +537,54 @@ export const voiceService = {
     }
 
     // ----------------------------------------------------------
-    // 1. ELEVENLABS
+    // 1. ELEVENLABS / GOOGLE NEURAL CLOUD SYNTHESIS (STUDIO HUMAN VOICE)
     // ----------------------------------------------------------
 
     try {
       console.log(
-        '🔊 [VoiceOutput] Requesting ElevenLabs synthesized audio...'
+        '🔊 [VoiceOutput] Requesting high-fidelity studio synthesized human audio...'
       );
 
-      const activeClonedVoiceId = voiceId || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_cloned_voice_id') : null);
+      // Resolve authenticated patient context safely without cross-patient contamination
+      const session = typeof window !== 'undefined' ? (() => {
+        try {
+          return JSON.parse(localStorage.getItem('voiceback_active_session') || 'null');
+        } catch (e) {
+          return null;
+        }
+      })() : null;
+
+      const effectivePatientId = patientId || (session?.role === 'patient' ? (session?.user?.profile?._id || session?.user?.id || session?.patientId) : null);
+
+      const patientVoiceKey = effectivePatientId ? `voiceback_cloned_voice_id_${effectivePatientId}` : null;
+      const activeClonedVoiceId = voiceId || (patientVoiceKey && typeof window !== 'undefined' ? localStorage.getItem(patientVoiceKey) : null) || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_cloned_voice_id') : null);
+
+      const activeGender = gender || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_patient_gender') : null) || undefined;
+      const activeAgeGroup = ageGroup || (typeof window !== 'undefined' ? localStorage.getItem('voiceback_patient_age_group') : null) || undefined;
+
+      const configuredAudioRate = typeof window !== 'undefined' && localStorage.getItem('voiceback_speech_rate')
+        ? parseFloat(localStorage.getItem('voiceback_speech_rate'))
+        : null;
+      const targetSpeed = (typeof speed === 'number' && !isNaN(speed))
+        ? speed
+        : ((typeof configuredAudioRate === 'number' && !isNaN(configuredAudioRate)) ? configuredAudioRate : 0.88);
 
       const blob =
         await voiceService.synthesizeSpeech({
-          patientId,
+          patientId: effectivePatientId,
           voiceId: activeClonedVoiceId,
+          gender: activeGender,
+          ageGroup: activeAgeGroup,
           text,
           language: normLang,
           emotion,
+          speed: targetSpeed,
         });
 
       if (blob && blob.type && blob.type.includes('json')) {
         const textPayload = await blob.text();
-        console.warn('🔊 [VoiceOutput] Received fallback JSON payload from backend:', textPayload);
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = language === 'Kannada' || language === 'kn' ? 'kn-IN' : language === 'Hindi' || language === 'hi' ? 'hi-IN' : 'en-US';
-          utterance.rate = 0.9;
-          window.speechSynthesis.speak(utterance);
-          return {
-            success: true,
-            provider: 'Web Speech TTS (ElevenLabs Notice Fallback)',
-            audioUrl: null,
-          };
-        }
+        console.warn('🔊 [VoiceOutput] Received notice payload from synthesis:', textPayload, 'Falling back to natural browser voice.');
+        return voiceService.speakNativeTTS(text, { language: normLang, emotion, rate: targetSpeed });
       }
 
       if (blob && blob.size > 100) {
@@ -559,6 +603,15 @@ export const voiceService = {
           const audio = new Audio();
           audio.src = audioUrl;
 
+          // For high-fidelity studio audio (ElevenLabs / Google Neural MP3),
+          // play at native natural speed (1.0) because speech pacing (0.88) was already baked into the neural waveform.
+          // This preserves authentic human warmth, breath, and prosody without metallic browser DSP resampling.
+          audio.playbackRate = 1.0;
+
+          // Sync local browser audio volume to the VolumeControlWidget value (0-100% -> 0.0-1.0)
+          const _volPct = deviceService.getDeviceStatus().volume;
+          audio.volume = Math.max(0, Math.min(1, (typeof _volPct === `number` ? _volPct : 70) / 100));
+
           if (typeof audio.setSinkId === 'function' && window.selectedAudioDeviceId) {
             try {
               await audio.setSinkId(window.selectedAudioDeviceId);
@@ -569,7 +622,7 @@ export const voiceService = {
 
           await audio.play();
           localPlaySuccess = true;
-          console.log('🔊 [VoiceOutput] ElevenLabs human voice playback started out loud successfully.');
+          console.log('🔊 [VoiceOutput] Studio human voice playback started out loud successfully.');
         } catch (playErr) {
           console.warn('🔊 HTML5 Audio play notice:', playErr.message);
         }
@@ -585,7 +638,7 @@ export const voiceService = {
           bleTransferred = true;
         }
 
-        if (localPlaySuccess) {
+        if (localPlaySuccess || bleTransferred) {
           return {
             success: true,
             provider: bleTransferred
@@ -595,41 +648,17 @@ export const voiceService = {
           };
         }
 
-        // 3. Fallback to Web Speech API Utterance if HTML5 autoplay is blocked by browser interaction rules
-        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = (language === 'Kannada' || language === 'kn') ? 'kn-IN' : (language === 'Hindi' || language === 'hi') ? 'hi-IN' : 'en-US';
-          utterance.rate = 0.9;
-          window.speechSynthesis.speak(utterance);
-          return {
-            success: true,
-            provider: 'Web Speech TTS Fallback',
-            audioUrl: null,
-          };
-        }
-      }
-
-      throw new Error('Audio payload empty or invalid.');
-    } catch (err) {
-      console.warn('⚠️ [VoiceOutput] ElevenLabs synthesis notice:', err.message);
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = language === 'Kannada' || language === 'kn' ? 'kn-IN' : language === 'Hindi' || language === 'hi' ? 'hi-IN' : 'en-US';
-        utterance.rate = 0.9;
-        window.speechSynthesis.speak(utterance);
         return {
           success: true,
-          provider: 'Web Speech TTS (Notice Fallback)',
-          audioUrl: null
+          provider: 'ElevenLabs Audio Ready (Autoplay pending user gesture)',
+          audioUrl,
         };
       }
-      return {
-        success: false,
-        provider: 'ElevenLabs Output Notice: ' + err.message,
-        audioUrl: null
-      };
+
+      throw new Error('Audio payload empty or invalid from ElevenLabs Cloud.');
+    } catch (err) {
+      console.warn('⚠️ [VoiceOutput] ElevenLabs synthesis notice:', err.message, 'Falling back to natural browser speech.');
+      return voiceService.speakNativeTTS(text, { language: normLang, emotion });
     }
   },
 

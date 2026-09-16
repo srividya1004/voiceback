@@ -2,6 +2,11 @@
  * VoiceBack Backend Server Entry Point
  */
 
+const dns = require('dns');
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+} catch (e) {}
+
 const http = require('http');
 const { Server } = require('socket.io');
 const app = require('./app');

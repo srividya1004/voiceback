@@ -116,11 +116,35 @@ const deleteDoctor = async (req, res) => {
   }
 };
 
+/**
+ * Get detailed medical record for an assigned patient
+ * @route GET /api/doctors/:id/patients/:patientId/medical-record
+ */
+const getPatientMedicalRecord = async (req, res) => {
+  try {
+    const { id, patientId } = req.params;
+    const medicalRecord = await doctorService.getPatientMedicalRecord(id, patientId);
+    return sendSuccess(res, 200, 'Patient medical record retrieved successfully', medicalRecord);
+  } catch (error) {
+    if (error.statusCode === 403 || error.message.includes('Access Denied')) {
+      return sendError(res, 403, error.message);
+    }
+    if (error.statusCode === 404 || error.message.includes('not found')) {
+      return sendError(res, 404, error.message);
+    }
+    if (error.message.includes('Invalid')) {
+      return sendError(res, 400, error.message);
+    }
+    return sendError(res, 500, 'Failed to retrieve patient medical record', error.message);
+  }
+};
+
 module.exports = {
   create: createDoctor,
   getAll: getAllDoctors,
   getById: getDoctorById,
   assignPatient,
+  getPatientMedicalRecord,
   update: updateDoctor,
   delete: deleteDoctor,
   createDoctor,

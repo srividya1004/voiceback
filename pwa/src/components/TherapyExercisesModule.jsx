@@ -46,6 +46,7 @@ import therapyService from '../services/therapyService';
 import authService from '../services/authService';
 
 export const TherapyExercisesModule = ({
+  patientId: propPatientId,
   onBackToDashboard,
   onOpenProfile,
   onLogout
@@ -57,9 +58,9 @@ export const TherapyExercisesModule = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const lastSpokenRef = useRef(null);
 
-  // Patient Session Data
+  // Patient Session Data - dynamically resolved
   const [session] = useState(() => authService.getActiveSession() || {});
-  const patientId = session.user?.id || session.patientId || '6a71fce81cb089a32ce1159d';
+  const patientId = propPatientId || (session?.role === 'patient' ? (session?.user?.profile?._id || session?.user?.id || session?.patientId) : null);
 
   // --- PERSISTENT UNLOCKED LEVELS (1 to 6) ---
   const [unlockedLevels, setUnlockedLevels] = useState(() => {

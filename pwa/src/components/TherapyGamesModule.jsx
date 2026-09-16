@@ -277,13 +277,212 @@ export const TherapyGamesModule = ({
   const [g2Popped, setG2Popped] = useState(false);
   const [g2Feedback, setG2Feedback] = useState(null);
 
-  // Game 3 State (Sentence Challenge — Requires Spoken Sentence)
-  const [g3SelectedTokens, setG3SelectedTokens] = useState([]);
-  const g3TargetSentence = 'I NEED WATER';
-  const [g3ReadyToSpeak, setG3ReadyToSpeak] = useState(false);
+  // Game 3 State (Sentence Challenge — Progressive 3-Level Bank)
+  const G3_LEVELS = [
+    {
+      level: 1, title: 'Basic Needs', titleKn: 'ಮೂಲಭೂತ ಅಗತ್ಯಗಳು',
+      sentences: [
+        { en: 'I NEED WATER', enCards: ['NEED', 'I', 'WATER'], kn: 'ನನಗೆ ನೀರು ಬೇಕು', knCards: ['ಬೇಕು', 'ನನಗೆ', 'ನೀರು'], translit: ['nanage neeru beku', 'nanage niru beku'] },
+        { en: 'I WANT FOOD', enCards: ['WANT', 'FOOD', 'I'], kn: 'ನನಗೆ ಊಟ ಬೇಕು', knCards: ['ಊಟ', 'ಬೇಕು', 'ನನಗೆ'], translit: ['nanage oota beku', 'nanage uta beku'] },
+        { en: 'I NEED HELP', enCards: ['HELP', 'I', 'NEED'], kn: 'ನನಗೆ ಸಹಾಯ ಬೇಕು', knCards: ['ಸಹಾಯ', 'ನನಗೆ', 'ಬೇಕು'], translit: ['nanage sahaya beku', 'nanage sahay beku'] },
+        { en: 'I WANT REST', enCards: ['REST', 'I', 'WANT'], kn: 'ನನಗೆ ವಿಶ್ರಾಂತಿ ಬೇಕು', knCards: ['ವಿಶ್ರಾಂತಿ', 'ಬೇಕು', 'ನನಗೆ'], translit: ['nanage vishranti beku', 'nanage vishranthi beku'] },
+      ],
+    },
+    {
+      level: 2, title: 'Daily Activities', titleKn: 'ದೈನಂದಿನ ಚಟುವಟಿಕೆಗಳು',
+      sentences: [
+        { en: 'I WANT TO SLEEP', enCards: ['TO', 'SLEEP', 'I', 'WANT'], kn: 'ನನಗೆ ನಿದ್ರೆ ಬೇಕು', knCards: ['ನಿದ್ರೆ', 'ಬೇಕು', 'ನನಗೆ'], translit: ['nanage nidre beku', 'nanage nidra beku'] },
+        { en: 'I WANT TO WALK', enCards: ['WALK', 'I', 'TO', 'WANT'], kn: 'ನನಗೆ ನಡಿಗೆ ಬೇಕು', knCards: ['ನಡಿಗೆ', 'ನನಗೆ', 'ಬೇಕು'], translit: ['nanage nadige beku'] },
+        { en: 'I NEED MY MEDICINE', enCards: ['MY', 'MEDICINE', 'I', 'NEED'], kn: 'ನನಗೆ ನನ್ನ ಔಷಧಿ ಬೇಕು', knCards: ['ನನ್ನ', 'ಔಷಧಿ', 'ಬೇಕು', 'ನನಗೆ'], translit: ['nanage nanna aushadhi beku', 'nanage nanna aushadi beku'] },
+        { en: 'I WANT TO GO HOME', enCards: ['GO', 'HOME', 'I', 'WANT', 'TO'], kn: 'ನಾನು ಮನೆಗೆ ಹೋಗಬೇಕು', knCards: ['ಮನೆಗೆ', 'ನಾನು', 'ಹೋಗಬೇಕು'], translit: ['naanu manege hogabeku', 'nanu manege hogabeku'] },
+      ],
+    },
+    {
+      level: 3, title: 'Communication & Comfort', titleKn: 'ಸಂವಹನ ಮತ್ತು ಸೌಕರ್ಯ',
+      sentences: [
+        { en: 'PLEASE HELP ME', enCards: ['HELP', 'PLEASE', 'ME'], kn: 'ದಯವಿಟ್ಟು ನನಗೆ ಸಹಾಯ ಮಾಡಿ', knCards: ['ನನಗೆ', 'ದಯವಿಟ್ಟು', 'ಮಾಡಿ', 'ಸಹಾಯ'], translit: ['dayavittu nanage sahaya madi', 'dayavittu nanage sahay madi'] },
+        { en: 'I HAVE PAIN', enCards: ['PAIN', 'I', 'HAVE'], kn: 'ನನಗೆ ನೋವು ಇದೆ', knCards: ['ಇದೆ', 'ನನಗೆ', 'ನೋವು'], translit: ['nanage novu ide', 'nanage noovu ide'] },
+        { en: 'I WANT TO TALK', enCards: ['TALK', 'TO', 'WANT', 'I'], kn: 'ನನಗೆ ಮಾತನಾಡಲು ಇಷ್ಟ', knCards: ['ಇಷ್ಟ', 'ಮಾತನಾಡಲು', 'ನನಗೆ'], translit: ['nanage matanadalu ishta', 'nanage mathanadalu ishta'] },
+        { en: 'PLEASE GIVE ME WATER', enCards: ['GIVE', 'PLEASE', 'WATER', 'ME'], kn: 'ದಯವಿಟ್ಟು ನನಗೆ ನೀರು ಕೊಡಿ', knCards: ['ನೀರು', 'ಕೊಡಿ', 'ನನಗೆ', 'ದಯವಿಟ್ಟು'], translit: ['dayavittu nanage neeru kodi', 'dayavittu nanage niru kodi'] },
+      ],
+    },
+  ];
+  const [g3Level, setG3Level] = useState(1);
+  const [g3SentenceIndex, setG3SentenceIndex] = useState(0);
+  const [g3Language, setG3Language] = useState('en');
+  const [g3SelectedCards, setG3SelectedCards] = useState([]);
+  const [g3LevelCompleted, setG3LevelCompleted] = useState(false);
+  const [g3Feedback, setG3Feedback] = useState(null);
 
-  // Game 4 State (Scenario Response)
-  const [g4SelectedChoice, setG4SelectedChoice] = useState(null);
+  // Game 4 State (Scenario Response — Real-Life Clinical Scenarios with Video)
+  const G4_SCENARIOS = [
+    {
+      id: 'scen_water',
+      category: 'water',
+      icon: '💧',
+      color: '#0284C7',
+      videoUrl: '/videos/scenarios/scenario_water.mp4',
+      en: {
+        title: 'Asking for Water',
+        situation: 'You have been exercising and your throat feels very dry. You notice a water bottle on the table.',
+        question: 'What would you say in this situation?',
+        guidance: 'I need water',
+        modelSpeech: 'I need water',
+        acceptable: ['i need water', 'need water', 'please give me water', 'give me water', 'i want water', 'want water', 'water please', 'can i have water'],
+        keywords: ['water', 'drink', 'thirsty'],
+      },
+      kn: {
+        title: 'ನೀರು ಕೇಳುವುದು',
+        situation: 'ನೀವು ವ್ಯಾಯಾಮ ಮಾಡಿದ್ದೀರಿ ಮತ್ತು ನಿಮ್ಮ ಗಂಟಲು ತುಂಬಾ ಒಣಗಿದೆ. ಮೇಜಿನ ಮೇಲೆ ನೀರಿನ ಬಾಟಲ್ ಇದೆ.',
+        question: 'ಈ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ನೀವು ಏನು ಹೇಳುತ್ತೀರಿ?',
+        guidance: 'ನನಗೆ ನೀರು ಬೇಕು',
+        modelSpeech: 'ನನಗೆ ನೀರು ಬೇಕು',
+        acceptable: ['ನನಗೆ ನೀರು ಬೇಕು', 'ನೀರು ಬೇಕು', 'ದಯವಿಟ್ಟು ನೀರು ಕೊಡಿ', 'ನೀರು ಕೊಡಿ', 'ದಯವಿಟ್ಟು ನನಗೆ ನೀರು ಕೊಡಿ', 'ನನಗೆ ನೀರು ಕೊಡಿ'],
+        translit: ['nanage neeru beku', 'neeru beku', 'dayavittu neeru kodi', 'neeru kodi', 'nanage niru beku', 'niru beku', 'dayavittu niru kodi'],
+        keywords: ['ನೀರು', 'ಕುಡಿಯಲು'],
+      },
+    },
+    {
+      id: 'scen_help',
+      category: 'caregiver',
+      icon: '🚨',
+      color: '#DC2626',
+      videoUrl: '/videos/scenarios/scenario_help.mp4',
+      en: {
+        title: 'Asking for Help After Falling',
+        situation: 'You slipped on the floor and your walking stick fell down. You cannot get up alone.',
+        question: 'What would you say in this situation?',
+        guidance: 'Please help me',
+        modelSpeech: 'Please help me',
+        acceptable: ['please help me', 'help me', 'i need help', 'help please', 'help me up', 'please call someone', 'call for help'],
+        keywords: ['help', 'assist'],
+      },
+      kn: {
+        title: 'ಬಿದ್ದ ನಂತರ ಸಹಾಯ ಕೇಳುವುದು',
+        situation: 'ನೀವು ನೆಲದ ಮೇಲೆ ಜಾರಿ ಬಿದ್ದಿದ್ದೀರಿ ಮತ್ತು ನಿಮ್ಮ ಊರುಗೋಲು ಕೆಳಗೆ ಬಿದ್ದಿದೆ. ಒಬ್ಬರೇ ಏಳಲು ಸಾಧ್ಯವಾಗುತ್ತಿಲ್ಲ.',
+        question: 'ಈ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ನೀವು ಏನು ಹೇಳುತ್ತೀರಿ?',
+        guidance: 'ದಯವಿಟ್ಟು ನನಗೆ ಸಹಾಯ ಮಾಡಿ',
+        modelSpeech: 'ದಯವಿಟ್ಟು ನನಗೆ ಸಹಾಯ ಮಾಡಿ',
+        acceptable: ['ದಯವಿಟ್ಟು ನನಗೆ ಸಹಾಯ ಮಾಡಿ', 'ಸಹಾಯ ಮಾಡಿ', 'ನನಗೆ ಸಹಾಯ ಬೇಕು', 'ಸಹಾಯ ಬೇಕು', 'ದಯವಿಟ್ಟು ಸಹಾಯ ಮಾಡಿ'],
+        translit: ['dayavittu nanage sahaya madi', 'sahaya madi', 'nanage sahaya beku', 'sahaya beku', 'dayavittu sahaya madi'],
+        keywords: ['ಸಹಾಯ'],
+      },
+    },
+    {
+      id: 'scen_food',
+      category: 'food',
+      icon: '🍲',
+      color: '#EAB308',
+      videoUrl: '/videos/scenarios/scenario_food.mp4',
+      en: {
+        title: 'Asking for Food',
+        situation: 'It is lunchtime and your stomach is rumbling. You smell food from the dining room.',
+        question: 'What would you say in this situation?',
+        guidance: 'I want food',
+        modelSpeech: 'I want food',
+        acceptable: ['i want food', 'i need food', 'i am hungry', 'give me food', 'food please', 'please give me lunch', 'time to eat'],
+        keywords: ['food', 'hungry', 'lunch', 'eat'],
+      },
+      kn: {
+        title: 'ಊಟ ಕೇಳುವುದು',
+        situation: 'ಮಧ್ಯಾಹ್ನದ ಊಟದ ಸಮಯವಾಗಿದೆ ಮತ್ತು ನಿಮಗೆ ತುಂಬಾ ಹಸಿವಾಗುತ್ತಿದೆ. ಊಟದ ಕೋಣೆಯಿಂದ ಊಟದ ಪರಿಮಳ ಬರುತ್ತಿದೆ.',
+        question: 'ಈ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ನೀವು ಏನು ಹೇಳುತ್ತೀರಿ?',
+        guidance: 'ನನಗೆ ಊಟ ಬೇಕು',
+        modelSpeech: 'ನನಗೆ ಊಟ ಬೇಕು',
+        acceptable: ['ನನಗೆ ಊಟ ಬೇಕು', 'ಊಟ ಬೇಕು', 'ನನಗೆ ಹಸಿವಾಗಿದೆ', 'ಹಸಿವಾಗಿದೆ', 'ದಯವಿಟ್ಟು ಊಟ ಕೊಡಿ', 'ಊಟ ಕೊಡಿ'],
+        translit: ['nanage oota beku', 'oota beku', 'nanage uta beku', 'uta beku', 'nanage hasivagide', 'dayavittu oota kodi'],
+        keywords: ['ಊಟ', 'ಹಸಿವು'],
+      },
+    },
+    {
+      id: 'scen_pain',
+      category: 'pain',
+      icon: '🩺',
+      color: '#DB2777',
+      videoUrl: '/videos/scenarios/scenario_pain.mp4',
+      en: {
+        title: 'Expressing Pain',
+        situation: 'You feel a sharp discomfort in your knee and walking is difficult right now.',
+        question: 'What would you say in this situation?',
+        guidance: 'I have pain',
+        modelSpeech: 'I have pain',
+        acceptable: ['i have pain', 'pain here', 'it hurts', 'i feel pain', 'my knee hurts', 'please call doctor', 'call doctor', 'i have pain in my knee'],
+        keywords: ['pain', 'hurt', 'discomfort'],
+      },
+      kn: {
+        title: 'ನೋವನ್ನು ವ್ಯಕ್ತಪಡಿಸುವುದು',
+        situation: 'ನಿಮ್ಮ ಮೊಣಕಾಲಿನಲ್ಲಿ ತೀವ್ರ ನೋವು ಕಾಣಿಸಿಕೊಂಡಿದೆ ಮತ್ತು ಈಗ ನಡೆಯಲು ಕಷ್ಟವಾಗುತ್ತಿದೆ.',
+        question: 'ಈ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ನೀವು ಏನು ಹೇಳುತ್ತೀರಿ?',
+        guidance: 'ನನಗೆ ನೋವು ಇದೆ',
+        modelSpeech: 'ನನಗೆ ನೋವು ಇದೆ',
+        acceptable: ['ನನಗೆ ನೋವು ಇದೆ', 'ನೋವು ಇದೆ', 'ನನಗೆ ನೋವಾಗುತ್ತಿದೆ', 'ನೋವಾಗುತ್ತಿದೆ', 'ದಯವಿಟ್ಟು ವೈದ್ಯರನ್ನು ಕರೆಯಿರಿ', 'ವೈದ್ಯರನ್ನು ಕರೆಯಿರಿ'],
+        translit: ['nanage novu ide', 'novu ide', 'nanage novaguttide', 'dayavittu vaidyarannu kareyiri'],
+        keywords: ['ನೋವು'],
+      },
+    },
+    {
+      id: 'scen_tired',
+      category: 'tired',
+      icon: '🛌',
+      color: '#6366F1',
+      videoUrl: '/videos/scenarios/scenario_tired.mp4',
+      en: {
+        title: 'Asking for Rest',
+        situation: 'You finished walking exercises and your eyelids feel heavy. You want to lie down.',
+        question: 'What would you say in this situation?',
+        guidance: 'I am tired, I want to rest',
+        modelSpeech: 'I am tired, I want to rest',
+        acceptable: ['i am tired', 'i want to rest', 'i want to sleep', 'tired', 'i need rest', 'let me rest', 'i want sleep'],
+        keywords: ['tired', 'rest', 'sleep'],
+      },
+      kn: {
+        title: 'ವಿಶ್ರಾಂತಿ ಕೇಳುವುದು',
+        situation: 'ನೀವು ನಡಿಗೆ ವ್ಯಾಯಾಮವನ್ನು ಮುಗಿಸಿದ್ದೀರಿ ಮತ್ತು ಕಣ್ಣುಗಳು ಭಾರವಾಗಿವೆ. ನೀವು ಮಲಗಲು ಬಯಸುತ್ತೀರಿ.',
+        question: 'ಈ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ನೀವು ಏನು ಹೇಳುತ್ತೀರಿ?',
+        guidance: 'ನನಗೆ ಆಯಾಸವಾಗಿದೆ, ವಿಶ್ರಾಂತಿ ಬೇಕು',
+        modelSpeech: 'ನನಗೆ ಆಯಾಸವಾಗಿದೆ, ವಿಶ್ರಾಂತಿ ಬೇಕು',
+        acceptable: ['ನನಗೆ ಆಯಾಸವಾಗಿದೆ', 'ಆಯಾಸವಾಗಿದೆ', 'ನನಗೆ ವಿಶ್ರಾಂತಿ ಬೇಕು', 'ವಿಶ್ರಾಂತಿ ಬೇಕು', 'ನನಗೆ ನಿದ್ರೆ ಬೇಕು', 'ನಿದ್ರೆ ಬೇಕು'],
+        translit: ['nanage ayasavagide', 'nanage vishranti beku', 'vishranti beku', 'nanage nidre beku', 'nidre beku'],
+        keywords: ['ಆಯಾಸ', 'ವಿಶ್ರಾಂತಿ', 'ನಿದ್ರೆ'],
+      },
+    },
+    {
+      id: 'scen_medicine',
+      category: 'medicine',
+      icon: '💊',
+      color: '#10B981',
+      videoUrl: '/videos/scenarios/scenario_medicine.mp4',
+      en: {
+        title: 'Asking for Medicine',
+        situation: 'It is 8 PM and the nurse reminds you it is time for your evening tablet on the shelf.',
+        question: 'What would you say in this situation?',
+        guidance: 'I need my medicine',
+        modelSpeech: 'I need my medicine',
+        acceptable: ['i need my medicine', 'need medicine', 'please give medicine', 'give me my medicine', 'i want my pills', 'medicine please', 'tablet please'],
+        keywords: ['medicine', 'tablet', 'pill'],
+      },
+      kn: {
+        title: 'ಔಷಧಿ ಕೇಳುವುದು',
+        situation: 'ರಾತ್ರಿ 8 ಗಂಟೆಯಾಗಿದೆ ಮತ್ತು ಕಪಾಟಿನಲ್ಲಿರುವ ನಿಮ್ಮ ಸಂಜೆಯ ಮಾತ್ರೆ ತೆಗೆದುಕೊಳ್ಳುವ ಸಮಯವಾಗಿದೆ.',
+        question: 'ಈ ಪರಿಸ್ಥಿತಿಯಲ್ಲಿ ನೀವು ಏನು ಹೇಳುತ್ತೀರಿ?',
+        guidance: 'ನನಗೆ ನನ್ನ ಔಷಧಿ ಬೇಕು',
+        modelSpeech: 'ನನಗೆ ನನ್ನ ಔಷಧಿ ಬೇಕು',
+        acceptable: ['ನನಗೆ ನನ್ನ ಔಷಧಿ ಬೇಕು', 'ಔಷಧಿ ಬೇಕು', 'ದಯವಿಟ್ಟು ಔಷಧಿ ಕೊಡಿ', 'ಔಷಧಿ ಕೊಡಿ', 'ಮಾತ್ರೆ ಕೊಡಿ', 'ನನಗೆ ಮಾತ್ರೆ ಬೇಕು'],
+        translit: ['nanage nanna aushadhi beku', 'aushadhi beku', 'dayavittu aushadhi kodi', 'matre kodi', 'nanage matre beku'],
+        keywords: ['ಔಷಧಿ', 'ಮಾತ್ರೆ'],
+      },
+    },
+  ];
+  const [g4ScenarioIndex, setG4ScenarioIndex] = useState(0);
+  const [g4Language, setG4Language] = useState('en');
+  const [g4Feedback, setG4Feedback] = useState(null);
+  const [g4Completed, setG4Completed] = useState(false);
+  const g4VideoRef = useRef(null);
+  const [g4VideoPlaying, setG4VideoPlaying] = useState(false);
+  const [g4VideoTime, setG4VideoTime] = useState(0);
+  const [g4VideoDuration, setG4VideoDuration] = useState(0);
+  const [g4VideoAvailable, setG4VideoAvailable] = useState(false);
+  const [g4VideoLoading, setG4VideoLoading] = useState(false);
 
   // Active Session Summary
   const [lastCompletedSummary, setLastCompletedSummary] = useState(null);
@@ -398,62 +597,228 @@ export const TherapyGamesModule = ({
     }
   };
 
-  // Launch Game 3 (Sentence Challenge — Requires Spoken Sentence)
+  // Launch Game 3 (Sentence Challenge — Progressive Levels)
   const handleStartGame3 = () => {
     setActiveGameId('game3');
-    setG3SelectedTokens([]);
-    setG3ReadyToSpeak(false);
+    setG3Level(1);
+    setG3SentenceIndex(0);
+    setG3SelectedCards([]);
+    setG3LevelCompleted(false);
+    setG3Feedback(null);
     setCurrentStep('play_game');
   };
 
-  const handleG3AddToken = (token) => {
-    const nextTokens = [...g3SelectedTokens, token];
-    setG3SelectedTokens(nextTokens);
+  const currentG3Level = G3_LEVELS.find((l) => l.level === g3Level) || G3_LEVELS[0];
+  const currentG3Item = currentG3Level.sentences[g3SentenceIndex] || currentG3Level.sentences[0];
+  const currentG3Target = g3Language === 'kn' ? currentG3Item.kn : currentG3Item.en;
+  const currentG3CardPool = (g3Language === 'kn' ? currentG3Item.knCards : currentG3Item.enCards).map((text, idx) => ({ id: `${idx}-${text}`, text }));
+  const g3AvailableCards = currentG3CardPool.filter((c) => !g3SelectedCards.some((sc) => sc.id === c.id));
+  const g3ArrangedSentence = g3SelectedCards.map((c) => c.text).join(' ');
+  const isG3AllCardsPlaced = g3SelectedCards.length === currentG3CardPool.length && currentG3CardPool.length > 0;
 
-    if (nextTokens.join(' ') === g3TargetSentence) {
-      setG3ReadyToSpeak(true);
-    }
+  const handleG3AddCard = (card) => {
+    setG3SelectedCards((prev) => [...prev, card]);
+    setG3Feedback(null);
   };
 
-  const handleG3SentenceSpoken = (rawTranscript) => {
+  const handleG3RemoveCard = (index) => {
+    setG3SelectedCards((prev) => prev.filter((_, i) => i !== index));
+    setG3Feedback(null);
+  };
+
+  const handleG3SentenceSpoken = async (rawTranscript) => {
     const res = validationService.validateAnswer(rawTranscript, {
-      target: g3TargetSentence,
-      keywords: ['i', 'need', 'water'],
+      target: currentG3Target,
+      arrangedSentence: g3ArrangedSentence,
+      language: g3Language,
+      acceptableTranscripts: [currentG3Target],
+      translitVariants: g3Language === 'kn' ? (currentG3Item.translit || []) : [],
       mode: 'sentence',
     });
 
     if (res.isCorrect) {
-      if (speak) speak(t('greatJob'));
-      setTimeout(() => saveGameProgress('Sentence Challenge', 1, 100), 1200);
+      setG3Feedback({ success: true, text: g3Language === 'kn' ? '✓ ಅತ್ಯುತ್ತಮ! ವಾಕ್ಯ ಸರಿಯಾಗಿದೆ.' : '✓ Outstanding! Correct sentence.' });
+      if (session.user?.id) {
+        try {
+          await voiceService.playSynthesizedAudio({
+            text: currentG3Target,
+            patientId: session.user.id,
+            language: g3Language,
+            gender: session.user.gender,
+          });
+        } catch {
+          if (speak) speak(currentG3Target);
+        }
+      } else if (speak) {
+        speak(currentG3Target);
+      }
+
+      setTimeout(() => {
+        if (g3SentenceIndex + 1 < currentG3Level.sentences.length) {
+          setG3SentenceIndex((prev) => prev + 1);
+          setG3SelectedCards([]);
+          setG3Feedback(null);
+        } else {
+          setG3LevelCompleted(true);
+          setG3Feedback(null);
+          if (g3Level >= G3_LEVELS.length) {
+            handleGameComplete('game3', 100);
+          }
+        }
+      }, 1400);
     } else {
-      if (speak) speak(t('didNotUnderstand'));
+      setG3Feedback({ success: false, text: `❌ ${res.reason || (g3Language === 'kn' ? 'ಮತ್ತೊಮ್ಮೆ ಪ್ರಯತ್ನಿಸಿ' : 'Try again!')}` });
+      if (speak) speak(g3Language === 'kn' ? 'ಮತ್ತೊಮ್ಮೆ ಪ್ರಯತ್ನಿಸಿ' : 'Try again');
     }
   };
 
-  // Launch Game 4 (Scenario Response — Enforced Validation)
+  const handleG3NextLevel = () => {
+    if (g3Level < G3_LEVELS.length) {
+      setG3Level((prev) => prev + 1);
+      setG3SentenceIndex(0);
+      setG3SelectedCards([]);
+      setG3LevelCompleted(false);
+      setG3Feedback(null);
+    }
+  };
+
+  const handleG3RestartLevel = () => {
+    setG3SentenceIndex(0);
+    setG3SelectedCards([]);
+    setG3LevelCompleted(false);
+    setG3Feedback(null);
+  };
+
+  // Launch Game 4 (Scenario Response — Real-Life Clinical Scenarios with Video / Text Fallback)
   const handleStartGame4 = () => {
     setActiveGameId('game4');
-    setG4SelectedChoice(null);
+    setG4ScenarioIndex(0);
+    setG4Feedback(null);
+    setG4Completed(false);
+    setG4VideoPlaying(false);
+    setG4VideoTime(0);
+    setG4VideoDuration(0);
+    setG4VideoAvailable(false);
+    setG4VideoLoading(true);
     setCurrentStep('play_game');
   };
 
-  const handleG4SelectChoice = (choice) => {
-    setG4SelectedChoice(choice);
+  const currentG4Item = G4_SCENARIOS[g4ScenarioIndex] || G4_SCENARIOS[0];
+  const currentG4Content = g4Language === 'kn' ? currentG4Item.kn : currentG4Item.en;
+
+  useEffect(() => {
+    if (activeGameId === 'game4') {
+      setG4VideoPlaying(false);
+      setG4VideoTime(0);
+      setG4VideoDuration(0);
+      setG4VideoAvailable(false);
+      setG4VideoLoading(true);
+      if (g4VideoRef.current) {
+        g4VideoRef.current.currentTime = 0;
+        g4VideoRef.current.pause();
+        g4VideoRef.current.load();
+      }
+    }
+  }, [g4ScenarioIndex, activeGameId]);
+
+  const handleG4PlayPause = () => {
+    if (!g4VideoRef.current) return;
+    if (g4VideoPlaying) {
+      g4VideoRef.current.pause();
+      setG4VideoPlaying(false);
+    } else {
+      g4VideoRef.current.play().then(() => {
+        setG4VideoPlaying(true);
+      }).catch(() => {
+        setG4VideoPlaying(false);
+      });
+    }
   };
 
-  const handleG4ScenarioSpoken = (rawTranscript) => {
+  const handleG4ReplayVideo = () => {
+    if (!g4VideoRef.current) return;
+    g4VideoRef.current.currentTime = 0;
+    setG4VideoTime(0);
+    g4VideoRef.current.play().then(() => {
+      setG4VideoPlaying(true);
+    }).catch(() => {
+      setG4VideoPlaying(false);
+    });
+  };
+
+  const handleG4SeekVideo = (e) => {
+    const newTime = parseFloat(e.target.value);
+    setG4VideoTime(newTime);
+    if (g4VideoRef.current) {
+      g4VideoRef.current.currentTime = newTime;
+    }
+  };
+
+  const handleG4ScenarioSpoken = async (rawTranscript) => {
+    if (g4VideoRef.current && g4VideoPlaying) {
+      g4VideoRef.current.pause();
+      setG4VideoPlaying(false);
+    }
+
     const res = validationService.validateAnswer(rawTranscript, {
-      category: 'tired',
-      target: 'I AM TIRED',
+      category: currentG4Item.category,
+      target: currentG4Content.modelSpeech,
+      language: g4Language,
+      acceptableAnswers: currentG4Content.acceptable,
+      translitVariants: g4Language === 'kn' ? (currentG4Content.translit || []) : [],
+      keywords: currentG4Content.keywords,
       mode: 'scenario',
     });
 
     if (res.isCorrect) {
-      if (speak) speak(t('greatJob'));
-      setTimeout(() => saveGameProgress('Scenario Response', 1, 100), 1200);
+      const successText = g4Language === 'kn'
+        ? `✓ ಅತ್ಯುತ್ತಮ ಪ್ರತಿಕ್ರಿಯೆ! ಮಾದರಿ ವಾಕ್ಯ: "${currentG4Content.modelSpeech}"`
+        : `✓ Great response! Model answer: "${currentG4Content.modelSpeech}"`;
+      setG4Feedback({ success: true, text: successText });
+
+      if (session.user?.id) {
+        try {
+          await voiceService.playSynthesizedAudio({
+            text: currentG4Content.modelSpeech,
+            patientId: session.user.id,
+            language: g4Language,
+            gender: session.user.gender,
+          });
+        } catch {
+          if (speak) speak(currentG4Content.modelSpeech);
+        }
+      } else if (speak) {
+        speak(currentG4Content.modelSpeech);
+      }
+
+      setTimeout(() => {
+        if (g4ScenarioIndex + 1 < G4_SCENARIOS.length) {
+          setG4ScenarioIndex((prev) => prev + 1);
+          setG4Feedback(null);
+        } else {
+          setG4Completed(true);
+          setG4Feedback(null);
+          saveGameProgress('Scenario Response', G4_SCENARIOS.length, 100);
+        }
+      }, 1800);
     } else {
-      if (speak) speak(t('didNotUnderstand'));
+      const failText = g4Language === 'kn'
+        ? `❌ ${res.reason || 'ಪ್ರತಿಕ್ರಿಯೆ ಸರಿಹೊಂದಿಲ್ಲ. ಮತ್ತೊಮ್ಮೆ ಪ್ರಯತ್ನಿಸಿ.'}`
+        : `❌ ${res.reason || 'Response does not match the situation. Please try again!'}`;
+      setG4Feedback({ success: false, text: failText });
+      if (speak) speak(g4Language === 'kn' ? 'ಮತ್ತೊಮ್ಮೆ ಪ್ರಯತ್ನಿಸಿ' : 'Try again');
     }
+  };
+
+  const handleG4Restart = () => {
+    setG4ScenarioIndex(0);
+    setG4Feedback(null);
+    setG4Completed(false);
+    setG4VideoPlaying(false);
+    setG4VideoTime(0);
+    setG4VideoDuration(0);
+    setG4VideoAvailable(false);
+    setG4VideoLoading(true);
   };
 
   const saveGameProgress = async (gameTitle, count, accuracy) => {
@@ -724,92 +1089,475 @@ export const TherapyGamesModule = ({
                 </div>
               )}
 
-              {/* GAME 3: SENTENCE CHALLENGE (REQUIRES SPOKEN SENTENCE) */}
+              {/* GAME 3: SENTENCE CHALLENGE (PROGRESSIVE 3-LEVEL BANK) */}
               {activeGameId === 'game3' && (
-                <div className="profile-section-card" style={{ width: '100%', padding: '1.5rem', textAlign: 'center', gap: '1.2rem' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#16A34A' }}>
-                    Construct & speak sentence: "I NEED WATER"
-                  </span>
-
-                  {/* DISPLAY SLOTS */}
-                  <div style={{ padding: '1.2rem', borderRadius: 16, background: 'rgba(22, 163, 74, 0.08)', border: '2px dashed #16A34A', minHeight: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.65rem' }}>
-                    {g3SelectedTokens.length > 0 ? (
-                      g3SelectedTokens.map((tok, i) => (
-                        <span key={i} style={{ padding: '0.5rem 0.85rem', borderRadius: 10, background: '#16A34A', color: '#FFF', fontWeight: 800, fontSize: '1.1rem' }}>
-                          {tok}
-                        </span>
-                      ))
-                    ) : (
-                      <span style={{ color: 'var(--color-brand-tagline)', fontWeight: 600 }}>Tap cards in order: NEED, I, WATER</span>
-                    )}
-                  </div>
-
-                  {/* TOKEN CHOICES */}
-                  <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', width: '100%' }}>
-                    {['NEED', 'I', 'WATER'].map((tok) => (
-                      <button
-                        key={tok}
-                        type="button"
-                        onClick={() => handleG3AddToken(tok)}
-                        style={{ padding: '0.85rem 1.25rem', borderRadius: 14, border: '2px solid var(--border-color)', background: 'var(--color-bg-card)', fontWeight: 800, fontSize: '1.1rem', cursor: 'pointer' }}
-                      >
-                        {tok}
-                      </button>
-                    ))}
-                  </div>
-
-                  {g3ReadyToSpeak && (
-                    <div style={{ marginTop: '0.5rem', width: '100%' }}>
-                      <SpeechInputTrigger
-                        onTranscriptReceived={handleG3SentenceSpoken}
-                        targetIntent="I NEED WATER"
-                        buttonLabel={`🎙️ Speak Completed Sentence: "I NEED WATER"`}
-                      />
+                <div className="profile-section-card" style={{ width: '100%', padding: '1.5rem', textAlign: 'center', gap: '1.1rem' }}>
+                  {/* HEADER WITH LANGUAGE TOGGLE & LEVEL STATUS */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ textAlign: 'left' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#16A34A', textTransform: 'uppercase' }}>
+                        Level {g3Level}: {g3Language === 'kn' ? currentG3Level.titleKn : currentG3Level.title}
+                      </span>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-brand-tagline)' }}>
+                        Sentence {g3SentenceIndex + 1} of {currentG3Level.sentences.length}
+                      </div>
                     </div>
+                    <div style={{ display: 'inline-flex', background: 'var(--color-bg-card)', border: '1px solid var(--border-color)', borderRadius: 10, padding: 3, gap: 4 }}>
+                      <button
+                        type="button"
+                        onClick={() => { setG3Language('en'); setG3SelectedCards([]); setG3Feedback(null); }}
+                        style={{ padding: '0.35rem 0.75rem', borderRadius: 7, border: 'none', background: g3Language === 'en' ? '#16A34A' : 'transparent', color: g3Language === 'en' ? '#FFF' : 'inherit', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}
+                      >
+                        English
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setG3Language('kn'); setG3SelectedCards([]); setG3Feedback(null); }}
+                        style={{ padding: '0.35rem 0.75rem', borderRadius: 7, border: 'none', background: g3Language === 'kn' ? '#16A34A' : 'transparent', color: g3Language === 'kn' ? '#FFF' : 'inherit', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}
+                      >
+                        ಕನ್ನಡ
+                      </button>
+                    </div>
+                  </div>
+
+                  {g3LevelCompleted ? (
+                    /* LEVEL COMPLETED SCREEN */
+                    <div style={{ padding: '1.8rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                      <span style={{ fontSize: '2.5rem' }}>{g3Level >= G3_LEVELS.length ? '🏆' : '🎉'}</span>
+                      <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900, color: 'var(--color-brand-title)' }}>
+                        {g3Level >= G3_LEVELS.length
+                          ? (g3Language === 'kn' ? 'ಎಲ್ಲಾ ಹಂತಗಳು ಪೂರ್ಣಗೊಂಡಿವೆ! ಅಭಿನಂದನೆಗಳು!' : 'All Levels Completed! Outstanding achievement!')
+                          : (g3Language === 'kn' ? `ಹಂತ ${g3Level} ಯಶಸ್ವಿಯಾಗಿ ಪೂರ್ಣಗೊಂಡಿದೆ!` : `Level ${g3Level} Completed! Great work!`)}
+                      </h3>
+                      <p style={{ margin: 0, color: 'var(--color-brand-tagline)', fontSize: '0.9rem', maxWidth: 440 }}>
+                        {g3Level >= G3_LEVELS.length
+                          ? (g3Language === 'kn' ? 'ನೀವು ಎಲ್ಲಾ 3 ಹಂತಗಳ ವಾಕ್ಯಗಳನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಮುಗಿಸಿದ್ದೀರಿ.' : "You have mastered all 3 sentence challenge levels.")
+                          : (g3Language === 'kn' ? `ನೀವು ಹಂತ ${g3Level + 1} ಕ್ಕೆ ಹೋಗಲು ಸಿದ್ಧರಿದ್ದೀರಿ.` : `You are ready for Level ${g3Level + 1}.`)}
+                      </p>
+                      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        {g3Level < G3_LEVELS.length ? (
+                          <button
+                            type="button"
+                            onClick={handleG3NextLevel}
+                            style={{ padding: '0.75rem 1.6rem', borderRadius: 12, border: 'none', background: '#16A34A', color: '#FFF', fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(22,163,74,0.3)' }}
+                          >
+                            {g3Language === 'kn' ? `ಹಂತ ${g3Level + 1} ಆರಂಭಿಸಿ ➔` : `Next Level (Level ${g3Level + 1}) ➔`}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleStartGame3}
+                            style={{ padding: '0.75rem 1.6rem', borderRadius: 12, border: 'none', background: '#16A34A', color: '#FFF', fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer' }}
+                          >
+                            {g3Language === 'kn' ? 'ಮೊದಲಿಂದ ಪ್ರಾರಂಭಿಸಿ' : 'Play Again'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleG3RestartLevel}
+                          style={{ padding: '0.75rem 1.2rem', borderRadius: 12, border: '1px solid var(--border-color)', background: 'var(--color-bg-card)', color: 'inherit', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer' }}
+                        >
+                          {g3Language === 'kn' ? 'ಮತ್ತೆ ಆಡಿ' : 'Replay Level'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ACTIVE SINGLE SENTENCE CHALLENGE */
+                    <>
+                      <div style={{ padding: '0.85rem 1.2rem', borderRadius: 14, background: 'rgba(22, 163, 74, 0.08)', border: '1.5px solid #16A34A', width: '100%' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#16A34A', textTransform: 'uppercase' }}>
+                          {g3Language === 'kn' ? 'ಗುರಿ ವಾಕ್ಯ' : 'Target Sentence'}
+                        </span>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: '0.2rem 0 0 0' }}>
+                          "{currentG3Target}"
+                        </h3>
+                      </div>
+
+                      {/* ANSWER AREA (TAP PLACED CARD TO REMOVE) */}
+                      <div style={{ width: '100%', textAlign: 'left' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-brand-tagline)', marginLeft: 4 }}>
+                          {g3Language === 'kn' ? 'ಜೋಡಿಸಲಾದ ವಾಕ್ಯ (ತೆಗೆದುಹಾಕಲು ಕ್ಲಿಕ್ ಮಾಡಿ):' : 'Arranged sentence (tap a card to remove):'}
+                        </span>
+                        <div style={{ padding: '0.9rem', borderRadius: 14, background: 'rgba(22, 163, 74, 0.05)', border: '2px dashed #16A34A', minHeight: 62, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '0.3rem', width: '100%' }}>
+                          {g3SelectedCards.length > 0 ? (
+                            g3SelectedCards.map((card, i) => (
+                              <button
+                                key={`${card.id}-${i}`}
+                                type="button"
+                                onClick={() => handleG3RemoveCard(i)}
+                                title={g3Language === 'kn' ? 'ತೆಗೆದುಹಾಕಲು ಕ್ಲಿಕ್ ಮಾಡಿ' : 'Tap to remove'}
+                                style={{ padding: '0.45rem 0.85rem', borderRadius: 10, background: '#16A34A', color: '#FFF', fontWeight: 800, fontSize: '1.05rem', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                              >
+                                <span>{card.text}</span>
+                                <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>✕</span>
+                              </button>
+                            ))
+                          ) : (
+                            <span style={{ color: 'var(--color-brand-tagline)', fontWeight: 600, fontSize: '0.88rem' }}>
+                              {g3Language === 'kn' ? 'ಕೆಳಗಿನ ಕಾರ್ಡ್‌ಗಳನ್ನು ಸರಿಯಾದ ಕ್ರಮದಲ್ಲಿ ಆಯ್ಕೆ ಮಾಡಿ' : 'Tap cards below to arrange into sentence'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* AVAILABLE WORD CARDS */}
+                      <div style={{ width: '100%', textAlign: 'left' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-brand-tagline)', marginLeft: 4 }}>
+                          {g3Language === 'kn' ? 'ಲಭ್ಯವಿರುವ ಕಾರ್ಡ್‌ಗಳು:' : 'Available cards (tap to add):'}
+                        </span>
+                        <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'center', flexWrap: 'wrap', width: '100%', minHeight: 44, marginTop: '0.3rem' }}>
+                          {g3AvailableCards.length > 0 ? (
+                            g3AvailableCards.map((card) => (
+                              <button
+                                key={card.id}
+                                type="button"
+                                onClick={() => handleG3AddCard(card)}
+                                style={{ padding: '0.75rem 1.15rem', borderRadius: 12, border: '2px solid var(--border-color)', background: 'var(--color-bg-card)', color: 'var(--color-brand-title)', fontWeight: 800, fontSize: '1.05rem', cursor: 'pointer' }}
+                              >
+                                {card.text}
+                              </button>
+                            ))
+                          ) : (
+                            <span style={{ color: '#16A34A', fontWeight: 700, fontSize: '0.85rem', alignSelf: 'center' }}>
+                              {g3Language === 'kn' ? '✓ ಎಲ್ಲಾ ಪದಗಳನ್ನು ಇರಿಸಲಾಗಿದೆ! ಕೆಳಗೆ ಮಾತನಾಡಿ.' : '✓ All words placed! Speak the sentence below.'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* SPEAK ACTION TRIGGER (ENABLED ONLY ONCE ALL CARDS ARE ARRANGED) */}
+                      {isG3AllCardsPlaced && (
+                        <div style={{ marginTop: '0.35rem', width: '100%' }}>
+                          <SpeechInputTrigger
+                            key={`g3-trigger-${g3Level}-${g3SentenceIndex}-${g3Language}-${g3SelectedCards.map((c) => c.id).join('-')}`}
+                            resetKey={`g3-reset-${g3Level}-${g3SentenceIndex}-${g3Language}`}
+                            onTranscriptReceived={handleG3SentenceSpoken}
+                            targetIntent={g3ArrangedSentence}
+                            buttonLabel={g3Language === 'kn' ? `🎙️ ವಾಕ್ಯವನ್ನು ಹೇಳಿ: "${g3ArrangedSentence}"` : `🎙️ Speak Sentence: "${g3ArrangedSentence}"`}
+                          />
+                        </div>
+                      )}
+
+                      {/* FEEDBACK BANNER */}
+                      {g3Feedback && (
+                        <div style={{ padding: '0.75rem', borderRadius: 12, background: g3Feedback.success ? 'rgba(22, 163, 74, 0.12)' : 'rgba(220, 38, 38, 0.12)', color: g3Feedback.success ? '#16A34A' : '#DC2626', fontWeight: 800, fontSize: '0.9rem' }}>
+                          {g3Feedback.text}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
 
-              {/* GAME 4: SCENARIO RESPONSE (ENFORCED VALIDATION) */}
+              {/* GAME 4: SCENARIO RESPONSE (REAL-LIFE CLINICAL SCENARIOS) */}
               {activeGameId === 'game4' && (
-                <div className="profile-section-card" style={{ width: '100%', padding: '1.5rem', textAlign: 'center', gap: '1.2rem' }}>
-                  <div style={{ padding: '1rem', borderRadius: 16, background: 'rgba(234, 179, 8, 0.1)', border: '1.5px solid #EAB308' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#EAB308', textTransform: 'uppercase' }}>Scenario</span>
-                    <h3 style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: '0.2rem 0 0 0' }}>
-                      "You are tired."
-                    </h3>
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
-                    {[
-                      { id: 'tired', label: 'I AM TIRED', isCorrect: true },
-                      { id: 'water', label: 'I NEED WATER', isCorrect: false }
-                    ].map((opt) => (
+                <div className="profile-section-card" style={{ width: '100%', padding: '1.5rem', textAlign: 'center', gap: '1.1rem' }}>
+                  {/* HEADER WITH LANGUAGE TOGGLE & PROGRESS */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ textAlign: 'left' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: currentG4Item.color, textTransform: 'uppercase' }}>
+                        Scenario {g4ScenarioIndex + 1} of {G4_SCENARIOS.length}
+                      </span>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-brand-tagline)' }}>
+                        {g4Language === 'kn' ? 'ನೈಜ ಪರಿಸ್ಥಿತಿಯ ಪ್ರತಿಕ್ರಿಯೆ' : 'Real-Life Response Practice'}
+                      </div>
+                    </div>
+                    <div style={{ display: 'inline-flex', background: 'var(--color-bg-card)', border: '1px solid var(--border-color)', borderRadius: 10, padding: 3, gap: 4 }}>
                       <button
-                        key={opt.id}
                         type="button"
-                        onClick={() => handleG4SelectChoice(opt)}
-                        style={{
-                          padding: '1.1rem',
-                          borderRadius: 16,
-                          border: g4SelectedChoice?.id === opt.id ? `3px solid ${opt.isCorrect ? '#16A34A' : '#DC2626'}` : '2px solid var(--border-color)',
-                          background: g4SelectedChoice?.id === opt.id ? (opt.isCorrect ? 'rgba(22, 163, 74, 0.12)' : 'rgba(220, 38, 38, 0.12)') : 'var(--color-bg-card)',
-                          fontWeight: 800,
-                          fontSize: '1.1rem',
-                          cursor: 'pointer',
-                        }}
+                        onClick={() => { setG4Language('en'); setG4Feedback(null); }}
+                        style={{ padding: '0.35rem 0.75rem', borderRadius: 7, border: 'none', background: g4Language === 'en' ? currentG4Item.color : 'transparent', color: g4Language === 'en' ? '#FFF' : 'inherit', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}
                       >
-                        {opt.label}
+                        English
                       </button>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => { setG4Language('kn'); setG4Feedback(null); }}
+                        style={{ padding: '0.35rem 0.75rem', borderRadius: 7, border: 'none', background: g4Language === 'kn' ? currentG4Item.color : 'transparent', color: g4Language === 'kn' ? '#FFF' : 'inherit', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer' }}
+                      >
+                        ಕನ್ನಡ
+                      </button>
+                    </div>
                   </div>
 
-                  {g4SelectedChoice && (
-                    <SpeechInputTrigger
-                      onTranscriptReceived={handleG4ScenarioSpoken}
-                      targetIntent={g4SelectedChoice.label}
-                      buttonLabel={`🎙️ Speak Response: "${g4SelectedChoice.label}"`}
-                    />
+                  {g4Completed ? (
+                    /* GAME 4 ALL SCENARIOS COMPLETED */
+                    <div style={{ padding: '1.8rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                      <span style={{ fontSize: '2.8rem' }}>🏆</span>
+                      <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 900, color: 'var(--color-brand-title)' }}>
+                        {g4Language === 'kn' ? 'ಎಲ್ಲಾ ಸನ್ನಿವೇಶಗಳು ಪೂರ್ಣಗೊಂಡಿವೆ! ಅದ್ಭುತ!' : 'All Scenarios Completed! Great Job!'}
+                      </h3>
+                      <p style={{ margin: 0, color: 'var(--color-brand-tagline)', fontSize: '0.92rem', maxWidth: 440 }}>
+                        {g4Language === 'kn'
+                          ? 'ನೀವು ಎಲ್ಲಾ ನೈಜ ಪರಿಸ್ಥಿತಿಗಳಿಗೆ ಯಶಸ್ವಿಯಾಗಿ ಮಾತನಾಡಿ ಪ್ರತಿಕ್ರಿಯಿಸಿದ್ದೀರಿ.'
+                          : 'You successfully communicated appropriate spoken responses across all real-life scenarios.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleG4Restart}
+                        style={{ padding: '0.75rem 1.6rem', borderRadius: 12, border: 'none', background: '#0284C7', color: '#FFF', fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer', marginTop: '0.5rem' }}
+                      >
+                        {g4Language === 'kn' ? 'ಮತ್ತೆ ಅಭ್ಯಾಸ ಮಾಡಿ' : 'Practice Again'}
+                      </button>
+                    </div>
+                  ) : (
+                    /* ACTIVE SCENARIO PRESENTATION */
+                    <>
+                      {/* OFFSCREEN PROBE FOR OPTIONAL VIDEO ASSET PLAYABILITY (GUARANTEES BROWSER METADATA EVENT EMISSION) */}
+                      <video
+                        key={`g4-probe-${currentG4Item.id}`}
+                        src={currentG4Item.videoUrl}
+                        playsInline
+                        muted
+                        preload="metadata"
+                        style={{ position: 'fixed', top: -9999, left: -9999, width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+                        onLoadedMetadata={(e) => {
+                          const dur = e.target.duration;
+                          if (dur > 0 && !isNaN(dur)) {
+                            setG4VideoDuration(dur);
+                            setG4VideoAvailable(true);
+                            setG4VideoLoading(false);
+                          }
+                        }}
+                        onCanPlay={(e) => {
+                          const dur = e.target.duration;
+                          if (dur > 0 && !isNaN(dur)) {
+                            setG4VideoDuration(dur);
+                            setG4VideoAvailable(true);
+                            setG4VideoLoading(false);
+                          }
+                        }}
+                        onError={() => {
+                          setG4VideoAvailable(false);
+                          setG4VideoLoading(false);
+                          setG4VideoPlaying(false);
+                        }}
+                      />
+
+                      {/* 1. OPTIONAL VIDEO PRESENTATION (SHOWN ONLY WHEN VALID PLAYABLE MP4 IS CONFIRMED) */}
+                      {g4VideoAvailable ? (
+                        <div
+                          style={{
+                            width: '100%',
+                            borderRadius: 16,
+                            overflow: 'hidden',
+                            border: `2px solid ${currentG4Item.color}`,
+                            background: '#0F172A',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                            textAlign: 'left',
+                          }}
+                        >
+                          {/* VIDEO HEADER BADGE */}
+                          <div
+                            style={{
+                              padding: '0.65rem 1rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              background: 'rgba(255, 255, 255, 0.05)',
+                              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ fontSize: '1.2rem' }}>{currentG4Item.icon}</span>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#F8FAFC', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                                {g4Language === 'kn' ? '🎬 ಸನ್ನಿವೇಶ ವೀಡಿಯೊ' : '🎬 Scenario Video'}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: currentG4Item.color }}>
+                              {currentG4Content.title}
+                            </span>
+                          </div>
+
+                          {/* VIDEO ELEMENT CONTAINER */}
+                          <div style={{ position: 'relative', width: '100%', background: '#000', minHeight: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <video
+                              ref={g4VideoRef}
+                              key={`g4-player-${currentG4Item.id}`}
+                              src={currentG4Item.videoUrl}
+                              playsInline
+                              muted
+                              style={{ width: '100%', maxHeight: 260, objectFit: 'contain', display: 'block' }}
+                              onTimeUpdate={() => {
+                                if (g4VideoRef.current) {
+                                  setG4VideoTime(g4VideoRef.current.currentTime);
+                                }
+                              }}
+                              onEnded={() => setG4VideoPlaying(false)}
+                            />
+                          </div>
+
+                          {/* ACCESSIBLE VIDEO CONTROLS BAR */}
+                          <div
+                            style={{
+                              padding: '0.75rem 1rem',
+                              background: 'rgba(15, 23, 42, 0.95)',
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              alignItems: 'center',
+                              gap: '0.65rem',
+                              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                            }}
+                          >
+                            {/* PLAY / PAUSE BUTTON */}
+                            <button
+                              type="button"
+                              onClick={handleG4PlayPause}
+                              style={{
+                                padding: '0.45rem 0.85rem',
+                                borderRadius: 8,
+                                border: 'none',
+                                background: currentG4Item.color,
+                                color: '#FFF',
+                                fontWeight: 800,
+                                fontSize: '0.82rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                              }}
+                            >
+                              <span>{g4VideoPlaying ? '⏸️' : '▶️'}</span>
+                              <span>
+                                {g4Language === 'kn'
+                                  ? (g4VideoPlaying ? 'ವಿರಾಮ' : 'ಪ್ಲೇ ಮಾಡಿ')
+                                  : (g4VideoPlaying ? 'Pause' : 'Play Video')}
+                              </span>
+                            </button>
+
+                            {/* REPLAY BUTTON */}
+                            <button
+                              type="button"
+                              onClick={handleG4ReplayVideo}
+                              title={g4Language === 'kn' ? 'ವೀಡಿಯೊ ಮರುಪ್ಲೇ ಮಾಡಿ' : 'Replay video from beginning'}
+                              style={{
+                                padding: '0.45rem 0.85rem',
+                                borderRadius: 8,
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                background: 'rgba(255, 255, 255, 0.08)',
+                                color: '#F8FAFC',
+                                fontWeight: 700,
+                                fontSize: '0.82rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                              }}
+                            >
+                              <span>↺</span>
+                              <span>{g4Language === 'kn' ? 'ಮರುಪ್ಲೇ' : 'Replay'}</span>
+                            </button>
+
+                            {/* PROGRESS SLIDER */}
+                            <input
+                              type="range"
+                              min="0"
+                              max={g4VideoDuration || 10}
+                              step="0.1"
+                              value={g4VideoTime}
+                              onChange={handleG4SeekVideo}
+                              aria-label="Video timeline"
+                              style={{
+                                flex: 1,
+                                minWidth: 100,
+                                accentColor: currentG4Item.color,
+                                cursor: 'pointer',
+                              }}
+                            />
+
+                            {/* TIME INDICATOR */}
+                            <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: 600, minWidth: 44, textAlign: 'right' }}>
+                              {Math.floor(g4VideoTime)}s / {Math.floor(g4VideoDuration || 10)}s
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        /* 2. ORIGINAL TEXT-ONLY SCENARIO PRESENTATION (AUTOMATIC FALLBACK) */
+                        <div
+                          style={{
+                            width: '100%',
+                            padding: '1.5rem 1.25rem',
+                            borderRadius: 16,
+                            border: `2px solid ${currentG4Item.color}`,
+                            background: 'var(--color-bg-card)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '0.85rem',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                          }}
+                        >
+                          <div style={{ fontSize: '2.8rem' }}>{currentG4Item.icon}</div>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: currentG4Item.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            {currentG4Content.title}
+                          </span>
+                          <div
+                            style={{
+                              fontSize: '1.05rem',
+                              fontWeight: 600,
+                              lineHeight: 1.55,
+                              color: 'var(--color-brand-title)',
+                              maxWidth: 520,
+                              background: 'rgba(255, 255, 255, 0.04)',
+                              padding: '1.1rem 1.35rem',
+                              borderRadius: 12,
+                              border: '1px solid var(--border-color)',
+                              width: '100%',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {currentG4Content.situation}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* QUESTION PROMPT (POST-VIDEO) */}
+                      <div style={{ width: '100%', textAlign: 'left', padding: '0.4rem 0.2rem 0 0.2rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-brand-tagline)', textTransform: 'uppercase' }}>
+                          {g4Language === 'kn' ? 'ಪ್ರಶ್ನೆ' : 'Question'}
+                        </span>
+                        <h4 style={{ margin: '0.2rem 0 0 0', fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                          {currentG4Content.question}
+                        </h4>
+                        <div style={{ marginTop: '0.35rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(2, 132, 199, 0.08)', padding: '0.3rem 0.65rem', borderRadius: 8 }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0284C7' }}>
+                            {g4Language === 'kn' ? 'ಸಲಹೆ ಮಾದರಿ:' : 'Helpful phrase:'} "{currentG4Content.guidance}"
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* SPOKEN RESPONSE TRIGGER */}
+                      <div style={{ marginTop: '0.4rem', width: '100%' }}>
+                        <SpeechInputTrigger
+                          key={`g4-trigger-${g4ScenarioIndex}-${g4Language}`}
+                          resetKey={`g4-reset-${g4ScenarioIndex}-${g4Language}`}
+                          onTranscriptReceived={handleG4ScenarioSpoken}
+                          targetIntent={currentG4Content.modelSpeech}
+                          buttonLabel={
+                            g4Language === 'kn'
+                              ? `🎙️ ನಿಮ್ಮ ಉತ್ತರವನ್ನು ಮಾತನಾಡಿ`
+                              : `🎙️ Speak Your Response`
+                          }
+                        />
+                      </div>
+
+                      {/* FEEDBACK & RETRY BANNER */}
+                      {g4Feedback && (
+                        <div
+                          style={{
+                            padding: '0.85rem',
+                            borderRadius: 14,
+                            background: g4Feedback.success ? 'rgba(22, 163, 74, 0.12)' : 'rgba(220, 38, 38, 0.12)',
+                            color: g4Feedback.success ? '#16A34A' : '#DC2626',
+                            fontWeight: 800,
+                            fontSize: '0.92rem',
+                            width: '100%',
+                          }}
+                        >
+                          {g4Feedback.text}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}

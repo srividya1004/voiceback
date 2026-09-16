@@ -1,6 +1,49 @@
 /**
  * VoiceBack Centralized Real Answer Validation Service
  */
+
+const getPhoneticKey = (str) => {
+  return (str || '')
+    .toLowerCase()
+    .replace(/w/g, 'v')
+    .replace(/ph/g, 'f')
+    .replace(/th/g, 't')
+    .replace(/dh/g, 'd')
+    .replace(/kh/g, 'k')
+    .replace(/gh/g, 'g')
+    .replace(/ch/g, 'c')
+    .replace(/ee/g, 'i')
+    .replace(/oo/g, 'u')
+    .replace(/aa/g, 'a')
+    .replace(/ou/g, 'u')
+    .replace(/([a-z])\1+/g, '$1')
+    .trim();
+};
+
+const calculateLevenshtein = (a, b) => {
+  const an = a ? a.length : 0;
+  const bn = b ? b.length : 0;
+  if (an === 0) return bn;
+  if (bn === 0) return an;
+  const matrix = Array.from({ length: bn + 1 }, () => new Array(an + 1).fill(0));
+  for (let i = 0; i <= an; i++) matrix[0][i] = i;
+  for (let j = 0; j <= bn; j++) matrix[j][0] = j;
+  for (let j = 1; j <= bn; j++) {
+    for (let i = 1; i <= an; i++) {
+      if (b.charAt(j - 1) === a.charAt(i - 1)) {
+        matrix[j][i] = matrix[j - 1][i - 1];
+      } else {
+        matrix[j][i] = Math.min(
+          matrix[j - 1][i - 1] + 1,
+          matrix[j][i - 1] + 1,
+          matrix[j - 1][i] + 1
+        );
+      }
+    }
+  }
+  return matrix[bn][an];
+};
+
 export const validationService = {
   /**
    * Validate spoken transcript against expected targets
@@ -65,9 +108,10 @@ export const validationService = {
       };
     }
 
-    // 3. INTENT / SCENARIO MODE (12 DIVERSE SCENARIO CATEGORIES)
+    // 3. INTENT / SCENARIO MODE (12 DIVERSE SCENARIO CATEGORIES + GAME 4 ENHANCED VALIDATION)
     if (mode === 'intent' || mode === 'scenario') {
       const category = itemConfig.category || 'water';
+      const language = itemConfig.language || 'en';
       const categoryDictionaries = {
         water: ['water', 'drink', 'thirsty', 'glass', 'need water', 'want water', 'give water', 'ನೀರು', 'पानी'],
         food: ['food', 'eat', 'hungry', 'plate', 'meal', 'dinner', 'lunch', 'ಆಹಾರ', 'ಊಟ', 'खाना', 'भोजन'],
@@ -75,13 +119,55 @@ export const validationService = {
         medicine: ['medicine', 'meds', 'pills', 'doctor', 'treatment', 'ಔಷಧ', 'ಮಾತ್ರೆ', 'दवा', 'औषधि'],
         caregiver: ['caregiver', 'nurse', 'call caregiver', 'help', 'family', 'ಪಾಲನೆದಾರರು', 'ಸಹಾಯ', 'ಮದದ್', 'मदद'],
         toilet: ['toilet', 'restroom', 'washroom', 'bathroom', 'ಶೌಚಾಲಯ', 'शौचालय'],
-        tired: ['tired', 'rest', 'sleep', 'sleepy', 'ಆಯಾಸ', 'ವಿಶ್ರಾಂತಿ', 'थकान', 'आराम'],
+        tired: ['tired', 'rest', 'sleep', 'sleepy', 'ಆಯಾಸ', 'ವಿಶ್ರಾಂತಿ', 'थकान', 'ಆರಾಮ'],
         doctor: ['doctor', 'physician', 'better', 'fine', 'recovering', 'ವೈದ್ಯರು', 'डॉक्टर'],
         hot: ['hot', 'sweat', 'summer', 'cold water', 'ಬಿಸಿ', 'गर्मी'],
         cold: ['cold', 'blanket', 'shivering', 'ಚಳಿ', 'ठंड'],
         family: ['family', 'mom', 'mother', 'call family', 'ಕುಟುಂಬ', 'ಅಮ್ಮ', 'परिवार', 'मां'],
         apple: ['apple', 'fruit', 'hungry', 'ಸೇಬು', 'सेब']
       };
+
+      // Enhanced Game 4 validation when acceptableAnswers or translitVariants provided
+      if (itemConfig.acceptableAnswers || itemConfig.translitVariants) {
+        const acceptableAnswers = (itemConfig.acceptableAnswers || []).map((a) =>
+          a.toLowerCase().normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
+        );
+        const translitVariants = (itemConfig.translitVariants || []).map((t) => t.toLowerCase().trim());
+        const expectedKeywords = (itemConfig.keywords || []).map((k) => k.toLowerCase().trim());
+        const wrongCategories = Object.keys(categoryDictionaries).filter((c) => c !== category);
+
+        // Check if user spoke an explicit term from a different scenario category
+        const hasWrongCategory = wrongCategories.some((wc) =>
+          categoryDictionaries[wc].some((term) =>
+            cleanInput.includes(term.toLowerCase().trim()) &&
+            !acceptableAnswers.some((ans) => ans.includes(term)) &&
+            !expectedKeywords.some((ek) => ek.includes(term))
+          )
+        );
+
+        const isExactOrSubMatch = acceptableAnswers.some((ans) =>
+          cleanInput === ans || cleanInput.includes(ans) || (cleanInput.length >= 6 && ans.includes(cleanInput))
+        );
+        const isTranslitMatch = translitVariants.some((tr) =>
+          cleanInput === tr || cleanInput.includes(tr) || (cleanInput.length >= 6 && tr.includes(cleanInput))
+        );
+        const hasKeywords = expectedKeywords.length > 0 && expectedKeywords.some((kw) => cleanInput.includes(kw));
+
+        const isCorrect = (isExactOrSubMatch || isTranslitMatch || hasKeywords) && !hasWrongCategory && cleanInput.length >= 3;
+
+        return {
+          isCorrect,
+          confidence: isCorrect ? 0.95 : 0.1,
+          reason: isCorrect
+            ? 'Scenario response validated'
+            : (language === 'kn'
+                ? `ಪ್ರತಿಕ್ರಿಯೆ "${recognizedText}" ಈ ಸನ್ನಿವೇಶಕ್ಕೆ ಸರಿಯಾಗಿಲ್ಲ. ದಯವಿಟ್ಟು ಸೂಕ್ತ ಉತ್ತರ ನೀಡಿ.`
+                : `Response "${recognizedText}" does not fit this scenario. Please try an appropriate response.`),
+          expected: expectedText,
+          recognized: recognizedText,
+          validationMode: 'scenario',
+        };
+      }
 
       const validList = categoryDictionaries[category] || itemConfig.keywords || [cleanExpected];
       const isIntentMatch = validList.some((kw) => cleanInput.includes(kw.toLowerCase().trim()));
@@ -96,16 +182,176 @@ export const validationService = {
       };
     }
 
-    // 4. SENTENCE MODE
+    // 4. SENTENCE MODE (GAME 3: SENTENCE CHALLENGE)
     if (mode === 'sentence') {
-      const keywords = itemConfig.keywords || cleanExpected.split(' ');
-      const matchedCount = keywords.filter((kw) => cleanInput.includes(kw.toLowerCase())).length;
-      const isSentenceMatch = matchedCount >= Math.min(2, keywords.length);
+      const language = itemConfig.language || 'en';
+      const arrangedSentence = itemConfig.arrangedSentence ? itemConfig.arrangedSentence.trim() : null;
+
+      const cleanNormExpected = cleanExpected
+        .toLowerCase()
+        .normalize('NFC')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/[.,/#!$%^&*;:{}=\-_`~()?"'’]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // 1. Check arranged word order if provided
+      if (arrangedSentence) {
+        const cleanArranged = arrangedSentence
+          .toLowerCase()
+          .normalize('NFC')
+          .replace(/[\u200B-\u200D\uFEFF]/g, '')
+          .replace(/[.,/#!$%^&*;:{}=\-_`~()?"'’]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (cleanArranged !== cleanNormExpected) {
+          return {
+            isCorrect: false,
+            confidence: 0,
+            reason: language === 'kn'
+              ? 'ಪದಗಳ ಜೋಡಣೆ ತಪ್ಪಾಗಿದೆ. ಕಾರ್ಡ್‌ಗಳನ್ನು ಸರಿಯಾದ ಕ್ರಮದಲ್ಲಿ ಜೋಡಿಸಿ ನಂತರ ಮಾತನಾಡಿ.'
+              : 'The arranged word order is incorrect. Please tap cards to rearrange into the correct order.',
+            expected: expectedText,
+            arranged: arrangedSentence,
+            recognized: recognizedText,
+            validationMode: 'sentence',
+          };
+        }
+      }
+
+      // 2. Validate spoken sentence
+      const cleanNormInput = recognizedText
+        .toLowerCase()
+        .normalize('NFC')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .replace(/[.,/#!$%^&*;:{}=\-_`~()?"'’]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Check exact match
+      if (cleanNormInput === cleanNormExpected) {
+        return {
+          isCorrect: true,
+          confidence: 1.0,
+          reason: 'Complete sentence matched perfectly',
+          expected: expectedText,
+          recognized: recognizedText,
+          validationMode: 'sentence',
+        };
+      }
+
+      // Check configured acceptable transcripts
+      const acceptableTranscripts = (itemConfig.acceptableTranscripts || []).map((t) =>
+        t.toLowerCase().normalize('NFC').replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/[.,/#!$%^&*;:{}=\-_`~()?"'’]/g, '').replace(/\s+/g, ' ').trim()
+      );
+
+      for (const acc of acceptableTranscripts) {
+        if (cleanNormInput === acc || cleanNormInput.includes(acc)) {
+          return {
+            isCorrect: true,
+            confidence: 0.95,
+            reason: 'Sentence matched acceptable speech variation',
+            expected: expectedText,
+            recognized: recognizedText,
+            validationMode: 'sentence',
+          };
+        }
+      }
+
+      // Check transliteration variants for Kannada
+      const translitVariants = (itemConfig.translitVariants || []).map((t) =>
+        t.toLowerCase().trim()
+      );
+      for (const tr of translitVariants) {
+        if (cleanNormInput === tr || cleanNormInput.includes(tr)) {
+          return {
+            isCorrect: true,
+            confidence: 0.92,
+            reason: 'Kannada sentence transliteration matched',
+            expected: expectedText,
+            recognized: recognizedText,
+            validationMode: 'sentence',
+          };
+        }
+      }
+
+      // Strip conversational sentence fillers
+      const sentenceFillers = [
+        'i said', 'i want to say', 'please', 'can i have', 'can i get',
+        'ದಯವಿಟ್ಟು', 'ಹೇಳಿ', 'ನಾನು ಹೇಳಿದೆ',
+      ];
+      let strippedSentence = cleanNormInput;
+      for (const f of sentenceFillers) {
+        if (strippedSentence.startsWith(f + ' ')) {
+          strippedSentence = strippedSentence.slice(f.length).trim();
+          break;
+        }
+      }
+
+      if (strippedSentence === cleanNormExpected) {
+        return {
+          isCorrect: true,
+          confidence: 0.95,
+          reason: 'Sentence matched after removing filler',
+          expected: expectedText,
+          recognized: recognizedText,
+          validationMode: 'sentence',
+        };
+      }
+
+      // Complete keyword coverage: ALL keywords must be represented
+      const keywords = (itemConfig.keywords || cleanNormExpected.split(/\s+/)).map((k) => k.toLowerCase().trim());
+      const inputWords = strippedSentence.split(/\s+/);
+      const matchedKeywords = keywords.filter((kw) =>
+        inputWords.includes(kw) || strippedSentence.includes(kw)
+      );
+
+      // Do NOT allow single word or incomplete sentence match
+      if (keywords.length >= 2 && matchedKeywords.length < keywords.length) {
+        // Levenshtein phonetic tolerance on the complete sentence
+        const lev = calculateLevenshtein(cleanNormInput, cleanNormExpected);
+        if (lev <= 2 || (cleanNormExpected.length > 8 && lev / cleanNormExpected.length <= 0.18)) {
+          return {
+            isCorrect: true,
+            confidence: 0.88,
+            reason: 'Sentence matched within close pronunciation tolerance',
+            expected: expectedText,
+            recognized: recognizedText,
+            validationMode: 'sentence',
+          };
+        }
+
+        return {
+          isCorrect: false,
+          confidence: 0.2,
+          reason: language === 'kn'
+            ? `ಸಂಪೂರ್ಣ ವಾಕ್ಯವನ್ನು ಹೇಳಿಲ್ಲ ("${recognizedText}"). ದಯವಿಟ್ಟು ಸಂಪೂರ್ಣ ವಾಕ್ಯವನ್ನು ಮಾತನಾಡಿ.`
+            : `Spoke incomplete sentence ("${recognizedText}"). Please speak the complete sentence: "${expectedText}".`,
+          expected: expectedText,
+          recognized: recognizedText,
+          validationMode: 'sentence',
+        };
+      }
+
+      // If all keywords are present
+      if (matchedKeywords.length === keywords.length) {
+        return {
+          isCorrect: true,
+          confidence: 0.9,
+          reason: 'All sentence key concepts validated',
+          expected: expectedText,
+          recognized: recognizedText,
+          validationMode: 'sentence',
+        };
+      }
 
       return {
-        isCorrect: isSentenceMatch,
-        confidence: isSentenceMatch ? 0.85 : 0.1,
-        reason: isSentenceMatch ? 'Sentence key concepts matched' : `Key concepts missing from "${recognizedText}"`,
+        isCorrect: false,
+        confidence: 0.1,
+        reason: language === 'kn'
+          ? `ಹೇಳಿದ ವಾಕ್ಯವು ನಿರೀಕ್ಷಿತ ವಾಕ್ಯಕ್ಕೆ ಹೊಂದಿಕೆಯಾಗುತ್ತಿಲ್ಲ. ದಯವಿಟ್ಟು ಮತ್ತೊಮ್ಮೆ ಹೇಳಿ.`
+          : `Spoken sentence did not match expected "${expectedText}". Please try again!`,
         expected: expectedText,
         recognized: recognizedText,
         validationMode: 'sentence',
@@ -129,48 +375,6 @@ export const validationService = {
         ball: ['call', 'fall', 'tall', 'wall', 'doll', 'bell'],
         phone: ['fine', 'stone', 'bone', 'cone'],
         flower: ['flour', 'floor', 'lower', 'power'],
-      };
-
-      const getPhoneticKey = (str) => {
-        return (str || '')
-          .toLowerCase()
-          .replace(/w/g, 'v')
-          .replace(/ph/g, 'f')
-          .replace(/th/g, 't')
-          .replace(/dh/g, 'd')
-          .replace(/kh/g, 'k')
-          .replace(/gh/g, 'g')
-          .replace(/ch/g, 'c')
-          .replace(/ee/g, 'i')
-          .replace(/oo/g, 'u')
-          .replace(/aa/g, 'a')
-          .replace(/ou/g, 'u')
-          .replace(/([a-z])\1+/g, '$1')
-          .trim();
-      };
-
-      const calculateLevenshtein = (a, b) => {
-        const an = a ? a.length : 0;
-        const bn = b ? b.length : 0;
-        if (an === 0) return bn;
-        if (bn === 0) return an;
-        const matrix = Array.from({ length: bn + 1 }, () => new Array(an + 1).fill(0));
-        for (let i = 0; i <= an; i++) matrix[0][i] = i;
-        for (let j = 0; j <= bn; j++) matrix[j][0] = j;
-        for (let j = 1; j <= bn; j++) {
-          for (let i = 1; i <= an; i++) {
-            if (b.charAt(j - 1) === a.charAt(i - 1)) {
-              matrix[j][i] = matrix[j - 1][i - 1];
-            } else {
-              matrix[j][i] = Math.min(
-                matrix[j - 1][i - 1] + 1,
-                matrix[j][i - 1] + 1,
-                matrix[j - 1][i] + 1
-              );
-            }
-          }
-        }
-        return matrix[bn][an];
       };
 
       const cleanNormalized = recognizedText

@@ -28,7 +28,7 @@ async function verifyExact10StepPipeline() {
     console.log(`🌐 STEP 1 & 2: WEBSITE MICROPHONE INPUT (${sample.name})`);
     console.log(`------------------------------------------------------------------------`);
 
-    console.log(`🎤 STEP 3: Speech Recognition (Whisper / Scribe v2 STT)...`);
+    console.log(`🎤 STEP 3: Speech Recognition (Wispr Flow / Scribe v2 STT)...`);
     console.log(`💬 STEP 4: Transcribed User's Text: "${sample.text}"`);
 
     console.log(`\n📡 STEP 5: Sending User's Text to Backend / API...`);

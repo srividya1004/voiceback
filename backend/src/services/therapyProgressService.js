@@ -83,6 +83,44 @@ const deleteTherapyProgress = async (id) => {
   return therapyProgress;
 };
 
+/**
+ * Record a Hear-Yourself script training attempt
+ * @param {Object} params
+ * @param {String} params.patientId - Patient ObjectId
+ * @param {String} [params.scriptId] - PersonalScript ObjectId
+ * @param {String} [params.attemptRawTranscript] - Raw Scribe STT transcript
+ * @param {String} [params.attemptReconstructedText] - Reconstructed aphasic sentence
+ * @param {Number} [params.closenessScore] - Closeness score (0-100)
+ * @returns {Promise<Object>} Created TherapyProgress document
+ */
+const recordScriptAttempt = async ({
+  patientId,
+  scriptId,
+  attemptRawTranscript,
+  attemptReconstructedText,
+  closenessScore
+}) => {
+  validateObjectId(patientId, 'Patient');
+
+  const scoreVal = typeof closenessScore === 'number'
+    ? Math.max(0, Math.min(100, Math.round(closenessScore)))
+    : null;
+
+  const therapyProgressData = {
+    patientId,
+    scriptId: scriptId || null,
+    exercisesCompleted: 1,
+    accuracyScore: scoreVal !== null ? scoreVal : 0,
+    closenessScore: scoreVal,
+    attemptRawTranscript: attemptRawTranscript || '',
+    attemptReconstructedText: attemptReconstructedText || '',
+    notes: 'Hear-Yourself Script Training attempt'
+  };
+
+  const record = await TherapyProgress.create(therapyProgressData);
+  return record;
+};
+
 module.exports = {
   create: createTherapyProgress,
   getAll: getAllTherapyProgress,
@@ -93,5 +131,7 @@ module.exports = {
   getAllTherapyProgress,
   getTherapyProgressById,
   updateTherapyProgress,
-  deleteTherapyProgress
+  deleteTherapyProgress,
+  recordScriptAttempt
 };
+

@@ -87,15 +87,6 @@ export const authService = {
     const normalizedEmail = (patientData.email || '').trim().toLowerCase();
     const fullName = (patientData.fullName || '').trim();
     try {
-      // 1. Create UserLogin record in Express Backend
-      const loginRes = await apiClient.post('/user-logins', {
-        email: normalizedEmail,
-        passwordHash: patientData.password,
-        role: 'Patient',
-      });
-      const userLogin = loginRes.data.data;
-
-      // 2. Create Patient profile in Express Backend
       const validAphasiaTypes = [
         "Broca's", "Wernicke's", "Global", "Anomic",
         "Transcortical Motor", "Transcortical Sensory", "Conduction", "Mixed", "Other"
@@ -105,25 +96,49 @@ export const authService = {
         ? rawAphasia
         : (validAphasiaTypes.includes(patientData.aphasiaType) ? patientData.aphasiaType : "Broca's");
 
-      const profRes = await patientService.createPatientProfile({
-        userId: userLogin._id,
+      // 1. Create UserLogin record + linked Patient profile in Express Backend atomically
+      const loginRes = await apiClient.post('/user-logins', {
+        email: normalizedEmail,
+        passwordHash: patientData.password,
+        role: 'Patient',
         fullName,
-        age: patientData.age ? Number(patientData.age) : null,
+        age: patientData.age ? Number(patientData.age) : 25,
         aphasiaType: selectedAphasia,
         gender: patientData.gender || null,
-        preferredLanguage: patientData.preferredLanguage || null,
+        preferredLanguage: patientData.preferredLanguage || 'English',
         phone: patientData.mobileNumber || patientData.phone || null,
-        email: normalizedEmail,
         emergencyContact: patientData.emergencyContact || null
       });
 
-      const profileObj = profRes.data || profRes;
-      localStorage.setItem('voiceback_patient_user', JSON.stringify(profileObj));
+      const userLogin = loginRes.data?.data || loginRes.data;
+      const profileObj = userLogin.profile || null;
+      const token = userLogin.token;
+
+      // 2. Store authenticated session immediately
+      const authSession = {
+        token: token || `jwt-token-${Date.now()}`,
+        role: 'patient',
+        email: normalizedEmail,
+        fullName: profileObj?.fullName || fullName,
+        isAuthenticated: true,
+        user: {
+          id: userLogin._id || userLogin.id,
+          email: normalizedEmail,
+          role: 'patient',
+          fullName: profileObj?.fullName || fullName,
+          profile: profileObj
+        }
+      };
+
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_SESSION, JSON.stringify(authSession));
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER_OBJECT, JSON.stringify(authSession.user));
+      localStorage.setItem('voiceback_current_user', JSON.stringify(authSession.user));
+      localStorage.setItem('voiceback_patient_user', JSON.stringify(profileObj || authSession.user));
 
       authService.setLastRegisteredEmail('patient', normalizedEmail);
       authService.setPatientRegistered();
 
-      return { success: true, user: { email: normalizedEmail, role: 'patient', fullName, profile: profileObj } };
+      return { success: true, user: { email: normalizedEmail, role: 'patient', fullName: profileObj?.fullName || fullName, profile: profileObj } };
     } catch (apiError) {
       console.warn('Backend API registration error:', apiError.message);
       return { success: false, error: apiError.message || 'Registration failed. If account exists, please log in.' };

@@ -35,7 +35,7 @@ export const EmergencySOSModule = ({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
-  const [sosNoticeMsg, setSosNoticeMsg] = useState('');
+  const [sosNoticeMsg, setSosNoticeMsg] = useState(null);
   const [submittingSos, setSubmittingSos] = useState(false);
   const lastSpokenRef = useRef(null);
 
@@ -44,6 +44,7 @@ export const EmergencySOSModule = ({
     id: '',
     fullName: 'Patient',
     assignedDoctorName: 'No doctor assigned.',
+    assignedCaregiverId: null,
     assignedCaregiverName: 'No caregiver linked.'
   });
 
@@ -65,22 +66,36 @@ export const EmergencySOSModule = ({
       const userEmail = session?.email || '';
       const patientsRes = await patientService.getAllPatients();
       const list = Array.isArray(patientsRes?.data) ? patientsRes.data : Array.isArray(patientsRes) ? patientsRes : [];
-      const match = list.find((p) => (p.email || p.userId?.email || '').toLowerCase() === userEmail.toLowerCase());
+      let match = list.find((p) => (p.email || p.userId?.email || '').toLowerCase() === userEmail.toLowerCase());
+
+      if (!match && session?.user?.id) {
+        match = list.find((p) => String(p.userId?._id || p.userId) === String(session.user.id) || String(p._id) === String(session.user.id));
+      }
 
       if (match) {
+        const cg = match.assignedCaregiverId;
+        const cgId = cg?._id ? String(cg._id) : (cg ? String(cg) : null);
+        const cgName = cg?.fullName || (cgId ? 'Assigned Caregiver' : '');
+
         setPatientProfile({
           id: match._id,
           fullName: match.fullName || session?.name || 'Patient',
           assignedDoctorName: match.assignedDoctorId?.fullName ? `Dr. ${match.assignedDoctorId.fullName}` : 'No doctor assigned.',
-          assignedCaregiverName: match.assignedCaregiverId?.fullName ? match.assignedCaregiverId.fullName : 'No caregiver linked.'
+          assignedCaregiverId: cgId,
+          assignedCaregiverName: cgName || 'No caregiver linked.'
         });
       } else {
         const stored = JSON.parse(localStorage.getItem('voiceback_patient_user') || 'null');
+        const cg = stored?.assignedCaregiverId;
+        const cgId = cg?._id ? String(cg._id) : (cg ? String(cg) : null);
+        const cgName = cg?.fullName || (cgId ? 'Assigned Caregiver' : '');
+
         setPatientProfile({
           id: stored?._id || session?.user?.id || '',
           fullName: session?.name || stored?.fullName || 'Patient',
           assignedDoctorName: 'No doctor assigned.',
-          assignedCaregiverName: 'No caregiver linked.'
+          assignedCaregiverId: cgId,
+          assignedCaregiverName: cgName || 'No caregiver linked.'
         });
       }
     } catch (e) {
@@ -99,26 +114,57 @@ export const EmergencySOSModule = ({
     speak('Emergency assistance module. Tap Confirm Emergency SOS to trigger alert.');
   }, [voiceAssistant, speak]);
 
+  const handleEmergencyButtonClick = () => {
+    if (!patientProfile.assignedCaregiverId) {
+      const noCgMsg = 'No caregiver is assigned. Emergency alert could not be sent.';
+      setSosNoticeMsg({ type: 'error', text: noCgMsg });
+      if (voiceAssistant && speak) {
+        speak(noCgMsg);
+      }
+      setTimeout(() => setSosNoticeMsg(null), 5000);
+      return;
+    }
+    setIsConfirmDialogOpen(true);
+  };
+
   const handleSendRequest = async () => {
     setIsConfirmDialogOpen(false);
+    if (!patientProfile.assignedCaregiverId) {
+      const noCgMsg = 'No caregiver is assigned. Emergency alert could not be sent.';
+      setSosNoticeMsg({ type: 'error', text: noCgMsg });
+      if (voiceAssistant && speak) {
+        speak(noCgMsg);
+      }
+      setTimeout(() => setSosNoticeMsg(null), 5000);
+      return;
+    }
+
     setSubmittingSos(true);
     try {
-      if (patientProfile.id) {
-        await apiClient.post('/emergency-sos', {
-          patientId: patientProfile.id,
-          location: 'Home / Living Room',
-          message: 'Patient triggered Emergency SOS!'
-        });
+      if (!patientProfile.id) {
+        throw new Error('Patient ID is missing.');
       }
-      setSosNoticeMsg('Emergency alert recorded.');
+      const res = await apiClient.post('/emergency-sos', {
+        patientId: patientProfile.id,
+        location: 'Home / Living Room',
+        message: 'Patient triggered Emergency SOS!'
+      });
+
+      const cgName = res.data?.data?.caregiverId?.fullName || patientProfile.assignedCaregiverName || 'Assigned Caregiver';
+      const successMsg = `Emergency SOS sent! Your assigned caregiver (${cgName}) has been alerted.`;
+      setSosNoticeMsg({ type: 'success', text: successMsg });
       if (voiceAssistant && speak) {
-        speak('Emergency alert recorded.');
+        speak(`Emergency SOS sent. Your assigned caregiver, ${cgName}, has been alerted.`);
       }
     } catch (e) {
-      setSosNoticeMsg('Emergency alert recorded.');
+      const errMsg = e.response?.data?.message || e.message || 'Failed to record emergency alert.';
+      setSosNoticeMsg({ type: 'error', text: errMsg });
+      if (voiceAssistant && speak) {
+        speak(errMsg);
+      }
     } finally {
       setSubmittingSos(false);
-      setTimeout(() => setSosNoticeMsg(''), 5000);
+      setTimeout(() => setSosNoticeMsg(null), 6000);
     }
   };
 
@@ -259,9 +305,9 @@ export const EmergencySOSModule = ({
               style={{
                 padding: '0.85rem 1rem',
                 borderRadius: '14px',
-                background: 'rgba(22, 163, 74, 0.12)',
-                border: '1.5px solid var(--color-green-primary)',
-                color: 'var(--color-green-primary)',
+                background: sosNoticeMsg.type === 'error' ? 'rgba(220, 38, 38, 0.12)' : 'rgba(22, 163, 74, 0.12)',
+                border: `1.5px solid ${sosNoticeMsg.type === 'error' ? '#DC2626' : 'var(--color-green-primary)'}`,
+                color: sosNoticeMsg.type === 'error' ? '#DC2626' : 'var(--color-green-primary)',
                 fontWeight: 700,
                 fontSize: '0.9rem',
                 textAlign: 'center',
@@ -272,8 +318,8 @@ export const EmergencySOSModule = ({
                 gap: '0.5rem',
               }}
             >
-              <CheckCircle2 size={20} />
-              <span>{sosNoticeMsg}</span>
+              {sosNoticeMsg.type === 'error' ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}
+              <span>{typeof sosNoticeMsg === 'string' ? sosNoticeMsg : sosNoticeMsg.text}</span>
             </div>
           )}
 
@@ -282,7 +328,7 @@ export const EmergencySOSModule = ({
             <button
               type="button"
               className="btn-danger-logout"
-              onClick={() => setIsConfirmDialogOpen(true)}
+              onClick={handleEmergencyButtonClick}
               disabled={submittingSos}
               style={{
                 width: '100%',
@@ -301,7 +347,7 @@ export const EmergencySOSModule = ({
               <span>🚨 CONFIRM EMERGENCY SOS</span>
             </button>
             <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-brand-tagline)', margin: 0 }}>
-              Trigger alert to record emergency in system database.
+              Trigger alert to notify your assigned caregiver immediately.
             </p>
           </section>
 
@@ -350,7 +396,7 @@ export const EmergencySOSModule = ({
                 Trigger Emergency Alert?
               </h2>
               <p style={{ fontSize: '0.9rem', color: 'var(--color-brand-tagline)', marginTop: '0.4rem', lineHeight: 1.45 }}>
-                An emergency record will be saved to MongoDB for caregiver and doctor monitoring.
+                An emergency alert will be sent directly to your assigned caregiver ({patientProfile.assignedCaregiverName}).
               </p>
             </div>
 

@@ -135,13 +135,6 @@ export const apiService = {
     });
   },
 
-  /**
-   * EMG Profile Endpoints
-   * GET /api/emg-profiles/:id
-   */
-  async getEMGProfile(patientId) {
-    return request(`/emg-profiles${patientId ? `?patientId=${patientId}` : ''}`);
-  },
 
   /**
    * Voice Profile Endpoints

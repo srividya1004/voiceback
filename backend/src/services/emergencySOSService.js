@@ -21,29 +21,38 @@ const createEmergencySOS = async (data) => {
     throw new Error('Patient record not found');
   }
 
-  // Populate caregiver and doctor IDs from patient relationships if not explicitly provided
-  const caregiverId = data.caregiverId || patient.assignedCaregiverId || null;
-  const doctorId = data.doctorId || patient.assignedDoctorId || null;
+  // Link each patient directly to their assigned caregiver for emergency alerts
+  const assignedCaregiverId = patient.assignedCaregiverId || data.caregiverId || null;
+  if (!assignedCaregiverId) {
+    throw new Error('No caregiver is assigned to this patient. Emergency alert cannot be sent.');
+  }
 
+  // Emergency alerts are sent ONLY to the assigned caregiver, NEVER to the doctor
   const sosRecord = await EmergencySOS.create({
     patientId: patient._id,
-    caregiverId,
-    doctorId,
+    caregiverId: assignedCaregiverId,
+    doctorId: null,
     message: data.message || 'Emergency SOS triggered by patient',
     location: data.location || 'Home / Primary Location',
-    status: 'Active'
+    status: 'Active',
+    triggeredAt: new Date()
   });
 
   return await EmergencySOS.findById(sosRecord._id)
     .populate('patientId', 'fullName age aphasiaType')
-    .populate('caregiverId', 'fullName phone relationshipToPatient')
-    .populate('doctorId', 'fullName specialization hospitalAffiliation');
+    .populate('caregiverId', 'fullName phone relationshipToPatient email');
 };
 
 /**
  * Get all Emergency SOS alerts (optionally filtered by patientId, caregiverId, doctorId)
+ * Emergency alerts are never routed to doctors; doctor filter returns empty array.
  */
 const getEmergencySOSAlerts = async (filter = {}) => {
+  // If doctorId is supplied, return empty array as doctors do not receive emergency alerts
+  if (filter.doctorId) {
+    return [];
+  }
+
   const query = {};
   if (filter.patientId) {
     validateObjectId(filter.patientId, 'Patient');
@@ -53,16 +62,11 @@ const getEmergencySOSAlerts = async (filter = {}) => {
     validateObjectId(filter.caregiverId, 'Caregiver');
     query.caregiverId = filter.caregiverId;
   }
-  if (filter.doctorId) {
-    validateObjectId(filter.doctorId, 'Doctor');
-    query.doctorId = filter.doctorId;
-  }
 
   return await EmergencySOS.find(query)
     .sort({ createdAt: -1 })
     .populate('patientId', 'fullName age aphasiaType')
-    .populate('caregiverId', 'fullName phone relationshipToPatient')
-    .populate('doctorId', 'fullName specialization hospitalAffiliation');
+    .populate('caregiverId', 'fullName phone relationshipToPatient email');
 };
 
 /**
@@ -81,8 +85,7 @@ const updateEmergencySOSStatus = async (id, status) => {
     { new: true, runValidators: true }
   )
     .populate('patientId', 'fullName age aphasiaType')
-    .populate('caregiverId', 'fullName phone relationshipToPatient')
-    .populate('doctorId', 'fullName specialization hospitalAffiliation');
+    .populate('caregiverId', 'fullName phone relationshipToPatient email');
 
   if (!updated) {
     throw new Error(`Emergency SOS record with ID ${id} not found`);

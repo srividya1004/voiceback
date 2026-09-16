@@ -47,7 +47,76 @@ export const contextService = {
       console.warn('Failed to submit semantic intent:', error.message);
       return { success: false, error: error.message };
     }
+  },
+  /**
+   * Interpret and contextually correct aphasic patient speech
+   * @param {Object} params - { rawTranscript, language, context, previousUtterance }
+   * @returns {Promise<Object>} Reconstruction and confirmation payload
+   */
+  correctSpeech: async ({ rawTranscript, language = 'en', context = '', previousUtterance = '' }) => {
+    return contextService.reconstructSpeech({ rawTranscript, language, context, previousUtterance });
+  },
+
+  /**
+   * Conservative speech reconstruction, ambiguity detection, and clarification check
+   * @param {Object} params - { rawTranscript, language, context, previousUtterance }
+   * @returns {Promise<Object>} Full reconstruction metadata
+   */
+  reconstructSpeech: async ({ rawTranscript, language = 'en', context = '', previousUtterance = '' }) => {
+    try {
+      const response = await apiClient.post('/context/reconstruct-speech', {
+        rawTranscript,
+        language,
+        context,
+        previousUtterance
+      });
+      return response.data?.data || null;
+    } catch (error) {
+      console.warn('AI speech reconstruction notice:', error.message);
+      return null;
+    }
+  },
+
+  /**
+   * Generate dynamic response after patient confirmation
+   * @param {Object} params - { confirmedText, intent, entities, language, context }
+   * @returns {Promise<Object>} { responseText, intent, entities, language }
+   */
+  generateDynamicResponse: async ({ confirmedText, intent, entities = {}, language = 'en', context = '' }) => {
+    try {
+      const response = await apiClient.post('/context/dynamic-response', {
+        confirmedText,
+        intent,
+        entities,
+        language,
+        context
+      });
+      return response.data?.data || { responseText: confirmedText, intent, entities, language };
+    } catch (error) {
+      console.warn('Dynamic response generation notice:', error.message);
+      return { responseText: confirmedText, intent, entities, language };
+    }
+  },
+
+  /**
+   * Process speech through the Python FastAPI Speech Intelligence Pipeline
+   * @param {Object} params - { text, language, targetLanguage, context }
+   */
+  processWithPythonPipeline: async ({ text, language = 'en', targetLanguage = 'en', context = '' }) => {
+    try {
+      const response = await apiClient.post('/context/python-pipeline', {
+        text,
+        language,
+        target_language: targetLanguage,
+        context
+      });
+      return response.data?.data || response.data;
+    } catch (error) {
+      console.warn('Python pipeline notice:', error.message);
+      return null;
+    }
   }
 };
 
 export default contextService;
+

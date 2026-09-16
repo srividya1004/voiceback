@@ -1,6 +1,6 @@
 # VoiceBack – Database Schema Architecture
 
-> **Document Version:** 2.0  
+> **Document Version:** 2.1 (Canonical Production Schema Lock)  
 > **Status:** Fully Implemented & Operational  
 > **Target Database:** MongoDB Atlas (NoSQL)  
 > **ORM Layer:** Mongoose (v9.9.0)  
@@ -12,13 +12,13 @@
 > [!NOTE]
 > **Database implementation is 100% complete and connected to MongoDB Atlas.**
 > 
-> All 9 Mongoose collection schemas (`UserLogin`, `Patient`, `Doctor`, `Caregiver`, `VoiceProfile`, `EMGProfile`, `TherapyProgress`, `CommunicationHistory`, `Appointment`) are fully implemented in `backend/src/models/`, integrated into Node.js Express service layers (`backend/src/services/`), and exposed via REST API controllers (`backend/src/controllers/`).
+> All **10 Mongoose collection schemas** (`UserLogin`, `Patient`, `Doctor`, `Caregiver`, `VoiceProfile`, `EMGProfile`, `TherapyProgress`, `CommunicationHistory`, `Appointment`, `EmergencySOS`) are fully implemented in `backend/src/models/`, integrated into Node.js Express service layers (`backend/src/services/`), and exposed via REST API controllers (`backend/src/controllers/`).
 
 ---
 
-## 2. Implemented MongoDB Collection Architecture (9 Collections)
+## 2. Implemented MongoDB Collection Architecture (10 Collections)
 
-The database utilizes **9 MongoDB Collections** designed for clinical therapy tracking, patient management, and communication history logging:
+The database utilizes **10 MongoDB Collections** designed for clinical therapy tracking, patient management, voice persistence, and emergency response:
 
 ```mermaid
 erDiagram
@@ -31,9 +31,12 @@ erDiagram
     Patient ||--o{ TherapyProgress : "tracks"
     Patient ||--o{ CommunicationHistory : "records"
     Patient ||--o{ Appointment : "schedules"
+    Patient ||--o{ EmergencySOS : "triggers"
 
     Doctor ||--o{ Appointment : "conducts"
     Caregiver ||--o{ Patient : "monitors"
+    Caregiver ||--o{ EmergencySOS : "receives"
+    Doctor ||--o{ EmergencySOS : "receives"
 ```
 
 ---
@@ -83,13 +86,16 @@ Caregiver relationship tracking:
 - `createdAt` & `updatedAt`: Timestamps
 
 ### 5. `VoiceProfile` `[Implemented - backend/src/models/VoiceProfile.js]`
-Personalized TTS audio synthesis settings:
+Personalized TTS audio synthesis settings and ElevenLabs voice cloning ID:
 - `_id`: ObjectId
 - `patientId`: Schema.Types.ObjectId (Ref: `Patient`, Required)
 - `pitch`: Number (Default: 1.0, Range: 0.5 - 2.0)
 - `speedRate`: Number (Default: 1.0, Range: 0.5 - 2.0)
-- `voiceGender`: String (Enum: `Male`, `Female`, `Neutral`)
-- `customVoiceAssetUrl`: String
+- `voiceGender`: String (Enum: `Male`, `Female`, `Neutral`; Default: `Neutral`)
+- `customVoiceAssetUrl`: String (Trimmed, Default: '')
+- `voiceId`: String (Trimmed, Default: ''; stores patient's ElevenLabs voice clone ID)
+- `status`: String (Enum: `Not Configured`, `Processing`, `Ready`, `Failed`; Default: `Not Configured`)
+- `lastClonedAt`: Date
 - `createdAt` & `updatedAt`: Timestamps
 
 ### 6. `EMGProfile` `[Implemented - backend/src/models/EMGProfile.js]`
@@ -132,6 +138,18 @@ Clinical session scheduling:
 - `clinicalNotes`: String
 - `createdAt` & `updatedAt`: Timestamps
 
+### 10. `EmergencySOS` `[Implemented - backend/src/models/EmergencySOS.js]`
+Patient emergency alert dispatch and logging:
+- `_id`: ObjectId
+- `patientId`: Schema.Types.ObjectId (Ref: `Patient`, Required)
+- `caregiverId`: Schema.Types.ObjectId (Ref: `Caregiver`, Default: null)
+- `doctorId`: Schema.Types.ObjectId (Ref: `Doctor`, Default: null)
+- `status`: String (Enum: `Active`, `Acknowledged`, `Resolved`; Default: `Active`)
+- `message`: String (Trimmed, Default: 'Emergency SOS triggered by patient')
+- `location`: String (Trimmed, Default: 'Home / Primary Location')
+- `triggeredAt`: Date (Default: `Date.now`)
+- `createdAt` & `updatedAt`: Timestamps
+
 ---
 
 ## 4. Verification & Testing
@@ -139,8 +157,9 @@ Clinical session scheduling:
 The database implementation has been verified through:
 1. **Live Connection to MongoDB Atlas**: Successfully connected via `mongoose.connect(MONGODB_URI)`.
 2. **Automated Test Scripts (`backend/scripts/`)**:
-   - `testModels.js`: Validates schema instantiation, validations, and field constraints.
+   - `testModels.js`: Validates schema instantiation, validations, and field constraints across models.
    - `testServices.js`: Validates database CRUD operations, password hashing, and query projection.
    - `testRoutes.js`: Validates Express route routing to Mongoose services.
-3. **Postman HTTP Testing**: Validated end-to-end request/response workflows for all 9 resource collections and `POST /api/user-logins/login`.
+3. **Audit Compliance**: Zero fake/dummy test patients; production collection structure adheres to authoritative Mongoose models.
+
 

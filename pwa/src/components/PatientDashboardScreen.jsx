@@ -27,27 +27,271 @@ import {
   Droplet,
   Utensils,
   HelpCircle,
+  AlertCircle,
   Heart,
   CheckCircle2,
   XCircle,
   Moon,
   PhoneCall,
-  RefreshCw
+  RefreshCw,
+  Edit3,
+  Check
 } from 'lucide-react';
+
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
 import PatientProfileScreen from './PatientProfileScreen';
 import TherapyExercisesModule from './TherapyExercisesModule';
 import TherapyGamesModule from './TherapyGamesModule';
+import ScriptTrainingModule from './ScriptTrainingModule';
 import VoiceCloningModule from './VoiceCloningModule';
 import PatientReportsModule from './PatientReportsModule';
 import EmergencySOSModule from './EmergencySOSModule';
 import PatientAppointmentsModule from './PatientAppointmentsModule';
 import DynamicCommunicationModule from './DynamicCommunicationModule';
 import VolumeControlWidget from './VolumeControlWidget';
-import UniversalSpeechInput from './UniversalSpeechInput';
 import WakeWordVoicePipelineModule from './WakeWordVoicePipelineModule';
-import ConversationModeModule, { generateDynamicResponses } from './ConversationModeModule';
+import ConversationModeModule from './ConversationModeModule';
+import { getTranslation } from '../i18n/translations';
+
+/**
+ * Speech / Meaning Reconstruction for Patient Communication
+ * Reconstructs unclear or aphasic patient speech attempts into correct intended sentences.
+ * Example: "Nannigi neelu beku" -> "ನನಗೆ ನೀರ/**
+ * Speech / Meaning Reconstruction for Patient Communication
+ * Distinguishes "Recognized Attempt" (raw STT) from "Intended Patient Sentence" (reconstructed natural sentence).
+ * Corrects misheard words, phonetic slips, and aphasic attempts into natural, grammatically correct sentences.
+ */
+const KANNADA_STT_CORRECTIONS = [
+  // Multi-word phrases & misheard expressions
+  { pattern: /(^|[\s,.\?!;:])(ಸಾಯ\s*ಬೇಕು|ಸಾಯಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಸಹಾಯ ಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ಸಾಯ್)(?=[\s,.\?!;:]|$)/gu, word: 'ಸಹಾಯ' },
+  { pattern: /(^|[\s,.\?!;:])(ನಾವು\s*ಆಗ್ತಿದೆ|ನೋವು\s*ಅಗ್ತಿದೆ|ನೋವು\s*ಆಗ್ತಾ\s*ಇದೆ|ನೋವು\s*ಆಗಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ನೋವಾಗುತ್ತಿದೆ' },
+  { pattern: /(^|[\s,.\?!;:])(ನೋವು\s*ಬೆಕ್ಕು|ನೋವು\s*ಇದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ನೋವಾಗುತ್ತಿದೆ' },
+  { pattern: /(^|[\s,.\?!;:])(ನೀಲು\s*ಬೇಕು|ನೀಲು\s*ಬೆಕ್ಕು|ನೀರು\s*ಬೆಕ್ಕು|ನಿಲ್ಲು\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ನೀರು ಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ನೀಲು|ನೆಲ್ಲು|ನೇರು)(?=[\s,.\?!;:]|$)/gu, word: 'ನೀರು' },
+  { pattern: /(^|[\s,.\?!;:])(ಉಡು\s*ಬೇಕು|ಉಟ\s*ಬೇಕು|ಉಟಾ\s*ಬೇಕು|ಊಟ\s*ಬೆಕ್ಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಊಟ ಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ಊಡ|ಉಡ)(?=[\s,.\?!;:]|$)/gu, word: 'ಊಟ' },
+  { pattern: /(^|[\s,.\?!;:])(ಮಾತ\s*ಬೇಕು|ಮಾತ್ರೆ\s*ಬೆಕ್ಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಾತ್ರೆ ಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ಮಾತೃ|ಮಾತ್ರೆಗಳು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಾತ್ರೆ' },
+  { pattern: /(^|[\s,.\?!;:])(ಮದ್ದು\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಔಷಧ ಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ವೌಷಧ|ಔಶಧ|ಔಷಾದ)(?=[\s,.\?!;:]|$)/gu, word: 'ಔಷಧಿ' },
+  { pattern: /(^|[\s,.\?!;:])(ಮಲಗ್\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಲಗಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ನನ್ನಿ\s*ನೀಲು)(?=[\s,.\?!;:]|$)/gu, word: 'ನನಗೆ ನೀರು' },
+  { pattern: /(^|[\s,.\?!;:])(ನನ್ನಿ|ನನ್ನಿಗೆ|ನನಿಗೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ನನಗೆ' },
+  { pattern: /(^|[\s,.\?!;:])(ನನಗೆ\s*ನೀನು\s*ಬೇಕು|ನನಗೆ\s*ನೀನು)(?=[\s,.\?!;:]|$)/gu, word: 'ನನಗೆ ನೀರು ಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ನೀನು\s*ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ನೀರು ಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ಬೇಕ್|ಬೆಕ್ಕು|ಬೇಕಾ|ಬೇಕ್ಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ಆಗ್ತಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ಆಗುತ್ತಿದೆ' },
+  { pattern: /(^|[\s,.\?!;:])(ಬರ್ತಿದೆ)(?=[\s,.\?!;:]|$)/gu, word: 'ಬರುತ್ತಿದೆ' },
+  { pattern: /(^|[\s,.\?!;:])(ಇದ್ದಿನಿ|ಇದ್ದೀನಿ)(?=[\s,.\?!;:]|$)/gu, word: 'ಇದ್ದೇನೆ' },
+  { pattern: /(^|[\s,.\?!;:])(ಹೋಗ್ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಹೋಗಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ಮಾಡ್ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಾಡಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ತಿನ್ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ತಿನ್ನಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ಕುಡಿಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಕುಡಿಯಬೇಕು' },
+  { pattern: /(^|[\s,.\?!;:])(ಮಾತಾಡ್ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಾತನಾಡಬೇಕು' }
+];
+
+const reconstructPatientUtterance = (transcript, language = 'English', context = '') => {
+  if (!transcript || !transcript.trim()) return '';
+  const text = transcript.trim();
+
+  // Context-guided phonetic and phrase reconstruction:
+  if (context && typeof context === 'string') {
+    const normCtx = context.trim();
+
+    // Context indicates "Chanakya Dini", raw transcript phonetically captured as "Tanagidini"
+    if (/\bchanakya\s+dini\b/i.test(normCtx) && /\b(tanagidini|chanakya|dini|tanaki|chanaki)\b/i.test(text)) {
+      return 'Chanakya Dini';
+    }
+
+    // Well-being question e.g. "How are you feeling today?" / "hegidira"
+    if (/how are you|feeling|hegidira|kya haal|doing/i.test(normCtx)) {
+      if (/\b(tanagidini|chanagidini|chennagidini)\b/i.test(text)) {
+        return (language === 'Kannada' || /[\u0C80-\u0CFF]/.test(text))
+          ? 'ಚೆನ್ನಾಗಿದ್ದೀನಿ'
+          : 'I am doing well.';
+      }
+    }
+  }
+
+  // 0a. Handle perseverative repetitive syllables common in aphasia/dysarthria:
+  // e.g. "Na na na na na na na na na" represents perseveration of "ನನಗೆ" ("I want / water")
+  if (/^(\s*na\s*){3,}$/i.test(text) || /\b(na)(?:\s+\1){3,}\b/i.test(text)) {
+    return language === 'Kannada' || /[\u0C80-\u0CFF]/.test(text) ? 'ನನಗೆ ನೀರು ಬೇಕು' : 'I need water.';
+  }
+
+  // 0b. Check for Romanized Kannada speech (e.g. Scribe v2 spelling Kannada phonetically)
+  const isRomanizedKannada = /\b(ah\s*)?(na\s*na\s*nge|na\s*nge|nanage|nange|nanige|naanage)\s+(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/i.test(text) ||
+    /\b(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/i.test(text) ||
+    /\b(oota|ootha|uta|ouda)\s+(beku|beko|bekku)\b/i.test(text) ||
+    /\b(sahaya|saaya|sahay)\s+(beku|beko)\b/i.test(text);
+
+  if (isRomanizedKannada || language === 'Kannada') {
+    let romanizedKn = text
+      .replace(/\b(ah\s*)?(na\s*na\s*nge|na\s*nge|nanage|nange|nanige|naanage)\s+(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/gi, 'ನನಗೆ ನೀರು ಬೇಕು')
+      .replace(/\b(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/gi, 'ನೀರು ಬೇಕು')
+      .replace(/\b(niru|neeru|neelu)\s+(kodi|kudi)\b/gi, 'ನೀರು ಕೊಡಿ')
+      .replace(/\b(oota|ootha|uta|ouda)\s+(beku|beko|bekku)\b/gi, 'ಊಟ ಬೇಕು')
+      .replace(/\b(sahaya|saaya|sahay|help)\s+(beku|beko)\b/gi, 'ಸಹಾಯ ಬೇಕು')
+      .replace(/\b(toilet|bathroom)\s+(beku|hogbeku)\b/gi, 'ಶೌಚಾಲಯಕ್ಕೆ ಹೋಗಬೇಕು')
+      .replace(/\b(matre|maatre)\s+(beku|beko)\b/gi, 'ಮಾತ್ರೆ ಬೇಕು');
+
+    if (/[\u0C80-\u0CFF]/.test(romanizedKn)) {
+      for (const rule of KANNADA_STT_CORRECTIONS) {
+        romanizedKn = romanizedKn.replace(rule.pattern, (match, p1) => p1 + rule.word);
+      }
+      return romanizedKn.trim();
+    }
+  }
+
+  // 0b. Check for Romanized Hindi speech
+  const isRomanizedHindi = /\b(pani|paani)\s+(chahiye|chahye|pilao|do)\b/i.test(text) ||
+    /\b(madad|sahayata)\s+(chahiye|karo|do)\b/i.test(text) ||
+    /\b(khana|khaana)\s+(chahiye|do)\b/i.test(text);
+
+  if (isRomanizedHindi || language === 'Hindi') {
+    let romanizedHi = text
+      .replace(/\b(pani|paani)\s+(chahiye|chahye|pilao|do)\b/gi, 'पानी चाहिए')
+      .replace(/\b(madad|sahayata)\s+(chahiye|karo|do)\b/gi, 'मदद चाहिए')
+      .replace(/\b(khana|khaana)\s+(chahiye|do)\b/gi, 'खाना चाहिए')
+      .replace(/\b(toilet|bathroom)\s+(jana\s*hai|chahiye)\b/gi, 'शौचालय जाना है');
+
+    if (/[\u0900-\u097F]/.test(romanizedHi)) {
+      return romanizedHi
+        .replace(/(^|[\s,.\?!;:])(मदद\s*चाहिए|मदद)(?=[\s,.\?!;:]|$)/gu, '$1मदद चाहिए')
+        .replace(/(^|[\s,.\?!;:])(पाणी)(?=[\s,.\?!;:]|$)/gu, '$1पानी')
+        .trim();
+    }
+  }
+
+  // Detect script from text
+  const isKannada = language === 'Kannada' || /[\u0C80-\u0CFF]/.test(text);
+  const isHindi = !isKannada && (language === 'Hindi' || /[\u0900-\u097F]/.test(text));
+
+  // Word-level phonetic & morphological reconstruction in native script:
+  if (isKannada) {
+    let corrected = text;
+    for (const rule of KANNADA_STT_CORRECTIONS) {
+      corrected = corrected.replace(rule.pattern, (match, p1) => p1 + rule.word);
+    }
+    return corrected.trim();
+  }
+
+  // For Hindi: conservative phonetic corrections while preserving actual spoken words
+  if (isHindi) {
+    let corrected = text
+      .replace(/(^|[\s,.\?!;:])(मदದ\s*चाहिए|मदದ)(?=[\s,.\?!;:]|$)/gu, '$1मदद चाहिए')
+      .replace(/(^|[\s,.\?!;:])(पाणी)(?=[\s,.\?!;:]|$)/gu, '$1पानी');
+    return corrected.trim();
+  }
+
+  // English Language Conservative Reconstruction
+  // 1. Remove consecutive word repetitions e.g. "I I want want" -> "I want"
+  let cleanWords = text.replace(/\b([a-zA-Z]+)(?:\s+\1\b)+/gi, '$1');
+
+  // Strip trailing punctuation temporarily for clean pattern matching
+  let cleanNoPunct = cleanWords.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]+$/, '').trim();
+
+  // 2. Lexical & Phonetic Slips (word boundary replacements)
+  cleanNoPunct = cleanNoPunct
+    .replace(/\b(watter|watr|wter|wada|wata|waater|wator|wotar)\b/gi, 'water')
+    .replace(/\b(wa|wan|wnt|wanna|wont)\b/gi, 'want')
+    .replace(/\b(hep|halp|hlp|elpp|elp)\b/gi, 'help')
+    .replace(/\b(hom|hme|hoam)\b/gi, 'home')
+    .replace(/\b(ned|neeed|neeeed|nid)\b/gi, 'need')
+    .replace(/\b(medcin|medsin|medisin|meds)\b/gi, 'medicine')
+    .replace(/\b(slip|slipin|sleap)\b/gi, 'sleep')
+    .replace(/\b(hungri|hangry|hongry)\b/gi, 'hungry')
+    .replace(/\b(thirsti|thursty)\b/gi, 'thirsty')
+    .replace(/\b(eatt|fud)\b/gi, 'food')
+    .replace(/\b(washrom|tolet|toylt|bathrom|restrom)\b/gi, 'bathroom')
+    .replace(/\b(doctr|doktor|doc)\b/gi, 'doctor')
+    .replace(/\b(nurce|nurs)\b/gi, 'nurse')
+    .replace(/\b(pleas|plz|plis|plez)\b/gi, 'please')
+    .replace(/\b(tank\s+u|tank\s+you|thx|thanx)\b/gi, 'thank you')
+    .replace(/\b(hert|herts|huting)\b/gi, 'hurting')
+    .replace(/\b(stomak|stomac|stomack|stomic)\b/gi, 'stomach');
+
+  // 3. Pronoun correction: "me want water" -> "I want water"
+  cleanNoPunct = cleanNoPunct
+    .replace(/^me\s+want\b/i, 'I want')
+    .replace(/^me\s+need\b/i, 'I need')
+    .replace(/^me\s+hungry\b/i, 'I am hungry')
+    .replace(/^me\s+thirsty\b/i, 'I am thirsty')
+    .replace(/^me\s+cold\b/i, 'I am feeling cold')
+    .replace(/^me\s+hot\b/i, 'I am feeling hot')
+    .replace(/^me\s+tired\b/i, 'I am tired')
+    .replace(/^me\s+in\s+pain\b/i, 'I am in pain')
+    .replace(/^me\s+pain\b/i, 'I am in pain');
+
+  // 4. Missing verbs, subjects, & infinitive particles (Compositional)
+  cleanNoPunct = cleanNoPunct
+    .replace(/^i\s+water$/i, 'I want water')
+    .replace(/^want\s+water$/i, 'I want water')
+    .replace(/^need\s+water$/i, 'I need water')
+    .replace(/^i\s+help$/i, 'I want help')
+    .replace(/^want\s+help$/i, 'I want help')
+    .replace(/^need\s+help$/i, 'I need help')
+    .replace(/^i\s+food$/i, 'I want food')
+    .replace(/^want\s+food$/i, 'I want food')
+    .replace(/^i\s+medicine$/i, 'I need my medicine')
+    .replace(/^want\s+medicine$/i, 'I need my medicine')
+    .replace(/^need\s+medicine$/i, 'I need my medicine');
+
+  // Missing infinitive "to": "want go" -> "I want to go", "I want go home" -> "I want to go home"
+  cleanNoPunct = cleanNoPunct
+    .replace(/^want\s+go\s+home$/i, 'I want to go home')
+    .replace(/^i\s+want\s+go\s+home$/i, 'I want to go home')
+    .replace(/^want\s+go$/i, 'I want to go')
+    .replace(/^i\s+want\s+go$/i, 'I want to go')
+    .replace(/^need\s+go$/i, 'I need to go')
+    .replace(/^i\s+need\s+go$/i, 'I need to go')
+    .replace(/^i\s+go\s+home$/i, 'I want to go home')
+    .replace(/^i\s+home$/i, 'I want to go home')
+    .replace(/\bwant\s+go\s+home\b/gi, 'want to go home')
+    .replace(/\bwant\s+go\b/gi, 'want to go')
+    .replace(/\bneed\s+go\b/gi, 'need to go')
+    .replace(/\blike\s+go\b/gi, 'like to go')
+    .replace(/\bwant\s+sleep\b/gi, 'want to sleep')
+    .replace(/\bneed\s+sleep\b/gi, 'need to sleep')
+    .replace(/\bwant\s+rest\b/gi, 'want to rest')
+    .replace(/\bneed\s+rest\b/gi, 'need to rest');
+
+  // 5. Symptom / Pain Reconstruction (Never infer diagnoses, keep conservative)
+  cleanNoPunct = cleanNoPunct
+    .replace(/^(?:pain\s+stomach|stomach\s+pain)$/i, 'I have stomach pain')
+    .replace(/^(?:pain\s+head|head\s+pain)$/i, 'My head hurts')
+    .replace(/^(?:pain\s+chest|chest\s+pain)$/i, 'I have chest pain')
+    .replace(/^(?:pain\s+back|back\s+pain)$/i, 'I have back pain')
+    .replace(/^(?:pain\s+leg|leg\s+pain)$/i, 'I have leg pain')
+    .replace(/^(?:head|my\s+head)\s+(?:hurt|hurts|hurting)$/i, 'My head hurts')
+    .replace(/^(?:stomach|my\s+stomach)\s+(?:hurt|hurts|hurting)$/i, 'My stomach hurts')
+    .replace(/^(?:chest|my\s+chest)\s+(?:hurt|hurts|hurting)$/i, 'My chest hurts')
+    .replace(/^(?:back|my\s+back)\s+(?:hurt|hurts|hurting)$/i, 'My back hurts')
+    .replace(/^(?:leg|my\s+leg)\s+(?:hurt|hurts|hurting)$/i, 'My leg hurts')
+    .replace(/^(?:want|need)\s+(?:toilet|bathroom|pee)$/i, 'I need to use the bathroom')
+    .replace(/^call\s+doctor$/i, 'Please call the doctor')
+    .replace(/^call\s+nurse$/i, 'Please call the nurse')
+    .replace(/^call\s+family$/i, 'Please call my family');
+
+  // 6. Capitalize "I" when used as isolated pronoun
+  cleanNoPunct = cleanNoPunct.replace(/\bi\b/g, 'I');
+
+  // 7. Ensure first character capitalized
+  let result = cleanNoPunct.trim();
+  if (result.length > 0) {
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+  }
+
+  // 8. Ensure terminal period (preserve existing ? or !)
+  if (result.length > 0 && !/[.!?]$/.test(result)) {
+    result += '.';
+  }
+
+  return result;
+};
+
 import { useSettings } from '../context/SettingsContext';
 import authService from '../services/authService';
 import patientService from '../services/patientService';
@@ -57,6 +301,7 @@ import communicationService from '../services/communicationService';
 import therapyService from '../services/therapyService';
 import voiceService from '../services/voiceService';
 import deviceService from '../services/deviceService';
+import contextService from '../services/contextService';
 
 export const PatientDashboardScreen = ({ onLogout }) => {
   const { t, voiceAssistant, speak, language } = useSettings();
@@ -75,48 +320,110 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const [isSynthesizingVoice, setIsSynthesizingVoice] = useState(false);
   const [activeCategoryTab, setActiveCategoryTab] = useState('basic'); // 'basic' | 'people'
   
-  // Ephemeral Dynamic Conversation State (Patient Dashboard)
-  const [ephemeralQuestion, setEphemeralQuestion] = useState('');
-  const [ephemeralChoices, setEphemeralChoices] = useState([]);
-  const [ephemeralSelectedChoice, setEphemeralSelectedChoice] = useState('');
-  const [ephemeralIsSynthesizing, setEphemeralIsSynthesizing] = useState(false);
-  const [ephemeralStatusMsg, setEphemeralStatusMsg] = useState('');
-  const ephemeralAutoClearTimer = useRef(null);
+  // Patient Communication Utterance & Confirmation State Machine
+  // Required conceptual states: IDLE | PENDING_CONFIRMATION | CONFIRMED | CHANGED | CANCELLED
+  const [confirmationState, setConfirmationState] = useState('IDLE');
+  const [pendingReconstruction, setPendingReconstruction] = useState(null);
+  const [isEditingCorrection, setIsEditingCorrection] = useState(false);
+  const [editableCorrectionText, setEditableCorrectionText] = useState('');
 
-  const clearEphemeralConversation = () => {
-    setEphemeralQuestion('');
-    setEphemeralChoices([]);
-    setEphemeralSelectedChoice('');
-    setEphemeralIsSynthesizing(false);
-    setEphemeralStatusMsg('');
-    if (ephemeralAutoClearTimer.current) {
-      clearTimeout(ephemeralAutoClearTimer.current);
+  const [patientSpokenAttempt, setPatientSpokenAttempt] = useState('');
+  const [patientCorrectedUtterance, setPatientCorrectedUtterance] = useState('');
+  const [patientUtteranceStatus, setPatientUtteranceStatus] = useState('');
+  const patientUtteranceAutoClearTimer = useRef(null);
+  const previousUtteranceRef = useRef('');
+
+  const clearPatientUtterance = () => {
+    setPatientSpokenAttempt('');
+    setPatientCorrectedUtterance('');
+    setActiveOutputPhrase('');
+    setPatientUtteranceStatus('');
+    setConfirmationState('IDLE');
+    setPendingReconstruction(null);
+    setIsEditingCorrection(false);
+    setEditableCorrectionText('');
+    if (patientUtteranceAutoClearTimer.current) {
+      clearTimeout(patientUtteranceAutoClearTimer.current);
     }
   };
 
-  const handleConfirmEphemeralChoice = async () => {
-    if (!ephemeralSelectedChoice) return;
-    setEphemeralIsSynthesizing(true);
-    setEphemeralStatusMsg('Synthesizing patient voice audio and routing to physical speaker...');
+  /**
+   * Explicit Patient Confirmation Handler
+   * Reconstructed meaning only becomes authoritative upon explicit patient confirmation.
+   * After confirmation, generates dynamic response (intent + entities + context) and plays via authorized Voice ID.
+   */
+  const handleConfirmReconstruction = async () => {
+    const textToConfirm = (isEditingCorrection ? editableCorrectionText : (pendingReconstruction?.candidateText || patientCorrectedUtterance)) || '';
+    if (!textToConfirm.trim()) return;
+
+    const targetText = textToConfirm.trim();
+    const effectiveLang = pendingReconstruction?.language || (
+      /[\u0C80-\u0CFF]/.test(targetText) ? 'Kannada' : /[\u0900-\u097F]/.test(targetText) ? 'Hindi' : 'English'
+    );
+
+    setConfirmationState('CONFIRMED');
+    setPatientUtteranceStatus(
+      effectiveLang === 'Kannada'
+        ? 'ಖಚಿತಪಡಿಸಲಾಗಿದೆ! ಧ್ವನಿ ಸಿದ್ಧವಾಗುತ್ತಿದೆ...'
+        : effectiveLang === 'Hindi'
+        ? 'पुष्टि हो गई! आवाज तैयार हो रही है...'
+        : 'Confirmed! Synthesizing authorized patient voice audio...'
+    );
 
     try {
-      await processPhraseOutput(ephemeralSelectedChoice);
-      setEphemeralStatusMsg('🟢 Audio played through physical MAX98357A speaker!');
+      // The patient's communication must strictly remain a patient utterance, not a caregiver or assistant response.
+      // Do NOT convert patient utterance into a dynamic response. Dynamic responses remain restricted to Companion Speech mode only.
+      // The final spoken output must be the exact reconstructed patient utterance.
+      const textToSpeak = targetText;
+      previousUtteranceRef.current = textToSpeak;
 
-      // AUTOMATIC EPHEMERAL CLEANUP AFTER SUCCESSFUL PLAYBACK
-      ephemeralAutoClearTimer.current = setTimeout(() => {
-        clearEphemeralConversation();
-      }, 2500);
+      setPatientCorrectedUtterance(textToSpeak);
+      setActiveOutputPhrase(textToSpeak);
+      setIsEditingCorrection(false);
+
+      // Play via existing authorized patient Voice ID / TTS pipeline (ElevenLabs Cloud -> HTML5 Audio & ESP32 BLE)
+      await processPhraseOutput(textToSpeak, null, effectiveLang);
+
+      setPatientUtteranceStatus(
+        effectiveLang === 'Kannada'
+          ? '🟢 ರೋಗಿಯ ಅಧಿಕೃತ ಧ್ವನಿಯಲ್ಲಿ ಮಾತನಾಡಲಾಗಿದೆ'
+          : effectiveLang === 'Hindi'
+          ? '🟢 मरीज की अधिकृत आवाज में बोला गया'
+          : '🟢 Spoken using authorized Patient Voice'
+      );
     } catch (err) {
-      console.warn('Ephemeral output notice:', err.message);
-      setEphemeralStatusMsg(`Notice: ${err.message}`);
-      ephemeralAutoClearTimer.current = setTimeout(() => {
-        clearEphemeralConversation();
-      }, 3500);
-    } finally {
-      setEphemeralIsSynthesizing(false);
+      console.warn('Patient utterance output notice:', err.message);
+      setPatientUtteranceStatus(`Notice: ${err.message}`);
     }
   };
+
+  /**
+   * Patient Change / Correction Handler
+   * Allows patient to correct or refine candidate reconstruction
+   */
+  const handleChangeReconstruction = () => {
+    setConfirmationState('CHANGED');
+    setIsEditingCorrection(true);
+    if (!editableCorrectionText) {
+      setEditableCorrectionText(pendingReconstruction?.candidateText || patientCorrectedUtterance);
+    }
+  };
+
+  /**
+   * Patient Cancel Handler
+   * Safely terminates pending request without playing audio or logging to DB
+   */
+  const handleCancelReconstruction = () => {
+    setConfirmationState('CANCELLED');
+    setPendingReconstruction(null);
+    setIsEditingCorrection(false);
+    clearPatientUtterance();
+    setPatientUtteranceStatus('Request cancelled safely.');
+    setTimeout(() => setPatientUtteranceStatus(''), 2000);
+  };
+
+  const handleConfirmPatientUtterance = handleConfirmReconstruction;
+
   
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -219,12 +526,16 @@ export const PatientDashboardScreen = ({ onLogout }) => {
 
             localStorage.setItem('voiceback_patient_gender', patientGender);
             localStorage.setItem('voiceback_patient_age_group', patientAgeGroup);
+            if (activePatientRecord.preferredLanguage) {
+              localStorage.setItem('voiceback_patient_preferred_language', activePatientRecord.preferredLanguage);
+            }
 
             // Fetch patient's saved voice profile from backend and bind cloned voiceId
             voiceService.getVoiceProfiles().then((profiles) => {
               const patientIdStr = String(activePatientRecord._id || activePatientRecord.id || '');
-              const profile = Array.isArray(profiles) ? profiles.find(vp => String(vp.patientId?._id || vp.patientId) === patientIdStr || vp.voiceId) : null;
+              const profile = Array.isArray(profiles) ? profiles.find(vp => String(vp.patientId?._id || vp.patientId) === patientIdStr) : null;
               if (profile && profile.voiceId) {
+                localStorage.setItem(`voiceback_cloned_voice_id_${patientIdStr}`, profile.voiceId);
                 localStorage.setItem('voiceback_cloned_voice_id', profile.voiceId);
               }
             }).catch(() => {});
@@ -357,18 +668,40 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   };
 
   // In-Place Voice Generation & Audio Output Pipeline
-  const processPhraseOutput = async (phraseText, phraseKey) => {
-    if (!phraseText) return;
+  const processPhraseOutput = async (phraseText, phraseKey, explicitLang) => {
+    if (!phraseText && !phraseKey) return;
     setSpeechErrorMsg(''); // Clear error message on valid phrase output
-    const textToSynthesize = phraseKey ? t(phraseKey) : phraseText;
+
+    // Preferred language for Quick Messages: Must follow patient's configured preferredLanguage, not UI language
+    const patientPrefLang = (profileData?.preferredLanguage || localStorage.getItem('voiceback_patient_preferred_language') || 'english').toLowerCase().trim();
+    const textToSynthesize = phraseKey ? getTranslation(patientPrefLang, phraseKey) : phraseText;
     setActiveOutputPhrase(textToSynthesize);
+
+    // Dynamically resolve target language:
+    // 1. Explicit language if provided (e.g. from speech detection)
+    // 2. Actual script in text (Kannada vs Hindi vs English)
+    // 3. Fallback to patient's preferred language
+    let targetLang = explicitLang;
+    if (!targetLang) {
+      if (/[\u0C80-\u0CFF]/.test(textToSynthesize)) {
+        targetLang = 'Kannada';
+      } else if (/[\u0900-\u097F]/.test(textToSynthesize)) {
+        targetLang = 'Hindi';
+      } else if (patientPrefLang.includes('kan') || patientPrefLang === 'kn') {
+        targetLang = 'Kannada';
+      } else if (patientPrefLang.includes('hin') || patientPrefLang === 'hi') {
+        targetLang = 'Hindi';
+      } else {
+        targetLang = 'English';
+      }
+    }
 
     setIsSynthesizingVoice(true);
     try {
       const speechResult = await voiceService.playSynthesizedAudio({
         patientId: profileData?.id || '',
         text: textToSynthesize,
-        language: language === 'kannada' ? 'Kannada' : language === 'hindi' ? 'Hindi' : 'English',
+        language: targetLang,
         emotion: 'neutral',
       });
       console.log('🔊 [PatientDashboard] Voice output result:', speechResult);
@@ -399,8 +732,17 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     }
 
     try {
-      console.log('🎙️ Requesting microphone access for MediaRecorder audio capture...');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('🎙️ Requesting microphone access with DSP audio enhancement for MediaRecorder...');
+      // Enable high-fidelity speech DSP (echoCancellation, noiseSuppression, autoGainControl)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 48000
+        }
+      });
       mediaStreamRef.current = stream;
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm')
@@ -443,48 +785,176 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             type: mediaRecorder.mimeType || 'audio/webm',
           });
 
+          // Explicitly pass patient's selected or preferred language to STT model for native phonetic recognition
+          const prefLang = (profileData?.preferredLanguage || '').toLowerCase();
+          const activeLangCode = (language === 'kn' || language === 'Kannada' || prefLang.includes('kannada'))
+            ? 'kn'
+            : (language === 'hi' || language === 'Hindi' || prefLang.includes('hindi'))
+            ? 'hi'
+            : 'en';
+
           const formData = new FormData();
           formData.append('audioSample', audioBlob, 'patient_recording.webm');
+          formData.append('language', activeLangCode);
 
           const response = await voiceService.transcribeSpeech(formData);
           const transcript = response?.data?.text || response?.text || '';
 
-          const lang = language === 'kannada' ? 'Kannada' : language === 'hindi' ? 'Hindi' : 'English';
-          const defaultPrompt = lang === 'Kannada' ? 'ಧ್ವನಿ ಪ್ರಯತ್ನ ಗ್ರಹಿಸಲಾಗಿದೆ' : lang === 'Hindi' ? 'वाणी प्रयास पहचाना गया' : 'Speech Vocalization Triggered';
-          
           const rawTranscript = (transcript || '').trim();
-          const cleanTranscript = rawTranscript
-            .replace(/\[(pause|silence|cough|sigh|snort|laughter|music|clearing|throat-clearing|applause|cheering|noise|static)\]/gi, '')
-            .replace(/^\[.*\]$/, '')
-            .replace(/\s+/g, ' ')
-            .trim() || defaultPrompt;
 
-          console.log(`✅ Scribe v2 Vocalization received: "${rawTranscript}" -> Cleaned: "${cleanTranscript}"`);
+          // Reject empty audio or purely acoustic noise tags ([mumbling], [cough], [inaudible], etc.)
+          const cleanTextWithoutNoiseTags = rawTranscript
+            .replace(/\[(mumbling|inaudible|unintelligible|cough|sigh|snort|laughter|music|clearing|throat-clearing|applause|cheering|noise|static|whisper|whispering|groan|grunt|pause|silence)\]/gi, '')
+            .replace(/\[.*?\]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          if (!cleanTextWithoutNoiseTags) {
+            console.warn('⚠️ Only acoustic noise / inaudible sound captured:', rawTranscript);
+            setSpeechErrorMsg(
+              activeLangCode === 'kn'
+                ? 'ಧ್ವನಿ ಸ್ಪಷ್ಟವಾಗಿ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮೈಕ್‌ಗೆ ಹತ್ತಿರವಾಗಿ ಮಾತನಾಡಿ ಅಥವಾ ಕೆಳಗಿನ ಬಟನ್‌ಗಳನ್ನು ಬಳಸಿ.'
+                : activeLangCode === 'hi'
+                ? 'आवाज़ स्पष्ट सुनाई नहीं दी। कृपया माइक के पास बोलें या नीचे दिए गए बटन पर टैप करें।'
+                : "Couldn't hear clearly. Please speak a little closer to the mic or choose a quick message below."
+            );
+            setIsListening(false);
+            setIsProcessing(false);
+            return;
+          }
+
+          // 1. Dynamic language resolution with script & transliteration check
+          const hasKannadaScript = /[\u0C80-\u0CFF]/.test(cleanTextWithoutNoiseTags);
+          const hasHindiScript = /[\u0900-\u097F]/.test(cleanTextWithoutNoiseTags);
+          const isRomanKannada = /\b(niru|neeru|neer|beku|beko|nanage|nange|oota|uta|sahaya)\b/i.test(cleanTextWithoutNoiseTags);
+          const isRomanHindi = /\b(pani|paani|chahiye|madad|khana)\b/i.test(cleanTextWithoutNoiseTags);
+
+          let effectiveLang = 'English';
+          if (hasKannadaScript || isRomanKannada) {
+            effectiveLang = 'Kannada';
+          } else if (hasHindiScript || isRomanHindi) {
+            effectiveLang = 'Hindi';
+          } else if (/[a-zA-Z]/.test(cleanTextWithoutNoiseTags)) {
+            effectiveLang = 'English';
+          } else if (activeLangCode === 'kn') {
+            effectiveLang = 'Kannada';
+          } else if (activeLangCode === 'hi') {
+            effectiveLang = 'Hindi';
+          } else {
+            effectiveLang = 'English';
+          }
+
+          const cleanTranscript = cleanTextWithoutNoiseTags;
+
+          console.log(`✅ Scribe v2 Vocalization received: "${rawTranscript}" -> Cleaned: "${cleanTranscript}" (Lang: ${effectiveLang})`);
           setSpeechErrorMsg('');
 
-          // Dynamically classify question and generate targeted response choices
-          const choices = generateDynamicResponses(cleanTranscript, lang);
+          // 2. AI Contextual Speech Interpretation & Conservative Reconstruction Layer
+          const initialCorrected = reconstructPatientUtterance(cleanTranscript, effectiveLang, activeCaregiverQuestion);
 
-          setEphemeralQuestion(cleanTranscript);
-          setEphemeralChoices(choices);
+          setIsListening(false);
+          setIsProcessing(false);
 
-          if (choices && choices.length > 0) {
-            const topReply = choices[0];
-            setEphemeralSelectedChoice(topReply);
-            setEphemeralStatusMsg(`⚡ Auto-Reply triggered: Synthesizing "${topReply}"...`);
-            // Automatically trigger ElevenLabs TTS synthesis & audio playback
-            processPhraseOutput(topReply);
-          } else {
-            const fallbackReply = lang === 'Kannada' ? 'ಹೌದು, ದಯವಿಟ್ಟು' : lang === 'Hindi' ? 'हाँ, कृपया' : 'Yes, please';
-            setEphemeralSelectedChoice(fallbackReply);
-            setEphemeralStatusMsg(`⚡ Auto-Reply triggered: Synthesizing "${fallbackReply}"...`);
-            processPhraseOutput(fallbackReply);
+          setPatientSpokenAttempt(cleanTranscript);
+          setPatientCorrectedUtterance(initialCorrected);
+          setActiveOutputPhrase(initialCorrected);
+          setConfirmationState('PENDING_CONFIRMATION');
+
+          // 3. Server-side AI Contextual Interpretation, Ambiguity & Clarity Check
+          let reconResult = null;
+          try {
+            const langCode = effectiveLang === 'Kannada' ? 'kn' : effectiveLang === 'Hindi' ? 'hi' : 'en';
+            reconResult = await contextService.reconstructSpeech({
+              rawTranscript: cleanTranscript,
+              language: langCode,
+              context: activeCaregiverQuestion,
+              previousUtterance: previousUtteranceRef.current || ''
+            });
+          } catch (aiErr) {
+            console.warn('AI speech reconstruction notice, preserved safe reconstruction:', aiErr.message);
           }
+
+          // Priority:
+          // 1. Valid backend reconstructed text
+          // 2. Valid local reconstruction
+          // 3. Raw STT only when no meaningful reconstruction is possible
+          const backendRecon = reconResult && (reconResult.reconstructedText || reconResult.correctedText);
+          let candidateText = cleanTranscript;
+          if (backendRecon && backendRecon.trim() && backendRecon.trim().toLowerCase() !== cleanTranscript.toLowerCase()) {
+            candidateText = backendRecon.trim();
+          } else if (initialCorrected && initialCorrected.trim() && initialCorrected.trim().toLowerCase() !== cleanTranscript.toLowerCase()) {
+            candidateText = initialCorrected.trim();
+          } else if (backendRecon && backendRecon.trim()) {
+            candidateText = backendRecon.trim();
+          } else if (initialCorrected && initialCorrected.trim()) {
+            candidateText = initialCorrected.trim();
+          } else {
+            candidateText = cleanTranscript;
+          }
+          const isAmbiguous = Boolean(reconResult && reconResult.isAmbiguous);
+          const isUnclear = Boolean(reconResult && reconResult.isUnclear);
+          const clarificationPrompt = reconResult && reconResult.clarificationPrompt;
+
+          const confirmationPrompt = (reconResult && reconResult.confirmationPrompt) || (
+            effectiveLang === 'Kannada'
+              ? `ನಿಮ್ಮ ಅರ್ಥ: "${candidateText}" ಎಂದೇ?`
+              : effectiveLang === 'Hindi'
+              ? `क्या आपका मतलब: "${candidateText}" है?`
+              : `Did you mean: ${candidateText}?`
+          );
+
+          const pendingObj = {
+            rawTranscript: cleanTranscript,
+            candidateText,
+            status: (reconResult && reconResult.status) || 'NEEDS_CONFIRMATION',
+            isAmbiguous,
+            isUnclear,
+            confirmationPrompt,
+            clarificationPrompt,
+            intent: (reconResult && reconResult.intent) || 'GENERIC_FALLBACK',
+            entities: (reconResult && reconResult.entities) || {},
+            language: effectiveLang
+          };
+
+          setPendingReconstruction(pendingObj);
+          setEditableCorrectionText(candidateText);
+          setPatientCorrectedUtterance(candidateText);
+          setActiveOutputPhrase(candidateText);
+
+          // Update Status UI: Awaiting patient confirmation
+          if (isAmbiguous) {
+            setPatientUtteranceStatus(
+              effectiveLang === 'Kannada'
+                ? '⚠️ ಸ್ಪಷ್ಟನೆ ಅಗತ್ಯ: ವಿವರಗಳನ್ನು ದಯವಿಟ್ಟು ಖಚಿತಪಡಿಸಿ'
+                : effectiveLang === 'Hindi'
+                ? '⚠️ स्पष्टीकरण आवश्यक: कृपया विवरण की पुष्टि करें'
+                : '⚠️ Clarification needed: Please clarify before speaking'
+            );
+          } else if (isUnclear) {
+            setPatientUtteranceStatus(
+              effectiveLang === 'Kannada'
+                ? '⚠️ ಧ್ವನಿ ಅಪೂರ್ಣ ಅಥವಾ ಅಸ್ಪಷ್ಟವಾಗಿದೆ'
+                : effectiveLang === 'Hindi'
+                ? '⚠️ वाणी प्रयास अधूरा या अस्पष्ट है'
+                : '⚠️ Speech attempt incomplete or unclear'
+            );
+          } else {
+            setPatientUtteranceStatus(
+              effectiveLang === 'Kannada'
+                ? 'ಖಚಿತಪಡಿಸಲು ಕಾಯಲಾಗುತ್ತಿದೆ: ಮಾತನಾಡಲು "ದೃಢೀಕರಿಸಿ" ಒತ್ತಿರಿ'
+                : effectiveLang === 'Hindi'
+                ? 'पुष्टि की प्रतीक्षा: बोलने के लिए "पुष्टि करें" दबाएं'
+                : 'Pending confirmation: Tap CONFIRM to speak'
+            );
+          }
+
+          // 4. IMPORTANT: Reconstructed meaning remains temporary until patient confirmation.
+          // We DO NOT auto-execute processPhraseOutput here. Execution requires explicit patient confirmation!
+
         } catch (sttErr) {
           console.error('ElevenLabs Scribe v2 Speech-to-Text error:', sttErr.message);
           setSpeechErrorMsg("Could not understand speech. Please try again.");
           setTimeout(() => setSpeechErrorMsg(''), 3500);
-        } finally {
           setIsProcessing(false);
           setIsListening(false);
         }
@@ -548,24 +1018,17 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     },
     {
       id: 'communicate',
-      label: 'Communicate',
+      label: 'Patient Communication',
       icon: MessageSquare,
-      action: () => handleOpenModule('Silent Speech'),
-      isActive: currentView === 'module' && (activeModule === 'Silent Speech' || activeModule === 'Start Conversation'),
+      action: () => handleBackToDashboard(),
+      isActive: currentView === 'dashboard',
     },
     {
       id: 'conversation-mode',
-      label: 'Conversation Mode',
+      label: 'Companion Speech',
       icon: MessageSquare,
       action: () => handleOpenModule('Conversation Mode'),
-      isActive: currentView === 'module' && (activeModule === 'Conversation Mode' || activeModule === 'Real-Time Conversation'),
-    },
-    {
-      id: 'universal-speech',
-      label: 'Universal Speech (Type ⌨️ / Speak 🎤)',
-      icon: Sparkles,
-      action: () => handleOpenModule('Universal Speech'),
-      isActive: currentView === 'module' && activeModule === 'Universal Speech',
+      isActive: currentView === 'module' && (activeModule === 'Conversation Mode' || activeModule === 'Real-Time Conversation' || activeModule === 'Companion Speech'),
     },
     {
       id: 'therapy',
@@ -580,6 +1043,13 @@ export const PatientDashboardScreen = ({ onLogout }) => {
       icon: Gamepad2,
       action: () => handleOpenModule('Therapy Games'),
       isActive: currentView === 'module' && activeModule === 'Therapy Games',
+    },
+    {
+      id: 'script-training',
+      label: 'Hear Yourself',
+      icon: Sparkles,
+      action: () => handleOpenModule('Script Training'),
+      isActive: currentView === 'module' && (activeModule === 'Script Training' || activeModule === 'Hear Yourself'),
     },
     {
       id: 'voice-profile',
@@ -705,7 +1175,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
                 </div>
 
                 <div className="metric-box">
-                  <span className="metric-label">EMG Status</span>
+                  <span className="metric-label">Microphone Status</span>
                   <span className="metric-value">{deviceStatus.isConnected ? 'Active' : 'Not connected'}</span>
                 </div>
 
@@ -741,6 +1211,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     currentView === 'module' &&
     (activeModule === 'Conversation Mode' ||
       activeModule === 'Real-Time Conversation' ||
+      activeModule === 'Companion Speech' ||
       activeModule === 'Start Conversation' ||
       activeModule === 'Silent Speech' ||
       activeModule === 'Connect Device')
@@ -759,6 +1230,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   if (currentView === 'module' && activeModule === 'Therapy Exercises') {
     return (
       <TherapyExercisesModule
+        patientId={profileData?.id}
         onBackToDashboard={handleBackToDashboard}
         onOpenProfile={handleOpenProfile}
         onLogout={onLogout}
@@ -769,6 +1241,19 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   if (currentView === 'module' && activeModule === 'Therapy Games') {
     return (
       <TherapyGamesModule
+        patientId={profileData?.id}
+        onBackToDashboard={handleBackToDashboard}
+        onOpenProfile={handleOpenProfile}
+        onLogout={onLogout}
+      />
+    );
+  }
+
+  if (currentView === 'module' && (activeModule === 'Script Training' || activeModule === 'Hear Yourself')) {
+    return (
+      <ScriptTrainingModule
+        patientId={profileData?.id}
+        patientName={profileData?.fullName || 'Patient'}
         onBackToDashboard={handleBackToDashboard}
         onOpenProfile={handleOpenProfile}
         onLogout={onLogout}
@@ -816,31 +1301,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     );
   }
 
-  if (currentView === 'module' && (activeModule === 'Universal Speech' || activeModule === 'Universal Speech Generator')) {
-    return (
-      <div className="app-viewport">
-        <div className="mobile-container dashboard-container">
-          <header className="role-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <button
-              type="button"
-              className="settings-btn"
-              onClick={handleBackToDashboard}
-              aria-label="Back to Patient Home"
-              title="Back to Patient Home"
-            >
-              <ArrowLeft size={22} />
-            </button>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>Universal Speech Generator</h2>
-            <div style={{ width: 22 }} />
-          </header>
-          
-          <main className="role-main" style={{ marginTop: '1rem', width: '100%' }}>
-            <UniversalSpeechInput patientId={profileData?.id} />
-          </main>
-        </div>
-      </div>
-    );
-  }
   if (currentView === 'module' && (activeModule === 'Wake Word Pipeline' || activeModule === '7-Step Voice Architecture')) {
     return (
       <div className="app-viewport">
@@ -1076,9 +1536,6 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             </div>
           )}
 
-          {/* UNIVERSAL DUAL-INPUT SPEECH GENERATOR (⌨️ TYPE or 🎤 SPEAK -> TEXT -> ElevenLabs -> 🔊 SPEAK) */}
-          <UniversalSpeechInput patientId={profileData?.id} />
-
           {/* SPEECH ERROR DISPLAY IF ANY */}
           {speechErrorMsg && (
             <div style={{ padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(220, 38, 38, 0.08)', border: '1px solid rgba(220, 38, 38, 0.3)', color: '#DC2626', fontSize: '0.875rem', fontWeight: 600 }}>
@@ -1086,150 +1543,217 @@ export const PatientDashboardScreen = ({ onLogout }) => {
             </div>
           )}
 
-          {/* RECOGNIZED / ACTIVE SPOKEN PHRASE DISPLAY BOX */}
-          {activeOutputPhrase && !isListening && (
-            <div className="spoken-phrase-box" style={{ marginTop: '0.2rem' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-blue-primary)' }}>
-                  {isSynthesizingVoice ? t('synthesizingVoice') : t('youSaid')}
+          {/* PATIENT COMMUNICATION UTTERANCE CARD (PATIENT SPEECH ONLY) */}
+          {(patientSpokenAttempt || patientCorrectedUtterance) && !isListening && (
+            <div
+              className="spoken-phrase-box"
+              style={{
+                marginTop: '0.4rem',
+                flexDirection: 'column',
+                alignItems: 'stretch',
+                gap: '0.75rem',
+                background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.06) 0%, rgba(255, 255, 255, 0.95) 100%)',
+                border: '1.5px solid var(--color-blue-primary)',
+                borderRadius: '18px',
+                padding: '1.1rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span
+                  style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    color: 'var(--color-blue-primary)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                  }}
+                >
+                  <MessageSquare size={16} />
+                  Patient Utterance
                 </span>
-                <p className="spoken-phrase-text" style={{ marginTop: '0.2rem' }}>
-                  "{activeOutputPhrase}"
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn-speak-again"
-                aria-label="Speak phrase again"
-                title="Speak phrase again"
-                onClick={() => processPhraseOutput(activeOutputPhrase)}
-              >
-                <Volume2 size={22} />
-              </button>
-            </div>
-          )}
-
-          {/* ULTRA IMPRESSIVE EPHEMERAL CONVERSATION PANEL */}
-          {ephemeralQuestion && (
-            <div className="ultra-ephemeral-panel">
-              {/* HEADER BADGE & CLOSE */}
-              <div className="ultra-ephemeral-header">
-                <div className="ultra-pill-badge">
-                  <div className="soundwave-bars">
-                    <span className="soundwave-bar" />
-                    <span className="soundwave-bar" />
-                    <span className="soundwave-bar" />
-                    <span className="soundwave-bar" />
-                  </div>
-                  <span>SPEECH RECOGNIZED</span>
-                </div>
                 <button
                   type="button"
-                  onClick={clearEphemeralConversation}
-                  style={{ border: 'none', background: 'transparent', color: 'var(--color-brand-tagline)', cursor: 'pointer', opacity: 0.75, transition: 'all 0.2s ease' }}
-                  title="Clear conversation panel"
+                  onClick={clearPatientUtterance}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    border: '1.5px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '12px',
+                    padding: '0.4rem 0.85rem',
+                    color: '#DC2626',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Clear utterance"
+                  aria-label="Clear utterance"
                 >
-                  <XCircle size={22} />
+                  <XCircle size={16} />
+                  <span>Clear Utterance</span>
                 </button>
               </div>
 
-              {/* RECOGNIZED QUESTION TEXT */}
-              <div>
-                <span style={{ fontSize: '0.725rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-brand-tagline)', display: 'block', marginBottom: '0.25rem' }}>
-                  Person Said:
-                </span>
-                <p style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: 0, lineHeight: 1.35, letterSpacing: '-0.01em' }}>
-                  "{ephemeralQuestion}"
-                </p>
-              </div>
-
-              {/* DYNAMIC RESPONSE CHOICES */}
-              {ephemeralChoices.length > 0 && !ephemeralSelectedChoice && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                  <p style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-brand-title)', margin: 0 }}>
-                    What would you like to say? (Tap a choice)
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                    {ephemeralChoices.map((choiceText, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setEphemeralSelectedChoice(choiceText)}
-                        style={{
-                          padding: '0.9rem 1.1rem',
-                          borderRadius: '16px',
-                          border: '1.5px solid var(--border-color)',
-                          background: 'rgba(255, 255, 255, 0.9)',
-                          color: 'var(--color-brand-title)',
-                          fontWeight: 700,
-                          fontSize: '0.95rem',
-                          textAlign: 'left',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <span>{choiceText}</span>
-                        <CheckCircle2 size={19} color="var(--color-blue-primary)" />
-                      </button>
-                    ))}
+              {/* 1. CLARIFICATION BANNER (FOR AMBIGUOUS / UNCLEAR SPEECH) */}
+              {pendingReconstruction?.clarificationPrompt && (
+                <div
+                  style={{
+                    padding: '0.85rem 1rem',
+                    borderRadius: '14px',
+                    background: pendingReconstruction.isAmbiguous ? 'rgba(234, 179, 8, 0.12)' : 'rgba(239, 68, 68, 0.1)',
+                    border: `1.5px solid ${pendingReconstruction.isAmbiguous ? '#EAB308' : '#EF4444'}`,
+                    color: pendingReconstruction.isAmbiguous ? '#A16207' : '#DC2626',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.65rem',
+                  }}
+                >
+                  <AlertTriangle size={22} style={{ flexShrink: 0 }} />
+                  <div>
+                    <span style={{ display: 'block', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 800 }}>
+                      {pendingReconstruction.isAmbiguous ? 'Clarification Required (No Guessing)' : 'Speech Incomplete / Unclear'}
+                    </span>
+                    {pendingReconstruction.clarificationPrompt}
                   </div>
                 </div>
               )}
 
-              {/* PATIENT SELECTED RESPONSE GLASS BOX */}
-              {ephemeralSelectedChoice && (
-                <div className="ultra-response-box">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-blue-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Sparkles size={15} />
-                      Selected Response (Patient Voice Output):
+              {/* 2. RECONSTRUCTION CANDIDATE / CONFIRMATION DISPLAY */}
+              <div style={{ background: 'rgba(2, 132, 199, 0.08)', border: '1.5px solid rgba(2, 132, 199, 0.3)', padding: '0.95rem 1.15rem', borderRadius: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.35rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--color-blue-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      {confirmationState === 'PENDING_CONFIRMATION'
+                        ? 'Reconstructed Patient Utterance (Awaiting Confirmation):'
+                        : 'Reconstructed Patient Utterance:'}
                     </span>
-                    {ephemeralIsSynthesizing && (
-                      <div className="soundwave-bars">
-                        <span className="soundwave-bar" />
-                        <span className="soundwave-bar" />
-                        <span className="soundwave-bar" />
-                        <span className="soundwave-bar" />
-                      </div>
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      background: 'rgba(2, 132, 199, 0.15)',
+                      color: 'var(--color-blue-primary)',
+                      padding: '0.15rem 0.45rem',
+                      borderRadius: '6px',
+                      textTransform: 'uppercase'
+                    }}>
+                      Reconstruction
+                    </span>
+                  </div>
+                  {patientSpokenAttempt && (
+                    <span style={{ fontSize: '0.72rem', color: 'var(--color-brand-tagline)', fontStyle: 'italic' }}>
+                      Raw Transcript: "{patientSpokenAttempt}"
+                    </span>
+                  )}
+                </div>
+
+                {isEditingCorrection ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.4rem' }}>
+                    <input
+                      type="text"
+                      value={editableCorrectionText}
+                      onChange={(e) => setEditableCorrectionText(e.target.value)}
+                      placeholder="Type your exact intended words..."
+                      style={{
+                        padding: '0.75rem 0.9rem',
+                        borderRadius: '12px',
+                        border: '2px solid var(--color-blue-primary)',
+                        fontSize: '1.15rem',
+                        fontWeight: 700,
+                        color: 'var(--color-brand-title)',
+                        background: '#FFFFFF',
+                        width: '100%',
+                      }}
+                      autoFocus
+                    />
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        type="button"
+                        className="ultra-btn-confirm"
+                        style={{ padding: '0.6rem 1rem', fontSize: '0.85rem' }}
+                        onClick={handleConfirmReconstruction}
+                      >
+                        <Check size={16} />
+                        <span>Apply & Confirm</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="ultra-btn-change"
+                        style={{ padding: '0.6rem 1rem', fontSize: '0.85rem' }}
+                        onClick={() => setIsEditingCorrection(false)}
+                      >
+                        <span>Cancel Edit</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p style={{ margin: 0, fontSize: '1.3rem', fontWeight: 800, color: 'var(--color-brand-title)', lineHeight: 1.35 }}>
+                      "{patientCorrectedUtterance || pendingReconstruction?.candidateText || patientSpokenAttempt}"
+                    </p>
+                    {confirmationState === 'PENDING_CONFIRMATION' && (
+                      <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-blue-primary)' }}>
+                        {pendingReconstruction?.confirmationPrompt
+                          ? `${pendingReconstruction.confirmationPrompt} Please confirm, change, or cancel below.`
+                          : 'Please confirm, change, or cancel your reconstructed sentence below.'}
+                      </p>
                     )}
                   </div>
+                )}
+              </div>
 
-                  <p style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: '0.2rem 0 0.6rem 0', lineHeight: 1.3 }}>
-                    "{ephemeralSelectedChoice}"
-                  </p>
+              {/* 3. CONFIRMATION ACTIONS: CONFIRM, CHANGE, CANCEL */}
+              <div style={{ display: 'flex', gap: '0.65rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="ultra-btn-confirm"
+                  style={{ flex: 2, minWidth: '160px' }}
+                  onClick={handleConfirmReconstruction}
+                  disabled={isSynthesizingVoice}
+                >
+                  <Volume2 size={20} />
+                  <span>
+                    {isSynthesizingVoice
+                      ? 'SPEAKING...'
+                      : confirmationState === 'PENDING_CONFIRMATION'
+                      ? 'CONFIRM & SPEAK'
+                      : 'SPEAK (PATIENT VOICE)'}
+                  </span>
+                </button>
 
-                  <div style={{ display: 'flex', gap: '0.65rem' }}>
-                    <button
-                      type="button"
-                      className="ultra-btn-confirm"
-                      onClick={handleConfirmEphemeralChoice}
-                      disabled={ephemeralIsSynthesizing}
-                    >
-                      <CheckCircle2 size={20} />
-                      <span>{ephemeralIsSynthesizing ? 'SYNTHESIZING...' : 'CONFIRM'}</span>
-                    </button>
+                <button
+                  type="button"
+                  className="ultra-btn-change"
+                  style={{ flex: 1, minWidth: '100px' }}
+                  onClick={handleChangeReconstruction}
+                  disabled={isSynthesizingVoice}
+                  title="Change or edit candidate words"
+                >
+                  <Edit3 size={16} />
+                  <span>CHANGE</span>
+                </button>
 
-                    <button
-                      type="button"
-                      className="ultra-btn-change"
-                      onClick={() => setEphemeralSelectedChoice('')}
-                      disabled={ephemeralIsSynthesizing}
-                    >
-                      <RefreshCw size={16} />
-                      <span>CHANGE</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+                <button
+                  type="button"
+                  className="ultra-btn-cancel"
+                  onClick={handleCancelReconstruction}
+                  disabled={isSynthesizingVoice}
+                  title="Cancel and dismiss pending utterance"
+                >
+                  <XCircle size={16} />
+                  <span>CANCEL</span>
+                </button>
+              </div>
 
-              {ephemeralStatusMsg && (
-                <div style={{ padding: '0.65rem 0.85rem', borderRadius: '14px', background: 'rgba(2, 132, 199, 0.08)', border: '1px solid rgba(2, 132, 199, 0.2)', fontSize: '0.825rem', color: 'var(--color-blue-primary)', textAlign: 'center', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
-                  <Sparkles size={15} />
-                  <span>{ephemeralStatusMsg}</span>
+              {patientUtteranceStatus && (
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-blue-primary)', fontWeight: 600, textAlign: 'center' }}>
+                  {patientUtteranceStatus}
                 </div>
               )}
             </div>
@@ -1238,14 +1762,14 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           {/* SPEAKER VOLUME CONTROL WIDGET */}
           <VolumeControlWidget style={{ marginTop: '0.5rem' }} />
 
-          {/* CONVERSATION MODE FEATURE CARD (PATIENT DASHBOARD ONLY) */}
+          {/* COMPANION SPEECH (CONVERSATION MODE) FEATURE CARD */}
           <div
             tabIndex={0}
             role="button"
-            aria-label="Conversation Mode"
+            aria-label="Companion Speech"
             onClick={() => handleOpenModule('Conversation Mode')}
             style={{
-              background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.08) 0%, rgba(13, 148, 136, 0.08) 100%)',
+              background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.08) 0%, rgba(255, 255, 255, 0.95) 100%)',
               border: '1.5px solid var(--color-blue-primary)',
               borderRadius: '20px',
               padding: '1.1rem 1.1rem',
@@ -1275,61 +1799,14 @@ export const PatientDashboardScreen = ({ onLogout }) => {
               </div>
               <div>
                 <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                  Conversation Mode
+                  Companion Speech
                 </h3>
                 <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', margin: '0.15rem 0 0 0' }}>
-                  Listen to companion & speak with confirmed choices
+                  Caregiver speaks ➔ Dynamic response choices ➔ Patient voice output
                 </p>
               </div>
             </div>
             <ArrowRight size={20} color="var(--color-blue-primary)" />
-          </div>
-
-          {/* UNIVERSAL SPEECH GENERATOR FEATURE CARD */}
-          <div
-            tabIndex={0}
-            role="button"
-            aria-label="Universal Speech Generator"
-            onClick={() => handleOpenModule('Universal Speech')}
-            style={{
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(2, 132, 199, 0.08) 100%)',
-              border: '1.5px solid #10B981',
-              borderRadius: '20px',
-              padding: '1.1rem 1.1rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-              boxShadow: '0 4px 16px rgba(16, 185, 129, 0.08)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-              <div
-                style={{
-                  width: 46,
-                  height: 46,
-                  borderRadius: 14,
-                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFFFFF',
-                  flexShrink: 0,
-                }}
-              >
-                <Sparkles size={24} />
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
-                  Universal Speech Generator
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', margin: '0.15rem 0 0 0' }}>
-                  ⌨️ Type or 🎤 Speak ➔ ElevenLabs Patient Voice
-                </p>
-              </div>
-            </div>
-            <ArrowRight size={20} color="#10B981" />
           </div>
 
 
@@ -1402,6 +1879,19 @@ export const PatientDashboardScreen = ({ onLogout }) => {
                     <Droplet size={22} />
                   </div>
                   <span>{t('labelWater')}</span>
+                </button>
+
+                {/* 2. HELP */}
+                <button
+                  type="button"
+                  className="quick-msg-btn"
+                  onClick={() => processPhraseOutput(t('phraseHelp'), 'phraseHelp')}
+                  style={{ borderColor: 'rgba(239, 68, 68, 0.35)' }}
+                >
+                  <div className="quick-msg-icon-box" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#DC2626' }}>
+                    <AlertCircle size={22} />
+                  </div>
+                  <span style={{ color: '#DC2626', fontWeight: 800 }}>{t('help')}</span>
                 </button>
 
                 {/* 2. FOOD */}

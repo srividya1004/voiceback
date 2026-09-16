@@ -1,641 +1,213 @@
 /**
- * VoiceBack Smart Neckband - BLE Telemetry + Audio Service
+ * VoiceBack Smart Neckband - BLE Audio Service Implementation
  *
- * Features:
- * - BLE GATT server
- * - EMG telemetry notifications
- * - BLE PCM audio reception
- * - PCM audio forwarded to MAX98357A I2S amplifier
+ * Hardware pipeline:
+ * VoiceBack application -> BLE -> ESP32 -> I2S -> MAX98357A -> physical speaker
  */
 
 #include "ble_service.h"
-#include <ArduinoJson.h>
-#include <cstring>
+#include <cstdlib>
+#include <string>
 #include "audio_driver.h"
 
-// AudioDriver instance is created in main.cpp
 extern AudioDriver audioDriver;
 
-
-// ============================================================
-// BLE AUDIO RECEIVE CALLBACK
-// Receives raw 16-bit PCM audio from the application
-// and sends it directly to MAX98357A.
-// ============================================================
-
+// BLE Audio Characteristic Callback
 class AudioCommandCallbacks : public NimBLECharacteristicCallbacks {
+private:
+    uint32_t packetCount = 0;
+    uint32_t lastPacketTime = 0;
+    uint32_t totalBytes = 0;
+    uint32_t totalSamples = 0;
+    uint32_t nonZeroSamples = 0;
+    int16_t minSample = 32767;
+    int16_t maxSample = -32768;
 
 public:
-
     void onWrite(NimBLECharacteristic* pCharacteristic) override {
+        NimBLEAttValue val = pCharacteristic->getValue();
+        size_t len = val.size();
+        const uint8_t* pcm = val.data();
 
-        std::string data = pCharacteristic->getValue();
-
-        if (data.empty()) {
-            Serial.println("[BLE AUDIO] Empty audio packet received.");
+        if (len == 0 || pcm == nullptr) {
             return;
         }
 
-        Serial.printf(
-            "[BLE AUDIO] Received BLE payload (%u bytes)\n",
-            (unsigned int)data.size()
-        );
+        uint32_t now = millis();
+        if (now - lastPacketTime > 300) {
+            // New voice utterance ingress
+            packetCount = 0;
+            totalBytes = 0;
+            totalSamples = 0;
+            nonZeroSamples = 0;
+            minSample = 32767;
+            maxSample = -32768;
+            Serial.printf("[BLE AUDIO Stream] Ingress start: %u bytes/pkt\n", (unsigned int)len);
+        }
+        lastPacketTime = now;
+        packetCount++;
+        totalBytes += len;
 
-        // Check if payload is an explicit test trigger string
-        if (data == "PLAY_TEST_ASSET" || data == "TEST_VOICE") {
-            Serial.println("[BLE AUDIO] Explicit test trigger received. Playing test voice asset via physical speaker...");
-            audioDriver.playVoice();
-            return;
+        // Waveform inspection across received 16-bit samples
+        size_t samplesInPacket = len / 2;
+        for (size_t i = 0; i < samplesInPacket; i++) {
+            size_t off = i * 2;
+            int16_t sample = (int16_t)((uint16_t)pcm[off] | ((uint16_t)pcm[off + 1] << 8));
+            totalSamples++;
+            if (sample != 0) {
+                nonZeroSamples++;
+            }
+            if (sample < minSample) minSample = sample;
+            if (sample > maxSample) maxSample = sample;
         }
 
-        // Forward raw PCM audio bytes directly to MAX98357A physical speaker
-        size_t written = audioDriver.writePCM(
-            reinterpret_cast<const uint8_t*>(data.data()),
-            data.size()
-        );
+        // Buffer raw 16-bit mono PCM bytes into AudioDriver ring buffer
+        audioDriver.writePCM(pcm, len);
 
-        Serial.printf(
-            "[BLE AUDIO] Sent %u bytes to MAX98357A physical speaker\n",
-            (unsigned int)written
-        );
+        if (packetCount % 50 == 0) {
+            Serial.printf("[BLE AUDIO Stream] Ingress: %u pkts (%u bytes), range=[%d, %d], nonZero=%u/%u\n",
+                          (unsigned int)packetCount, (unsigned int)totalBytes,
+                          minSample, maxSample, (unsigned int)nonZeroSamples, (unsigned int)totalSamples);
+        }
     }
 };
 
-
-// ============================================================
-// BLE VOLUME RECEIVE CALLBACK
-// Receives 0-100 integer volume values from PWA
-// ============================================================
-
+// BLE Volume Characteristic Callback
 class VolumeCommandCallbacks : public NimBLECharacteristicCallbacks {
-
 public:
-
     void onWrite(NimBLECharacteristic* pCharacteristic) override {
-
         std::string data = pCharacteristic->getValue();
 
-        if (data.empty()) {
-            Serial.println("[BLE VOLUME] Empty volume packet received.");
-            return;
-        }
+        if (data.empty()) return;
 
         uint8_t vol = 70;
-        if (data.size() == 1) {
+        if (data.size() == 1 && static_cast<unsigned char>(data[0]) <= 100) {
             vol = static_cast<uint8_t>(data[0]);
         } else {
-            vol = static_cast<uint8_t>(atoi(data.c_str()));
+            int parsed = atoi(data.c_str());
+            vol = (parsed < 0) ? 0 : (parsed > 100 ? 100 : (uint8_t)parsed);
         }
-
-        if (vol > 100) vol = 100;
 
         audioDriver.setVolume(vol);
         pCharacteristic->setValue(&vol, 1);
 
-        Serial.printf(
-            "[BLE VOLUME] Volume updated via BLE to %u%%\n",
-            vol
-        );
+        Serial.printf("[BLE VOLUME] Volume updated via BLE to %u%%\n", vol);
     }
 };
-
-
-// ============================================================
-// CONSTRUCTOR
-// ============================================================
 
 BLEServiceManager::BLEServiceManager()
     : pServer(nullptr),
       pService(nullptr),
-      pEMGCharacteristic(nullptr),
       pAudioCmdCharacteristic(nullptr),
       pVolumeCharacteristic(nullptr),
-      deviceConnected(false),
-      oldDeviceConnected(false),
-      bleTaskHandle(nullptr),
-      emgQueue(nullptr) {
-}
-
-
-// ============================================================
-// BLE INITIALIZATION
-// ============================================================
+      pEMGCharacteristic(nullptr),
+      deviceConnected(false) {}
 
 void BLEServiceManager::begin() {
-
     Serial.println("[BLE Module] Initializing BLE...");
 
-    // Initialize BLE device
     NimBLEDevice::init(BLE_DEVICE_NAME);
-
-    // Maximum Bluetooth TX power
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 
-    // Create BLE server
     pServer = NimBLEDevice::createServer();
-
-    if (pServer == nullptr) {
+    if (!pServer) {
         Serial.println("[BLE ERROR] Failed to create BLE server.");
         return;
     }
-
     pServer->setCallbacks(this);
 
-    // Create main VoiceBack BLE service
     pService = pServer->createService(SERVICE_UUID);
-
-    if (pService == nullptr) {
-        Serial.println("[BLE ERROR] Failed to create BLE service.");
+    if (!pService) {
+        Serial.println("[BLE ERROR] Failed to create VoiceBack BLE service.");
         return;
     }
 
-
-    // ========================================================
-    // EMG TELEMETRY CHARACTERISTIC
-    // ========================================================
-
-    pEMGCharacteristic = pService->createCharacteristic(
-        EMG_CHARACTERISTIC_UUID,
-        NIMBLE_PROPERTY::READ |
-        NIMBLE_PROPERTY::NOTIFY
-    );
-
-    if (pEMGCharacteristic == nullptr) {
-        Serial.println("[BLE ERROR] Failed to create EMG characteristic.");
-        return;
-    }
-
-    Serial.println("[BLE Module] EMG characteristic created.");
-
-
-    // ========================================================
-    // AUDIO RECEIVE CHARACTERISTIC
-    // ========================================================
-
+    // 1. Audio Characteristic: Application -> ESP32 16-bit 16kHz mono PCM transport
     pAudioCmdCharacteristic = pService->createCharacteristic(
         AUDIO_CMD_CHAR_UUID,
-        NIMBLE_PROPERTY::WRITE
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
-
-    if (pAudioCmdCharacteristic == nullptr) {
+    if (!pAudioCmdCharacteristic) {
         Serial.println("[BLE ERROR] Failed to create audio characteristic.");
         return;
     }
+    static AudioCommandCallbacks audioCallbacks;
+    pAudioCmdCharacteristic->setCallbacks(&audioCallbacks);
+    Serial.println("[BLE AUDIO] PCM audio characteristic ready.");
 
-    // IMPORTANT:
-    // Keep callback object alive for the lifetime of the BLE service.
-    static AudioCommandCallbacks audioCommandCallbacks;
-
-    pAudioCmdCharacteristic->setCallbacks(
-        &audioCommandCallbacks
-    );
-
-    Serial.println(
-        "[BLE AUDIO] Audio command characteristic ready."
-    );
-
-
-    // ========================================================
-    // VOLUME CONTROL CHARACTERISTIC
-    // ========================================================
-
+    // 2. Volume Characteristic: Application volume control
     pVolumeCharacteristic = pService->createCharacteristic(
         VOLUME_CHAR_UUID,
+        NIMBLE_PROPERTY::READ |
         NIMBLE_PROPERTY::WRITE |
-        NIMBLE_PROPERTY::WRITE_NR |
-        NIMBLE_PROPERTY::READ
+        NIMBLE_PROPERTY::WRITE_NR
     );
-
-    if (pVolumeCharacteristic == nullptr) {
+    if (!pVolumeCharacteristic) {
         Serial.println("[BLE ERROR] Failed to create volume characteristic.");
         return;
     }
+    static VolumeCommandCallbacks volumeCallbacks;
+    pVolumeCharacteristic->setCallbacks(&volumeCallbacks);
+    uint8_t initialVolume = audioDriver.getVolume();
+    pVolumeCharacteristic->setValue(&initialVolume, 1);
+    Serial.println("[BLE VOLUME] Volume characteristic ready.");
 
-    static VolumeCommandCallbacks volumeCommandCallbacks;
-
-    pVolumeCharacteristic->setCallbacks(
-        &volumeCommandCallbacks
+    // 3. Inert Compatibility Characteristic: Retained strictly so PWA GATT discovery succeeds
+    // without requiring any changes to PWA code. No GPIO34 access, no ADC sampling, no queue, no notifications.
+    pEMGCharacteristic = pService->createCharacteristic(
+        EMG_CHARACTERISTIC_UUID,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
-
-    uint8_t initialVol = audioDriver.getVolume();
-    pVolumeCharacteristic->setValue(&initialVol, 1);
-
-    Serial.println(
-        "[BLE VOLUME] Volume control characteristic ready."
-    );
-
-
-    // ========================================================
-    // START BLE SERVICE
-    // ========================================================
+    if (pEMGCharacteristic) {
+        Serial.println("[BLE COMPAT] Inert compatibility characteristic initialized.");
+    }
 
     pService->start();
+    Serial.println("[BLE Module] VoiceBack BLE service started.");
 
-    Serial.println("[BLE Module] BLE service started.");
-
-
-    // ========================================================
-    // BLE ADVERTISING
-    // ========================================================
-
-    NimBLEAdvertising* pAdvertising =
-        NimBLEDevice::getAdvertising();
-
-    if (pAdvertising == nullptr) {
+    NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+    if (!advertising) {
         Serial.println("[BLE ERROR] Failed to get advertising object.");
         return;
     }
 
-    // Primary advertisement
-    NimBLEAdvertisementData advData;
+    advertising->addServiceUUID(NimBLEUUID(SERVICE_UUID));
+    advertising->setScanResponse(true);
+    advertising->setName(BLE_DEVICE_NAME);
+    advertising->start();
 
-    advData.setFlags(
-        BLE_HS_ADV_F_DISC_GEN |
-        BLE_HS_ADV_F_BREDR_UNSUP
-    );
-
-    advData.setCompleteServices(
-        NimBLEUUID(SERVICE_UUID)
-    );
-
-
-    // Scan response containing device name
-    NimBLEAdvertisementData scanData;
-
-    scanData.setName(
-        BLE_DEVICE_NAME
-    );
-
-
-    pAdvertising->addServiceUUID(
-        NimBLEUUID(SERVICE_UUID)
-    );
-
-    pAdvertising->setAdvertisementData(
-        advData
-    );
-
-    pAdvertising->setScanResponseData(
-        scanData
-    );
-
-    pAdvertising->setScanResponse(true);
-
-    pAdvertising->setMinPreferred(0x06);
-    pAdvertising->setMaxPreferred(0x12);
-
-    pAdvertising->start();
-
-    Serial.println(
-        "[BLE Module] NimBLE Server & Advertising started successfully."
-    );
-
-
-    // ========================================================
-    // CREATE EMG FREE RTOS QUEUE
-    // ========================================================
-
-    emgQueue = xQueueCreate(
-        16,
-        sizeof(EMGDataPacket)
-    );
-
-    if (emgQueue == nullptr) {
-        Serial.println(
-            "[BLE ERROR] Failed to create EMG queue."
-        );
-        return;
-    }
-
-    Serial.println(
-        "[BLE Module] EMG queue created."
-    );
-
-
-    // ========================================================
-    // CREATE BLE FREE RTOS TASK (COMMENTED OUT)
-    // ========================================================
-
-    /*
-    xTaskCreatePinnedToCore(
-        BLEServiceManager::bleTaskWrapper,
-        "BLE_NimBLE_Task",
-        4096,
-        this,
-        1,
-        &bleTaskHandle,
-        0
-    );
-
-    Serial.println(
-        "[BLE Module] Dedicated FreeRTOS BLE Task spawned on Core 0."
-    );
-    */
-    Serial.println(
-        "[BLE Module] Dedicated FreeRTOS BLE Task is currently COMMENTED OUT."
-    );
-
-    Serial.println(
-        "[BLE Module] BLE initialization complete."
-    );
+    Serial.printf("[BLE Module] Advertising as %s\n", BLE_DEVICE_NAME);
+    Serial.println("[BLE Module] Waiting for VoiceBack application connection.");
 }
-
-
-// ============================================================
-// BLE TASK WRAPPER (COMMENTED OUT)
-// ============================================================
-
-void BLEServiceManager::bleTaskWrapper(void* parameter) {
-    /*
-    BLEServiceManager* instance =
-        static_cast<BLEServiceManager*>(parameter);
-
-    if (instance != nullptr) {
-        instance->bleTaskLoop();
-    }
-    */
-    vTaskDelete(nullptr);
-}
-
-
-// ============================================================
-// BLE TASK LOOP (COMMENTED OUT)
-// ============================================================
-
-void BLEServiceManager::bleTaskLoop() {
-    /*
-    EMGDataPacket packet;
-
-    while (true) {
-
-        // Receive EMG packet from queue
-        if (
-            emgQueue != nullptr &&
-            xQueueReceive(
-                emgQueue,
-                &packet,
-                pdMS_TO_TICKS(20)
-            ) == pdTRUE
-        ) {
-
-            sendEMGData(
-                packet.rawValue,
-                packet.filteredValue,
-                packet.voltageVolts
-            );
-        }
-
-        // Maintain BLE connection
-        updateConnectionState();
-
-        // Give FreeRTOS time
-        vTaskDelay(
-            pdMS_TO_TICKS(2)
-        );
-    }
-    */
-}
-
-
-// ============================================================
-// QUEUE EMG DATA
-// ============================================================
-
-bool BLEServiceManager::queueEMGData(
-    int rawValue,
-    float filteredValue,
-    float voltageVolts
-) {
-
-    if (emgQueue == nullptr) {
-        return false;
-    }
-
-    EMGDataPacket packet = {
-        rawValue,
-        filteredValue,
-        voltageVolts
-    };
-
-
-    // Try normal queue insertion
-    if (
-        xQueueSend(
-            emgQueue,
-            &packet,
-            0
-        ) != pdTRUE
-    ) {
-
-        // Queue full:
-        // Remove oldest packet
-        EMGDataPacket dropped;
-
-        xQueueReceive(
-            emgQueue,
-            &dropped,
-            0
-        );
-
-        // Insert newest packet
-        xQueueSend(
-            emgQueue,
-            &packet,
-            0
-        );
-    }
-
-    return true;
-}
-
-
-// ============================================================
-// BLE CONNECT
-// ============================================================
-
-void BLEServiceManager::onConnect(
-    NimBLEServer* pServer
-) {
-
-    deviceConnected = true;
-
-    Serial.println(
-        "\n[BLE Event] >>> CENTRAL DEVICE CONNECTED <<<\n"
-    );
-    Serial.println("[VoiceBack System] Hardware application connected! Playing CONNECTED sound via physical speaker...");
-    audioDriver.playConnectedSound();
-}
-
-
-void BLEServiceManager::onConnect(
-    NimBLEServer* pServer,
-    ble_gap_conn_desc* desc
-) {
-
-    deviceConnected = true;
-
-    Serial.println(
-        "\n[BLE Event] >>> CENTRAL DEVICE CONNECTED <<<\n"
-    );
-
-    if (desc != nullptr) {
-
-        Serial.printf(
-            "[BLE Event] Client Address: %s\n",
-            NimBLEAddress(
-                desc->peer_ota_addr
-            ).toString().c_str()
-        );
-    }
-
-    Serial.println("[VoiceBack System] Hardware application connected! Playing CONNECTED sound via physical speaker...");
-    audioDriver.playConnectedSound();
-}
-
-
-// ============================================================
-// BLE DISCONNECT
-// ============================================================
-
-void BLEServiceManager::onDisconnect(
-    NimBLEServer* pServer
-) {
-
-    deviceConnected = false;
-
-    Serial.println(
-        "\n[BLE Event] >>> CENTRAL DEVICE DISCONNECTED <<<\n"
-    );
-    Serial.println("[VoiceBack System] Hardware application disconnected! Playing DISCONNECTED sound via physical speaker...");
-    audioDriver.playDisconnectedSound();
-
-    NimBLEDevice::startAdvertising();
-}
-
-
-void BLEServiceManager::onDisconnect(
-    NimBLEServer* pServer,
-    ble_gap_conn_desc* desc
-) {
-
-    deviceConnected = false;
-
-    Serial.println(
-        "\n[BLE Event] >>> CENTRAL DEVICE DISCONNECTED <<<\n"
-    );
-    Serial.println("[VoiceBack System] Hardware application disconnected! Playing DISCONNECTED sound via physical speaker...");
-    audioDriver.playDisconnectedSound();
-
-    NimBLEDevice::startAdvertising();
-}
-
-
-// ============================================================
-// BLE CONNECTION STATE
-// ============================================================
-
-void BLEServiceManager::updateConnectionState() {
-
-    // Device disconnected
-    if (
-        !deviceConnected &&
-        oldDeviceConnected
-    ) {
-
-        delay(100);
-
-        NimBLEDevice::startAdvertising();
-
-        oldDeviceConnected =
-            deviceConnected;
-
-        Serial.println(
-            "[BLE Module] Restarted BLE Advertising after disconnection."
-        );
-    }
-
-
-    // Device connected
-    if (
-        deviceConnected &&
-        !oldDeviceConnected
-    ) {
-
-        oldDeviceConnected =
-            deviceConnected;
-
-        Serial.println(
-            "[BLE Module] BLE connection established."
-        );
-    }
-}
-
-
-// ============================================================
-// SEND EMG DATA TO APPLICATION
-// ============================================================
-
-void BLEServiceManager::sendEMGData(
-    int rawValue,
-    float filteredValue,
-    float voltageVolts
-) {
-
-    if (
-        !deviceConnected ||
-        pEMGCharacteristic == nullptr
-    ) {
-        return;
-    }
-
-
-    // Only send if application subscribed
-    if (
-        pEMGCharacteristic->getSubscribedCount() == 0
-    ) {
-        return;
-    }
-
-
-    // Create JSON packet
-    StaticJsonDocument<128> doc;
-
-    doc["raw"] = rawValue;
-
-    doc["flt"] =
-        round(
-            filteredValue * 100.0f
-        ) / 100.0f;
-
-    doc["vlt"] =
-        round(
-            voltageVolts * 1000.0f
-        ) / 1000.0f;
-
-
-    char payload[128];
-
-    serializeJson(
-        doc,
-        payload
-    );
-
-
-    // Send notification
-    pEMGCharacteristic->setValue(
-        (uint8_t*)payload,
-        strlen(payload)
-    );
-
-    pEMGCharacteristic->notify();
-}
-
-
-// ============================================================
-// CONNECTION STATUS
-// ============================================================
 
 bool BLEServiceManager::isConnected() const {
-
     return deviceConnected;
+}
+
+void BLEServiceManager::onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) {
+    if (!deviceConnected) {
+        deviceConnected = true;
+        Serial.println("[BLE Event] >>> VOICEBACK APPLICATION CONNECTED <<<");
+        if (desc) {
+            Serial.printf(
+                "[BLE Event] Client: %s\n",
+                NimBLEAddress(desc->peer_ota_addr).toString().c_str()
+            );
+            // Request high-speed connection interval (7.5ms min, 15ms max) from central
+            if (pServer) {
+                pServer->updateConnParams(desc->conn_handle, 6, 12, 0, 400);
+            }
+        }
+        audioDriver.playConnectedSound();
+    }
+}
+
+void BLEServiceManager::onDisconnect(NimBLEServer* /*pServer*/, ble_gap_conn_desc* /*desc*/) {
+    if (deviceConnected) {
+        deviceConnected = false;
+        Serial.println("[BLE Event] >>> APPLICATION DISCONNECTED <<<");
+        audioDriver.stop();
+        audioDriver.playDisconnectedSound();
+        NimBLEDevice::startAdvertising();
+    }
 }

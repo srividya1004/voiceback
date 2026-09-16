@@ -18,7 +18,7 @@ import {
 import voiceService from '../services/voiceService';
 import contextService from '../services/contextService';
 import { useSettings } from '../context/SettingsContext';
-import { generateDynamicResponses } from './ConversationModeModule';
+import { generateDynamicResponses, analyzeCompanionSpeechNLP } from './ConversationModeModule';
 
 /**
  * Universal Dual-Input Voice Generator Module
@@ -196,20 +196,15 @@ export const UniversalSpeechInput = ({
           const response = await voiceService.transcribeSpeech(formData);
           const rawTranscript = response?.data?.text || response?.text || '';
 
-          let recognizedText = rawTranscript
-            .replace(/\[(pause|silence|cough|sigh|snort|laughter|music|clearing|throat-clearing|applause|cheering|noise|static)\]/gi, '')
-            .replace(/^\[.*\]$/, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-          if (!recognizedText) {
-            recognizedText = selectedLanguage === 'Kannada'
-              ? 'ನಿಮಗೆ ನೀರು ಬೇಕೇ?'
-              : 'Do you want some water?';
+          const nlpResult = analyzeCompanionSpeechNLP(rawTranscript, selectedLanguage);
+          const finalPrompt = nlpResult.normalizedQuestion;
+          const targetLang = nlpResult.effectiveLanguage;
+          if (targetLang !== selectedLanguage) {
+            setSelectedLanguage(targetLang);
           }
 
           // Process the recognized speech and generate suited answers
-          processInputPrompt(recognizedText, selectedLanguage);
+          processInputPrompt(finalPrompt, targetLang);
         } catch (err) {
           console.warn('Speech recognition notice — falling back to default prompt understanding:', err.message);
           const fallbackPrompt = selectedLanguage === 'Kannada'

@@ -8,7 +8,6 @@ const doctorService = require('./doctorService');
 const caregiverService = require('./caregiverService');
 const userLoginService = require('./userLoginService');
 const voiceProfileService = require('./voiceProfileService');
-const emgProfileService = require('./emgProfileService');
 const therapyProgressService = require('./therapyProgressService');
 const communicationHistoryService = require('./communicationHistoryService');
 const appointmentService = require('./appointmentService');
@@ -19,7 +18,6 @@ module.exports = {
   caregiverService,
   userLoginService,
   voiceProfileService,
-  emgProfileService,
   therapyProgressService,
   communicationHistoryService,
   appointmentService

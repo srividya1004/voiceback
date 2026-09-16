@@ -584,6 +584,19 @@ export const PatientProfileScreen = ({ onBack, onLogout, backendProfile }) => {
 
           {/* PERSONAL INFORMATION SECTION */}
           <section className="profile-section-card">
+            {(!profileData.fullName || !profileData.id) && (
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '8px',
+                padding: '0.75rem 1rem',
+                marginBottom: '1rem',
+                color: '#ef4444',
+                fontSize: '0.875rem'
+              }}>
+                <strong>Clinical Profile Incomplete:</strong> Authoritative patient record not yet saved in database. Please click <em>Edit Profile</em> above to enter and save your details.
+              </div>
+            )}
             <h3 className="profile-section-title">Personal Information</h3>
 
             <div className="profile-info-grid">

@@ -1,70 +1,61 @@
-# VoiceBack Smart Neckband - Firmware Engineering Documentation
+# VoiceBack Smart Neckband - ESP32 Firmware Documentation
 
-This module contains the complete **ESP32 C++/Arduino firmware project** for the VoiceBack Smart Neckband embedded prototype.
+This module contains the **ESP32 C++/Arduino firmware** for the VoiceBack Smart Neckband embedded hardware layer.
 
-## Hardware Wiring Table
+---
+
+## 1. Production Hardware Architecture
+
+The active hardware pipeline is:
+**Microphone / Application → Bluetooth Low Energy (BLE) → ESP32 → I²S → MAX98357A → Physical Speaker**
+
+The host device (smartphone/tablet/browser PWA) captures acoustic speech via microphone and processes speech recognition and synthesis. The synthesized audio is streamed over BLE to the ESP32, which forwards 16-bit mono PCM over I²S to the MAX98357A Class-D amplifier driving the physical speaker.
+
+> [!NOTE]
+> The legacy BioAmp/EMG analog sensor is **not part of this architecture** and is not initialized or sampled.
+
+---
+
+## 2. Hardware Wiring Matrix
 
 | Hardware Module | Module Pin | ESP32 GPIO Pin | Function |
 | :--- | :--- | :--- | :--- |
-| **BioAmp EXG Pill** | `OUT` (Analog) | `GPIO34` (ADC1_CH6) | High-gain surface neck EMG input |
-| | `VCC` | `3.3V` | System power (3.3V VREG) |
-| | `GND` | `GND` | System ground |
-| **MAX98357A I2S Amp** | `BCLK` | `GPIO26` | Bit Clock |
-| | `LRC` / `WS` | `GPIO25` | Left/Right Word Select Clock |
-| | `DIN` / `DOUT`| `GPIO22` | Serial PCM Audio Data |
-| | `GAIN` | `GND` (12dB) / `3.3V` (6dB) | Gain control |
-| | `VIN` | `3.3V` / `5V` | Amp power rail |
-| **TP4056 Charger** | `BAT+` / `BAT-` | Battery Terminal | 3.7V 800mAh Li-Po Cell |
-| | `OUT+` | Power Switch -> `5V/VIN` | Switched battery power rail |
+| **MAX98357A I2S Amp** | `BCLK` | `GPIO26` | I²S Bit Clock |
+| | `LRC` / `WS` | `GPIO25` | I²S Left/Right Word Select Clock |
+| | `DIN` / `DOUT` | `GPIO22` | I²S Serial PCM Audio Data |
+| | `GAIN` | `GND` (12dB) / `3.3V` (6dB) | Amplifier Hardware Gain Configuration |
+| | `VIN` | `3.3V` / `5V` | Positive Power Rail |
+| | `GND` | `GND` | Common Ground Rail |
+| **Mini Speaker** | `+` / `-` | `MAX98357A OUT` | Differential output driving 4Ω 3W dynamic speaker |
 
 ---
 
-## Firmware Directory Architecture
-
-```
-firmware/
-├── platformio.ini         # PlatformIO build configuration & library dependencies
-├── include/
-│   ├── config.h           # Pin definitions, BLE UUIDs, sampling rate, EMA alpha
-│   ├── emg_sensor.h       # BioAmp EXG Pill EMG acquisition & EMA filter interface
-│   ├── ble_service.h      # NimBLE GATT server & EMG telemetry manager
-│   └── audio_driver.h     # MAX98357A I2S DAC audio driver interface
-├── src/
-│   ├── emg_sensor.cpp     # ADC read, EMA smoothing equation, voltage scaling
-│   ├── ble_service.cpp    # JSON packetization, BLE notifications, reconnect loop
-│   ├── audio_driver.cpp   # ESP32 I2S initialization & sine wave test tone generator
-│   └── main.cpp           # System startup orchestrator & 50Hz telemetry loop
-└── README.md              # Engineering documentation
-```
-
----
-
-## Bluetooth Low Energy (BLE) Specifications
+## 3. Bluetooth Low Energy (BLE) Specifications
 
 - **Device Name**: `VoiceBack-Neckband`
 - **Service UUID**: `4fa8c001-1278-472e-b997-63992e716a4d`
-- **EMG Telemetry Characteristic**: `beb5483e-36e1-4688-b7f5-ea07361b26a8` (Notify & Read)
-- **JSON Notification Packet Format**:
-  ```json
-  {
-    "raw": 1842,
-    "flt": 1835.45,
-    "vlt": 1.479
-  }
-  ```
+
+### Active Characteristics
+1. **Audio Ingress Characteristic** (`cba1483e-36e1-4688-b7f5-ea07361b26b9` — Write / Write without response):
+   - Accepts **16 kHz, 16-bit mono PCM** chunks directly from the VoiceBack application.
+   - Forwards PCM data to the MAX98357A via I²S DMA buffers.
+2. **Volume Control Characteristic** (`7b9e483e-36e1-4688-b7f5-ea07361b26c0` — Read / Write / Write without response):
+   - Accepts volume level adjustments ($0 - 100\%$) and scales PCM digital amplitude.
+3. **Inert Compatibility Characteristic** (`beb5483e-36e1-4688-b7f5-ea07361b26a8` — Read / Notify):
+   - Retained strictly as an inert stub for Web Bluetooth GATT discovery compatibility with the existing client application.
+   - Has zero hardware pin reads, zero ADC sampling, zero queues, and sends no notifications.
 
 ---
 
-## How to Build & Flash
+## 4. Building with PlatformIO
 
-### Method 1: Using PlatformIO (Recommended)
-1. Open the `firmware/` directory in VS Code with PlatformIO extension installed.
-2. Connect your ESP32 board via USB.
-3. Run `PlatformIO: Build` and `PlatformIO: Upload`.
-4. Open Serial Monitor at **115200 baud** to view real-time BioAmp EXG raw telemetry and filter graphs (`>BioAmp_Raw:...,Filtered:...`).
+```bash
+# Build firmware binary
+pio run
 
-### Method 2: Using Arduino IDE
-1. Copy files in `include/` and `src/` into a single sketch folder named `firmware.ino`.
-2. Install `ArduinoJson` (v6.x) library via Library Manager.
-3. Select Board: **ESP32 Dev Module**.
-4. Compile and Upload.
+# Upload to connected ESP32 board
+pio run -t upload
+
+# Open serial monitor (115200 baud)
+pio device monitor -b 115200
+```

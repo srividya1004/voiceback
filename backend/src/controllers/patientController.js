@@ -141,10 +141,34 @@ const deletePatient = async (req, res) => {
   }
 };
 
+/**
+ * Retrieve patient profile for authenticated user
+ * @route GET /api/patients/me
+ */
+const getMe = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?._id;
+    const email = req.user?.email;
+
+    if (!userId && !email) {
+      return sendError(res, 401, 'Authentication token required');
+    }
+
+    const patient = await patientService.getMeByUserId(userId, email);
+    if (!patient) {
+      return sendError(res, 404, 'Patient profile not found for authenticated user');
+    }
+    return sendSuccess(res, 200, 'Patient profile retrieved successfully', patient);
+  } catch (error) {
+    return sendError(res, 500, 'Failed to retrieve patient profile', error.message);
+  }
+};
+
 module.exports = {
   create: createPatient,
   getAll: getAllPatients,
   getById: getPatientById,
+  getMe,
   assignDoctor,
   assignCaregiver,
   update: updatePatient,

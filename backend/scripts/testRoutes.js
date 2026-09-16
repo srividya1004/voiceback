@@ -1,14 +1,16 @@
 /**
  * Integration test script for all Express REST API endpoints under /api
+ * (with JWT authentication and automatic test record teardown).
  */
 
 const http = require('http');
 const mongoose = require('mongoose');
-const connectDB = require('../src/config/database');
+const jwt = require('jsonwebtoken');
+const { connectTestDB } = require('../src/config/database');
 const app = require('../src/app');
 
 // Helper to make HTTP requests
-const makeRequest = (port, method, path, data = null) => {
+const makeRequest = (port, method, path, data = null, headers = {}) => {
   return new Promise((resolve, reject) => {
     const payload = data ? JSON.stringify(data) : null;
     const options = {
@@ -18,7 +20,8 @@ const makeRequest = (port, method, path, data = null) => {
       method: method,
       headers: {
         'Content-Type': 'application/json',
-        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {})
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+        ...headers
       }
     };
 
@@ -46,40 +49,41 @@ const runRouteTest = async () => {
   let server;
 
   try {
-    console.log('🔄 Connecting to MongoDB...');
-    try {
-      await connectDB();
-    } catch (dbErr) {
-      console.warn('⚠️ Atlas connection unavailable (IP Whitelist). Starting local MongoMemoryServer for tests...');
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      const mongod = await MongoMemoryServer.create();
-      await mongoose.connect(mongod.getUri());
-      console.log('✅ Connected to local MongoMemoryServer!');
-    }
+    console.log('🔄 Connecting to ISOLATED Test Database for Route Testing...');
+    await connectTestDB();
 
-    server = app.listen(TEST_PORT);
-    console.log(`🚀 Test Server started on port ${TEST_PORT}\n`);
 
-    // 1. Test Root & Health
-    console.log('--- 1. Testing Root & Health ---');
-    const rootRes = await makeRequest(TEST_PORT, 'GET', '/');
-    console.log(`GET / -> Status ${rootRes.status}: ${rootRes.body.message}`);
+    // Start Express server on test port
+    await new Promise((resolve) => {
+      server = app.listen(TEST_PORT, () => {
+        console.log(`🚀 Test server listening on port ${TEST_PORT}`);
+        resolve();
+      });
+    });
 
-    const healthRes = await makeRequest(TEST_PORT, 'GET', '/health');
-    console.log(`GET /health -> Status ${healthRes.status}: Service status "${healthRes.body.data.status}"`);
+    // 1. Test Health / Root Endpoints
+    console.log('\n--- 1. Testing Root / Health Check ---');
+    const healthRes = await makeRequest(TEST_PORT, 'GET', '/');
+    console.log(`GET / -> Status ${healthRes.status} (Message: ${healthRes.body.message})`);
 
     // 2. Test UserLogin Routes
     console.log('\n--- 2. Testing /api/user-logins Routes ---');
+    const testEmail = `route.test.${Date.now()}@voiceback.org`;
     const createUserRes = await makeRequest(TEST_PORT, 'POST', '/api/user-logins', {
-      email: `route.test.${Date.now()}@voiceback.org`,
+      email: testEmail,
       passwordHash: '$2b$10$routeTestHash',
-      role: 'Patient'
+      role: 'Doctor'
     });
     console.log(`POST /api/user-logins -> Status ${createUserRes.status} (ID: ${createUserRes.body.data?._id})`);
     const userId = createUserRes.body.data?._id;
 
     const getAllUsersRes = await makeRequest(TEST_PORT, 'GET', '/api/user-logins');
     console.log(`GET /api/user-logins -> Status ${getAllUsersRes.status} (Count: ${getAllUsersRes.body.data?.length})`);
+
+    // Generate JWT token for authenticated routes (Patient & VoiceProfile)
+    const jwtSecret = process.env.JWT_SECRET || 'voiceback_secret_key';
+    const authToken = jwt.sign({ id: userId, email: testEmail, role: 'Doctor' }, jwtSecret, { expiresIn: '1h' });
+    const authHeaders = { Authorization: `Bearer ${authToken}` };
 
     // 3. Test Doctor Routes
     console.log('\n--- 3. Testing /api/doctors Routes ---');
@@ -103,44 +107,34 @@ const runRouteTest = async () => {
     console.log(`POST /api/caregivers -> Status ${createCareRes.status} (ID: ${createCareRes.body.data?._id})`);
     const caregiverId = createCareRes.body.data?._id;
 
-    // 5. Test Patient Routes
-    console.log('\n--- 5. Testing /api/patients Routes ---');
+    // 5. Test Patient Routes (JWT Protected)
+    console.log('\n--- 5. Testing /api/patients Routes (JWT Protected) ---');
     const createPatRes = await makeRequest(TEST_PORT, 'POST', '/api/patients', {
       fullName: 'Tommy Route',
       age: 45,
       aphasiaType: "Broca's",
       assignedDoctorId: doctorId,
       assignedCaregiverId: caregiverId
-    });
+    }, authHeaders);
     console.log(`POST /api/patients -> Status ${createPatRes.status} (ID: ${createPatRes.body.data?._id})`);
     const patientId = createPatRes.body.data?._id;
 
-    const getPatRes = await makeRequest(TEST_PORT, 'GET', `/api/patients/${patientId}`);
+    const getPatRes = await makeRequest(TEST_PORT, 'GET', `/api/patients/${patientId}`, null, authHeaders);
     console.log(`GET /api/patients/${patientId} -> Status ${getPatRes.status} (Name: ${getPatRes.body.data?.fullName})`);
 
-    // 6. Test VoiceProfile Routes
-    console.log('\n--- 6. Testing /api/voice-profiles Routes ---');
+    // 6. Test VoiceProfile Routes (JWT Protected)
+    console.log('\n--- 6. Testing /api/voice-profiles Routes (JWT Protected) ---');
     const createVoiceRes = await makeRequest(TEST_PORT, 'POST', '/api/voice-profiles', {
       patientId,
       pitch: 1.1,
       speedRate: 1.0,
       voiceGender: 'Neutral'
-    });
+    }, authHeaders);
     console.log(`POST /api/voice-profiles -> Status ${createVoiceRes.status} (ID: ${createVoiceRes.body.data?._id})`);
     const voiceProfileId = createVoiceRes.body.data?._id;
 
-    // 7. Test EMGProfile Routes
-    console.log('\n--- 7. Testing /api/emg-profiles Routes ---');
-    const createEmgRes = await makeRequest(TEST_PORT, 'POST', '/api/emg-profiles', {
-      patientId,
-      baselineVoltage: 0.12,
-      maxVoluntaryContraction: 2.45
-    });
-    console.log(`POST /api/emg-profiles -> Status ${createEmgRes.status} (ID: ${createEmgRes.body.data?._id})`);
-    const emgProfileId = createEmgRes.body.data?._id;
-
-    // 8. Test TherapyProgress Routes
-    console.log('\n--- 8. Testing /api/therapy-progress Routes ---');
+    // 7. Test TherapyProgress Routes
+    console.log('\n--- 7. Testing /api/therapy-progress Routes ---');
     const createTherapyRes = await makeRequest(TEST_PORT, 'POST', '/api/therapy-progress', {
       patientId,
       exercisesCompleted: 10,
@@ -149,19 +143,19 @@ const runRouteTest = async () => {
     console.log(`POST /api/therapy-progress -> Status ${createTherapyRes.status} (ID: ${createTherapyRes.body.data?._id})`);
     const therapyProgressId = createTherapyRes.body.data?._id;
 
-    // 9. Test CommunicationHistory Routes
-    console.log('\n--- 9. Testing /api/communication-history Routes ---');
+    // 8. Test CommunicationHistory Routes
+    console.log('\n--- 8. Testing /api/communication-history Routes ---');
     const createCommRes = await makeRequest(TEST_PORT, 'POST', '/api/communication-history', {
       patientId,
-      attemptType: 'Silent',
+      attemptType: 'Whispered',
       recognizedText: 'Hello world',
       confidenceScore: 0.92
     });
     console.log(`POST /api/communication-history -> Status ${createCommRes.status} (ID: ${createCommRes.body.data?._id})`);
     const commHistoryId = createCommRes.body.data?._id;
 
-    // 10. Test Appointment Routes
-    console.log('\n--- 10. Testing /api/appointments Routes ---');
+    // 9. Test Appointment Routes
+    console.log('\n--- 9. Testing /api/appointments Routes ---');
     const createApptRes = await makeRequest(TEST_PORT, 'POST', '/api/appointments', {
       patientId,
       doctorId,
@@ -170,8 +164,8 @@ const runRouteTest = async () => {
     console.log(`POST /api/appointments -> Status ${createApptRes.status} (ID: ${createApptRes.body.data?._id})`);
     const appointmentId = createApptRes.body.data?._id;
 
-    // 11. Cleanup Test Records via DELETE endpoints
-    console.log('\n--- 11. Testing DELETE Endpoints Clean up ---');
+    // 10. Cleanup Test Records via DELETE endpoints
+    console.log('\n--- 10. Testing DELETE Endpoints Clean up ---');
     const delAppt = await makeRequest(TEST_PORT, 'DELETE', `/api/appointments/${appointmentId}`);
     console.log(`DELETE /api/appointments/${appointmentId} -> Status ${delAppt.status}`);
 
@@ -181,13 +175,10 @@ const runRouteTest = async () => {
     const delTherapy = await makeRequest(TEST_PORT, 'DELETE', `/api/therapy-progress/${therapyProgressId}`);
     console.log(`DELETE /api/therapy-progress/${therapyProgressId} -> Status ${delTherapy.status}`);
 
-    const delEmg = await makeRequest(TEST_PORT, 'DELETE', `/api/emg-profiles/${emgProfileId}`);
-    console.log(`DELETE /api/emg-profiles/${emgProfileId} -> Status ${delEmg.status}`);
-
-    const delVoice = await makeRequest(TEST_PORT, 'DELETE', `/api/voice-profiles/${voiceProfileId}`);
+    const delVoice = await makeRequest(TEST_PORT, 'DELETE', `/api/voice-profiles/${voiceProfileId}`, null, authHeaders);
     console.log(`DELETE /api/voice-profiles/${voiceProfileId} -> Status ${delVoice.status}`);
 
-    const delPat = await makeRequest(TEST_PORT, 'DELETE', `/api/patients/${patientId}`);
+    const delPat = await makeRequest(TEST_PORT, 'DELETE', `/api/patients/${patientId}`, null, authHeaders);
     console.log(`DELETE /api/patients/${patientId} -> Status ${delPat.status}`);
 
     const delCare = await makeRequest(TEST_PORT, 'DELETE', `/api/caregivers/${caregiverId}`);
@@ -199,7 +190,7 @@ const runRouteTest = async () => {
     const delUser = await makeRequest(TEST_PORT, 'DELETE', `/api/user-logins/${userId}`);
     console.log(`DELETE /api/user-logins/${userId} -> Status ${delUser.status}`);
 
-    console.log('\n🎉 ALL REST API ENDPOINTS TESTED & PASSED SUCCESSFULLY!');
+    console.log('\n🎉 ALL ACTIVE REST API ENDPOINTS TESTED & PASSED SUCCESSFULLY!');
     server.close();
     process.exit(0);
   } catch (error) {

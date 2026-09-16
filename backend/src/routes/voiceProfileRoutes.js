@@ -5,8 +5,11 @@
 const express = require('express');
 const router = express.Router();
 const voiceProfileController = require('../controllers/voiceProfileController');
-
 const uploadVoiceSample = require('../middleware/uploadMiddleware');
+const authMiddleware = require('../middleware/authMiddleware');
+
+// Protect all VoiceProfile routes with JWT Bearer authentication
+router.use(authMiddleware);
 
 // ElevenLabs Instant Voice Cloning, Speech Synthesis & Scribe STT Routes (must come before /:id)
 router.post('/clone-voice', uploadVoiceSample.single('audioSample'), voiceProfileController.cloneVoiceSample);

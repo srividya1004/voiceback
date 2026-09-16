@@ -31,6 +31,23 @@ const therapyProgressSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: ''
+    },
+    scriptId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PersonalScript'
+    },
+    attemptRawTranscript: {
+      type: String,
+      trim: true
+    },
+    attemptReconstructedText: {
+      type: String,
+      trim: true
+    },
+    closenessScore: {
+      type: Number,
+      min: [0, 'Closeness score cannot be less than 0'],
+      max: [100, 'Closeness score cannot exceed 100']
     }
   },
   {

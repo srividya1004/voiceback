@@ -173,7 +173,7 @@ export const translations = {
     labelHungry: 'HUNGRY',
 
     // Quick Phrase Spoken Sentences
-    phraseWater: 'I need water.',
+    phraseWater: 'I want water.',
     phraseFood: 'I need food.',
     phraseMedicine: 'I need my medicine.',
     phrasePain: 'I am in pain.',
@@ -494,7 +494,7 @@ export const translations = {
     labelHungry: 'ಹಸಿವು (Hungry)',
 
     // Quick Phrase Spoken Sentences
-    phraseWater: 'ನನಗೆ ನೀರು ಬೇಕು.',
+    phraseWater: 'ನನಗೆ ನೀರು ಬೇಕು',
     phraseFood: 'ನನಗೆ ಆಹಾರ ಬೇಕು.',
     phraseMedicine: 'ನನಗೆ ನನ್ನ ಔಷಧ ಬೇಕು.',
     phrasePain: 'ನನಗೆ ನೋವಾಗುತ್ತಿದೆ.',
@@ -965,6 +965,9 @@ export const translations = {
 };
 
 export const getTranslation = (lang = 'english', key = '') => {
-  const selectedLang = translations[lang] || translations.english;
+  const norm = (lang || 'english').toLowerCase().trim();
+  const selectedLang = (norm.includes('kan') || norm === 'kn') ? translations.kannada
+    : (norm.includes('hin') || norm === 'hi') ? translations.hindi
+    : (translations[norm] || translations.english);
   return selectedLang[key] || translations.english[key] || key;
 };

@@ -22,7 +22,16 @@ import {
   XCircle,
   Clock,
   UserPlus,
-  Edit3
+  Edit3,
+  ChevronRight,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  Award,
+  MessageSquare,
+  ClipboardList,
+  Printer,
+  Heart
 } from 'lucide-react';
 import VoiceBackLogo from './VoiceBackLogo';
 import SettingsBottomSheet from './SettingsBottomSheet';
@@ -62,12 +71,17 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
     phone: sessionUser?.profile?.phone || storedDoc?.phone || '',
   });
 
-  // Real backend appointments, patients & emergency alerts state
+  // Real backend appointments & patients state
   const [appointments, setAppointments] = useState([]);
   const [assignedPatients, setAssignedPatients] = useState([]);
-  const [emergencyAlerts, setEmergencyAlerts] = useState([]);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
   const [statusUpdateNotice, setStatusUpdateNotice] = useState(null);
+
+  // Focused Patient Medical Record State
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [patientRecord, setPatientRecord] = useState(null);
+  const [loadingRecord, setLoadingRecord] = useState(false);
+  const [recordError, setRecordError] = useState(null);
 
   // Modal States: Assign Patient & Edit Profile
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -85,23 +99,12 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
   const [profileStatusMsg, setProfileStatusMsg] = useState(null);
   const [submittingProfile, setSubmittingProfile] = useState(false);
 
-  // Load real doctor profile, appointments, assigned patients, and emergency alerts
+  // Load real doctor profile, appointments, and assigned patients
   useEffect(() => {
     loadDoctorIdentity();
     loadAppointments();
     loadPatients();
-    loadEmergencyAlerts();
   }, []);
-
-  const loadEmergencyAlerts = async () => {
-    try {
-      const res = await apiClient.get('/emergency-sos');
-      const list = res.data?.data || [];
-      setEmergencyAlerts(Array.isArray(list) ? list : []);
-    } catch (err) {
-      setEmergencyAlerts([]);
-    }
-  };
 
   const loadDoctorIdentity = async () => {
     try {
@@ -233,14 +236,6 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
     return appDocId === doctorProfile.doctorId;
   });
 
-  // Filter doctor emergency alerts
-  const doctorEmergencyAlerts = emergencyAlerts.filter((sos) => {
-    if (!doctorProfile.doctorId) return true;
-    const sosDocId = sos.doctorId?._id || sos.doctorId;
-    const isAssignedPatient = doctorAssignedPatients.some(p => p._id === (sos.patientId?._id || sos.patientId));
-    return sosDocId === doctorProfile.doctorId || isAssignedPatient;
-  });
-
   // Status update using existing PUT /api/appointments/:id API (ONLY valid statuses: Scheduled, Completed, Cancelled)
   const handleUpdateStatus = async (appointmentId, newStatus) => {
     setStatusUpdateNotice(null);
@@ -260,6 +255,44 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
     }
   };
 
+  // Handle Opening Patient Detailed Medical Record
+  const handleSelectPatient = async (patientId) => {
+    // Client-side authorization guard: only allow assigned patients
+    const isAssigned = doctorAssignedPatients.some(p => String(p._id) === String(patientId));
+    if (!isAssigned) {
+      setRecordError('Access Denied: You are not authorized to view medical records for patients not assigned to you.');
+      setSelectedPatientId(patientId);
+      return;
+    }
+
+    setSelectedPatientId(patientId);
+    setLoadingRecord(true);
+    setRecordError(null);
+    setPatientRecord(null);
+
+    try {
+      if (!doctorProfile.doctorId) {
+        throw new Error('Doctor session not found. Please refresh.');
+      }
+      const res = await apiClient.get(`/doctors/${doctorProfile.doctorId}/patients/${patientId}/medical-record`);
+      setPatientRecord(res.data?.data || null);
+      if (voiceAssistant && speak) {
+        speak(`Opened detailed medical record for ${res.data?.data?.patient?.fullName || 'patient'}.`);
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Failed to load patient medical record.';
+      setRecordError(msg);
+    } finally {
+      setLoadingRecord(false);
+    }
+  };
+
+  const handleBackToRoster = () => {
+    setSelectedPatientId(null);
+    setPatientRecord(null);
+    setRecordError(null);
+  };
+
   // Voice Assistant guidance
   useEffect(() => {
     if (!voiceAssistant || !speak) return;
@@ -276,40 +309,33 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
       label: 'Dashboard',
       icon: Home,
       action: () => {
+        setSelectedPatientId(null);
         setActiveTab('overview');
         setIsDrawerOpen(false);
       },
-      isActive: activeTab === 'overview',
+      isActive: activeTab === 'overview' && !selectedPatientId,
     },
     {
       id: 'patients',
       label: 'My Patients',
       icon: Users,
       action: () => {
+        setSelectedPatientId(null);
         setActiveTab('patients');
         setIsDrawerOpen(false);
       },
-      isActive: activeTab === 'patients',
+      isActive: activeTab === 'patients' || selectedPatientId,
     },
     {
       id: 'appointments',
       label: 'Appointments',
       icon: Calendar,
       action: () => {
+        setSelectedPatientId(null);
         setActiveTab('appointments');
         setIsDrawerOpen(false);
       },
-      isActive: activeTab === 'appointments',
-    },
-    {
-      id: 'emergency',
-      label: 'Emergency Alerts',
-      icon: AlertTriangle,
-      action: () => {
-        setActiveTab('emergency');
-        setIsDrawerOpen(false);
-      },
-      isActive: activeTab === 'emergency',
+      isActive: activeTab === 'appointments' && !selectedPatientId,
     },
     {
       id: 'profile',
@@ -587,218 +613,737 @@ export const DoctorDashboardScreen = ({ onLogout }) => {
             </div>
           )}
 
-          {/* CLINICAL QUICK ACTION GRID */}
-          <section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem', width: '100%' }}>
-            <div
-              className="action-card"
-              onClick={() => setIsAssignModalOpen(true)}
-              style={{ minHeight: 'auto', padding: '1rem', cursor: 'pointer' }}
-            >
-              <div className="action-card-header">
-                <div className="action-icon-box" style={{ background: 'rgba(22, 163, 74, 0.12)', color: 'var(--color-green-primary)' }}>
-                  <UserPlus size={20} />
-                </div>
-                <ArrowRight size={16} className="action-arrow-icon" />
-              </div>
-              <div style={{ marginTop: '0.5rem' }}>
-                <h3 className="action-card-title" style={{ fontSize: '0.95rem' }}>Assign Patient</h3>
-                <p className="action-card-desc" style={{ fontSize: '0.775rem' }}>Link via registered email</p>
-              </div>
-            </div>
-
-            <div
-              className="action-card"
-              onClick={() => setActiveTab('appointments')}
-              style={{ minHeight: 'auto', padding: '1rem', cursor: 'pointer' }}
-            >
-              <div className="action-card-header">
-                <div className="action-icon-box" style={{ background: 'rgba(147, 51, 234, 0.12)', color: '#9333EA' }}>
-                  <Calendar size={20} />
-                </div>
-                <ArrowRight size={16} className="action-arrow-icon" />
-              </div>
-              <div style={{ marginTop: '0.5rem' }}>
-                <h3 className="action-card-title" style={{ fontSize: '0.95rem' }}>Appointments</h3>
-                <p className="action-card-desc" style={{ fontSize: '0.775rem' }}>Consultations schedule</p>
-              </div>
-            </div>
-          </section>
-
-          {/* ASSIGNED PATIENTS ROSTER */}
-          {(activeTab === 'overview' || activeTab === 'patients') && (
-            <section className="recent-activity-card" style={{ width: '100%' }}>
-              <div className="recent-activity-header" style={{ justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Users size={18} color="var(--color-green-primary)" />
-                  <h3>My Patients Roster</h3>
-                </div>
+          {selectedPatientId ? (
+            /* FOCUSED PATIENT DETAILED MEDICAL RECORD & CLINICAL REPORT VIEW */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+              {/* TOP ACTION BAR */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                 <button
                   type="button"
                   className="btn-secondary-auth"
-                  onClick={() => setIsAssignModalOpen(true)}
-                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', borderColor: 'var(--color-green-primary)', color: 'var(--color-green-primary)' }}
+                  onClick={handleBackToRoster}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.85rem', fontSize: '0.825rem' }}
                 >
-                  + Assign Patient
+                  <ArrowLeft size={16} />
+                  <span>Back to Patients Roster</span>
                 </button>
+
+                {patientRecord && (
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="btn-secondary-auth"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.45rem 0.85rem', fontSize: '0.825rem', borderColor: 'var(--color-green-primary)', color: 'var(--color-green-primary)' }}
+                  >
+                    <Printer size={16} />
+                    <span>Print Medical Record</span>
+                  </button>
+                )}
               </div>
 
-              {doctorAssignedPatients.length === 0 ? (
-                <div className="recent-activity-empty-state" style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
-                  <p className="empty-state-title" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                    No patients assigned.
+              {/* LOADING STATE */}
+              {loadingRecord && (
+                <section className="profile-section-card" style={{ width: '100%', textAlign: 'center', padding: '2.5rem 1rem', gap: '0.75rem' }}>
+                  <Clock size={32} color="var(--color-green-primary)" style={{ margin: '0 auto' }} />
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                    Loading Complete Patient Medical Record...
+                  </h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)', margin: 0 }}>
+                    Fetching clinical profile, speech diagnostics, and therapy history from database.
                   </p>
-                  <p className="empty-state-desc" style={{ marginTop: '0.35rem', lineHeight: 1.45 }}>
-                    Click "+ Assign Patient" to link a patient using their registered email address.
+                </section>
+              )}
+
+              {/* ERROR STATE */}
+              {recordError && !loadingRecord && (
+                <div
+                  style={{
+                    padding: '1.25rem',
+                    borderRadius: '14px',
+                    background: 'rgba(220, 38, 38, 0.08)',
+                    border: '1.5px solid #DC2626',
+                    color: '#DC2626',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem',
+                    textAlign: 'center'
+                  }}
+                >
+                  <AlertTriangle size={28} style={{ margin: '0 auto' }} />
+                  <h4 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0 }}>
+                    {recordError.includes('Access Denied') ? 'Access Denied' : 'Unable to Retrieve Medical Record'}
+                  </h4>
+                  <p style={{ fontSize: '0.875rem', margin: 0 }}>
+                    {recordError}
                   </p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.5rem' }}>
-                  {doctorAssignedPatients.map((p) => (
-                    <div key={p._id} style={{ padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700 }}>{p.fullName}</h4>
-                        <span style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)' }}>
-                          {p.email ? `Email: ${p.email} • ` : ''}Aphasia: {p.aphasiaType} • Age {p.age}
-                        </span>
-                      </div>
-                      <span className="device-name-badge connected" style={{ fontSize: '0.7rem' }}>Assigned</span>
-                    </div>
-                  ))}
                 </div>
               )}
-            </section>
-          )}
 
-          {/* APPOINTMENTS SCHEDULE */}
-          {(activeTab === 'overview' || activeTab === 'appointments') && (
-            <section className="recent-activity-card" style={{ width: '100%' }}>
-              <div className="recent-activity-header" style={{ justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Calendar size={18} color="#9333EA" />
-                  <h3>Doctor Appointment Schedule</h3>
-                </div>
-                <span className="device-name-badge connected" style={{ fontSize: '0.75rem' }}>
-                  {doctorAppointments.length} Appointments
-                </span>
-              </div>
+              {/* LOADED PATIENT MEDICAL RECORD CONTENT */}
+              {patientRecord && !loadingRecord && (
+                <>
+                  {/* PATIENT SUMMARY BANNER */}
+                  <section className="profile-section-card" style={{ width: '100%', gap: '0.75rem', background: 'linear-gradient(135deg, rgba(22, 163, 74, 0.08) 0%, rgba(2, 132, 199, 0.06) 100%)', border: '1.5px solid rgba(22, 163, 74, 0.3)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', width: '100%' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                            {patientRecord.patient.fullName}
+                          </h2>
+                          <span className="device-name-badge connected" style={{ fontSize: '0.7rem' }}>Assigned Patient</span>
+                        </div>
+                        <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)', fontWeight: 600, marginTop: '0.25rem' }}>
+                          Primary Diagnosis: <strong style={{ color: 'var(--color-brand-title)' }}>{patientRecord.patient.aphasiaType} Aphasia</strong> • Age: {patientRecord.patient.age} • Patient ID: <span style={{ fontFamily: 'monospace' }}>{patientRecord.patient._id}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </section>
 
-              {loadingAppointments ? (
-                <p style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-brand-tagline)' }}>
-                  Loading appointments from backend...
-                </p>
-              ) : doctorAppointments.length === 0 ? (
-                <div className="recent-activity-empty-state" style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
-                  <p className="empty-state-title" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
-                    No appointments scheduled.
-                  </p>
-                  <p className="empty-state-desc" style={{ marginTop: '0.35rem', lineHeight: 1.45 }}>
-                    When caregivers book consultations for your assigned patients, appointments will appear here.
-                  </p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '0.5rem' }}>
-                  {doctorAppointments.map((app) => (
-                    <div
-                      key={app._id}
-                      style={{
-                        padding: '1rem',
-                        borderRadius: '14px',
-                        background: 'var(--color-bg-card, #FFFFFF)',
-                        border: '1px solid var(--border-color)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '0.6rem'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <h4 style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--color-brand-title)', margin: 0 }}>
-                            Patient: {app.patientId?.fullName || 'Assigned Patient'}
-                          </h4>
-                          {app.patientId?.aphasiaType && (
-                            <span style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)' }}>
-                              Aphasia: {app.patientId.aphasiaType}
+                  {/* 1. PATIENT PROFILE & BASIC DETAILS */}
+                  <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <User size={18} color="var(--color-green-primary)" />
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                        1. Patient Profile & Demographic Details
+                      </h3>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', width: '100%' }}>
+                      <div className="profile-field-group">
+                        <span className="profile-field-label">Full Name</span>
+                        <div className="profile-field-value">{patientRecord.patient.fullName}</div>
+                      </div>
+                      <div className="profile-field-group">
+                        <span className="profile-field-label">Age</span>
+                        <div className="profile-field-value">{patientRecord.patient.age} years</div>
+                      </div>
+                      <div className="profile-field-group">
+                        <span className="profile-field-label">Gender</span>
+                        <div className="profile-field-value">{patientRecord.patient.gender || 'No data available'}</div>
+                      </div>
+                      <div className="profile-field-group">
+                        <span className="profile-field-label">Registered Email</span>
+                        <div className="profile-field-value">{patientRecord.patient.email || 'No data available'}</div>
+                      </div>
+                      <div className="profile-field-group">
+                        <span className="profile-field-label">Contact Phone</span>
+                        <div className="profile-field-value">{patientRecord.patient.phone || 'No data available'}</div>
+                      </div>
+                      <div className="profile-field-group">
+                        <span className="profile-field-label">Preferred Language</span>
+                        <div className="profile-field-value">{patientRecord.patient.preferredLanguage || 'No data available'}</div>
+                      </div>
+                      <div className="profile-field-group" style={{ gridColumn: 'span 2' }}>
+                        <span className="profile-field-label">Emergency Contact</span>
+                        <div className="profile-field-value">{patientRecord.patient.emergencyContact || 'No data available'}</div>
+                      </div>
+                      <div className="profile-field-group" style={{ gridColumn: 'span 2' }}>
+                        <span className="profile-field-label">Registered Since</span>
+                        <div className="profile-field-value">{new Date(patientRecord.patient.registeredAt).toLocaleDateString()}</div>
+                      </div>
+                    </div>
+
+                    {/* Assigned Caregiver Details */}
+                    <div style={{ marginTop: '0.35rem', padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(234, 88, 12, 0.06)', border: '1px solid rgba(234, 88, 12, 0.2)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
+                        <Heart size={16} color="var(--color-orange-primary)" />
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--color-orange-primary)' }}>
+                          Assigned Caregiver
+                        </span>
+                      </div>
+                      {patientRecord.patient.assignedCaregiver ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.85rem' }}>
+                          <strong style={{ color: 'var(--color-brand-title)' }}>
+                            {patientRecord.patient.assignedCaregiver.fullName} ({patientRecord.patient.assignedCaregiver.relationshipToPatient || 'Caregiver'})
+                          </strong>
+                          <span style={{ color: 'var(--color-brand-tagline)' }}>
+                            Phone: {patientRecord.patient.assignedCaregiver.phone || 'No data available'} • Email: {patientRecord.patient.assignedCaregiver.email || 'No data available'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)' }}>No caregiver assigned.</span>
+                      )}
+                    </div>
+                  </section>
+
+                  {/* 2. DIAGNOSIS & RELEVANT CLINICAL DETAILS */}
+                  <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Stethoscope size={18} color="var(--color-blue-primary)" />
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                        2. Diagnosis & Clinical Information
+                      </h3>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                      <div style={{ padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(2, 132, 199, 0.06)', border: '1px solid rgba(2, 132, 199, 0.2)' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-blue-primary)' }}>
+                          Clinical Diagnosis
+                        </span>
+                        <h4 style={{ margin: '0.25rem 0 0 0', fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                          {patientRecord.clinicalDetails.primaryDiagnosis} Aphasia
+                        </h4>
+                      </div>
+
+                      <div>
+                        <span className="profile-field-label">Medical History & Previous Observations</span>
+                        {patientRecord.clinicalDetails.notes.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.35rem' }}>
+                            {patientRecord.clinicalDetails.notes.map((n, idx) => (
+                              <div key={idx} style={{ padding: '0.6rem 0.85rem', borderRadius: '8px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--color-brand-tagline)', display: 'block' }}>
+                                  {new Date(n.date).toLocaleDateString()}
+                                </span>
+                                <span style={{ color: 'var(--color-brand-title)', fontWeight: 600 }}>{n.text}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)', margin: '0.35rem 0 0 0' }}>
+                            No data available
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* 3. THERAPY HISTORY & RECOVERY TRAJECTORY */}
+                  <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Activity size={18} color="var(--color-green-primary)" />
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                          3. Therapy History & Recovery Over Time
+                        </h3>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          padding: '0.25rem 0.65rem',
+                          borderRadius: '8px',
+                          background: patientRecord.therapyData.recoveryMetrics.indicator.includes('Improvement')
+                            ? 'rgba(22, 163, 74, 0.12)'
+                            : patientRecord.therapyData.recoveryMetrics.indicator.includes('Decline')
+                            ? 'rgba(220, 38, 38, 0.12)'
+                            : 'rgba(0,0,0,0.06)',
+                          color: patientRecord.therapyData.recoveryMetrics.indicator.includes('Improvement')
+                            ? 'var(--color-green-primary)'
+                            : patientRecord.therapyData.recoveryMetrics.indicator.includes('Decline')
+                            ? '#DC2626'
+                            : 'var(--color-brand-title)'
+                        }}
+                      >
+                        {patientRecord.therapyData.recoveryMetrics.indicator}
+                      </span>
+                    </div>
+
+                    {/* RECOVERY METRICS GRID */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.65rem' }}>
+                      <div style={{ padding: '0.65rem', borderRadius: '10px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--color-brand-tagline)', fontWeight: 600 }}>Total Sessions</span>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-brand-title)', marginTop: '0.2rem' }}>
+                          {patientRecord.therapyData.recoveryMetrics.totalSessions}
+                        </div>
+                      </div>
+                      <div style={{ padding: '0.65rem', borderRadius: '10px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--color-brand-tagline)', fontWeight: 600 }}>Exercises Completed</span>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-brand-title)', marginTop: '0.2rem' }}>
+                          {patientRecord.therapyData.recoveryMetrics.totalExercisesCompleted}
+                        </div>
+                      </div>
+                      <div style={{ padding: '0.65rem', borderRadius: '10px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--color-brand-tagline)', fontWeight: 600 }}>Average Score</span>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--color-green-primary)', marginTop: '0.2rem' }}>
+                          {patientRecord.therapyData.recoveryMetrics.averageScore !== null ? `${patientRecord.therapyData.recoveryMetrics.averageScore}%` : 'No data available'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ASSIGNED THERAPIES */}
+                    <div style={{ marginTop: '0.35rem' }}>
+                      <span className="profile-field-label">Assigned Practice Therapies</span>
+                      {patientRecord.therapyData.assignedScripts.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.35rem' }}>
+                          {patientRecord.therapyData.assignedScripts.map((s) => (
+                            <div key={s._id} style={{ padding: '0.6rem 0.85rem', borderRadius: '8px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-brand-title)' }}>{s.text}</span>
+                              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(2,132,199,0.1)', color: 'var(--color-blue-primary)', fontWeight: 700 }}>
+                                {s.category || 'general'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)', margin: '0.35rem 0 0 0' }}>
+                          No assigned practice therapies recorded.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* THERAPY SESSION HISTORY */}
+                    <div style={{ marginTop: '0.35rem' }}>
+                      <span className="profile-field-label">Therapy Attendance & Session Records</span>
+                      {patientRecord.therapyData.history.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.35rem' }}>
+                          {patientRecord.therapyData.history.map((t) => (
+                            <div key={t._id} style={{ padding: '0.75rem 0.85rem', borderRadius: '10px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-brand-tagline)' }}>
+                                  Session: {new Date(t.sessionDate).toLocaleDateString()}
+                                </span>
+                                <span className="device-name-badge connected" style={{ fontSize: '0.7rem' }}>
+                                  Score: {t.closenessScore !== undefined && t.closenessScore !== null ? `${t.closenessScore}%` : `${t.accuracyScore}%`}
+                                </span>
+                              </div>
+                              {t.attemptRawTranscript && (
+                                <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)' }}>
+                                  Raw STT: <span style={{ fontFamily: 'monospace', color: 'var(--color-brand-title)' }}>"{t.attemptRawTranscript}"</span>
+                                </span>
+                              )}
+                              {t.attemptReconstructedText && (
+                                <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)' }}>
+                                  Reconstructed: <strong style={{ color: 'var(--color-green-primary)' }}>"{t.attemptReconstructedText}"</strong>
+                                </span>
+                              )}
+                              {t.notes && (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--color-brand-tagline)', fontStyle: 'italic' }}>
+                                  Note: {t.notes}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)', margin: '0.35rem 0 0 0' }}>
+                          No therapy session records available.
+                        </p>
+                      )}
+                    </div>
+                  </section>
+
+                  {/* 4. COMMUNICATION & SPEECH HISTORY */}
+                  <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <MessageSquare size={18} color="#9333EA" />
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                        4. Communication & Speech Recognition History
+                      </h3>
+                    </div>
+
+                    {patientRecord.communicationHistory.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                        {patientRecord.communicationHistory.map((c) => (
+                          <div key={c._id} style={{ padding: '0.65rem 0.85rem', borderRadius: '8px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#9333EA' }}>
+                                Attempt Type: {c.attemptType}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--color-brand-tagline)' }}>
+                                {new Date(c.timestamp).toLocaleString()}
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-brand-title)' }}>
+                              "{c.recognizedText}"
                             </span>
+                            <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: 'var(--color-brand-tagline)', marginTop: '0.1rem' }}>
+                              <span>Confidence: {Math.round(c.confidenceScore * 100)}%</span>
+                              {c.semanticIntent && <span>Intent: {c.semanticIntent}</span>}
+                              <span>Language: {c.language ? c.language.toUpperCase() : 'EN'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)', margin: 0 }}>
+                        No speech or communication history recorded.
+                      </p>
+                    )}
+                  </section>
+
+                  {/* 5. DOCTOR'S NOTES & FOLLOW-UP INFORMATION */}
+                  <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <ClipboardList size={18} color="var(--color-green-primary)" />
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                        5. Doctor's Consultations & Follow-Up Notes
+                      </h3>
+                    </div>
+
+                    {patientRecord.appointments.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {patientRecord.appointments.map((a) => (
+                          <div key={a._id} style={{ padding: '0.75rem 0.85rem', borderRadius: '10px', background: 'rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                                Consultation: {new Date(a.appointmentDate).toLocaleString()}
+                              </span>
+                              <span className={`device-name-badge ${a.status === 'Completed' ? 'connected' : a.status === 'Cancelled' ? 'disconnected' : ''}`} style={{ fontSize: '0.7rem' }}>
+                                {a.status}
+                              </span>
+                            </div>
+                            {a.clinicalNotes ? (
+                              <p style={{ fontSize: '0.825rem', color: 'var(--color-brand-title)', margin: '0.2rem 0 0 0', lineHeight: 1.4 }}>
+                                {a.clinicalNotes}
+                              </p>
+                            ) : (
+                              <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-tagline)', fontStyle: 'italic' }}>
+                                No clinical notes attached.
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ fontSize: '0.85rem', color: 'var(--color-brand-tagline)', margin: 0 }}>
+                        No consultation records available.
+                      </p>
+                    )}
+                  </section>
+
+                  {/* 6. GENERATED CLINICAL MEDICAL & THERAPY REPORTS */}
+                  <section className="profile-section-card" style={{ width: '100%', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <FileText size={18} color="var(--color-blue-primary)" />
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--color-brand-title)', margin: 0 }}>
+                        6. Generated Clinical Medical & Therapy Reports
+                      </h3>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', width: '100%' }}>
+                      {/* Medical Summary Report Card */}
+                      <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(2, 132, 199, 0.05)', border: '1.5px solid rgba(2, 132, 199, 0.25)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 800, color: 'var(--color-blue-primary)' }}>
+                            {patientRecord.generatedReports.medicalSummaryReport.reportId}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--color-brand-tagline)' }}>
+                            {new Date(patientRecord.generatedReports.medicalSummaryReport.generatedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                          Medical Clinical Summary
+                        </h4>
+                        <p style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)', margin: 0, lineHeight: 1.4 }}>
+                          Diagnosis: {patientRecord.generatedReports.medicalSummaryReport.diagnosis} • Consultations: {patientRecord.generatedReports.medicalSummaryReport.totalConsultations}
+                        </p>
+                        <span style={{ fontSize: '0.725rem', fontWeight: 700, color: 'var(--color-blue-primary)' }}>
+                          Status: {patientRecord.generatedReports.medicalSummaryReport.recoveryStatus}
+                        </span>
+                      </div>
+
+                      {/* Therapy Progress Report Card */}
+                      <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(22, 163, 74, 0.05)', border: '1.5px solid rgba(22, 163, 74, 0.25)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', fontWeight: 800, color: 'var(--color-green-primary)' }}>
+                            {patientRecord.generatedReports.therapyProgressReport.reportId}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--color-brand-tagline)' }}>
+                            {new Date(patientRecord.generatedReports.therapyProgressReport.generatedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                          Therapy Progress Report
+                        </h4>
+                        <p style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)', margin: 0, lineHeight: 1.4 }}>
+                          Sessions: {patientRecord.generatedReports.therapyProgressReport.totalPracticeSessions} • Avg Performance: {patientRecord.generatedReports.therapyProgressReport.averagePerformance}
+                        </p>
+                        <span style={{ fontSize: '0.725rem', fontWeight: 700, color: 'var(--color-green-primary)' }}>
+                          Trajectory: {patientRecord.generatedReports.therapyProgressReport.recoveryTrend}
+                        </span>
+                      </div>
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* CLINICAL QUICK ACTION GRID */}
+              <section style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem', width: '100%' }}>
+                <div
+                  className="action-card"
+                  onClick={() => setIsAssignModalOpen(true)}
+                  style={{ minHeight: 'auto', padding: '1rem', cursor: 'pointer' }}
+                >
+                  <div className="action-card-header">
+                    <div className="action-icon-box" style={{ background: 'rgba(22, 163, 74, 0.12)', color: 'var(--color-green-primary)' }}>
+                      <UserPlus size={20} />
+                    </div>
+                    <ArrowRight size={16} className="action-arrow-icon" />
+                  </div>
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <h3 className="action-card-title" style={{ fontSize: '0.95rem' }}>Assign Patient</h3>
+                    <p className="action-card-desc" style={{ fontSize: '0.775rem' }}>Link via registered email</p>
+                  </div>
+                </div>
+
+                <div
+                  className="action-card"
+                  onClick={() => setActiveTab('appointments')}
+                  style={{ minHeight: 'auto', padding: '1rem', cursor: 'pointer' }}
+                >
+                  <div className="action-card-header">
+                    <div className="action-icon-box" style={{ background: 'rgba(147, 51, 234, 0.12)', color: '#9333EA' }}>
+                      <Calendar size={20} />
+                    </div>
+                    <ArrowRight size={16} className="action-arrow-icon" />
+                  </div>
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <h3 className="action-card-title" style={{ fontSize: '0.95rem' }}>Appointments</h3>
+                    <p className="action-card-desc" style={{ fontSize: '0.775rem' }}>Consultations schedule</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* ASSIGNED PATIENTS ROSTER */}
+              {(activeTab === 'overview' || activeTab === 'patients') && (
+                <section className="recent-activity-card" style={{ width: '100%' }}>
+                  <div className="recent-activity-header" style={{ justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Users size={18} color="var(--color-green-primary)" />
+                      <h3>My Patients Roster</h3>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary-auth"
+                      onClick={() => setIsAssignModalOpen(true)}
+                      style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', borderColor: 'var(--color-green-primary)', color: 'var(--color-green-primary)' }}
+                    >
+                      + Assign Patient
+                    </button>
+                  </div>
+
+                  {doctorAssignedPatients.length === 0 ? (
+                    <div className="recent-activity-empty-state" style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
+                      <p className="empty-state-title" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                        No patients assigned.
+                      </p>
+                      <p className="empty-state-desc" style={{ marginTop: '0.35rem', lineHeight: 1.45 }}>
+                        Click "+ Assign Patient" to link a patient using their registered email address.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.5rem' }}>
+                      {doctorAssignedPatients.map((p) => (
+                        <div
+                          key={p._id}
+                          onClick={() => handleSelectPatient(p._id)}
+                          style={{
+                            padding: '0.85rem 1rem',
+                            borderRadius: '12px',
+                            background: 'rgba(0,0,0,0.02)',
+                            border: '1.5px solid var(--border-color)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'rgba(22, 163, 74, 0.04)';
+                            e.currentTarget.style.borderColor = 'var(--color-green-primary)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'rgba(0,0,0,0.02)';
+                            e.currentTarget.style.borderColor = 'var(--border-color)';
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
+                                {p.fullName}
+                              </h4>
+                              <span className="device-name-badge connected" style={{ fontSize: '0.65rem' }}>Assigned</span>
+                            </div>
+                            <span style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)', display: 'block', marginTop: '0.15rem' }}>
+                              {p.email ? `Email: ${p.email} • ` : ''}Aphasia: {p.aphasiaType} • Age {p.age}
+                            </span>
+                            <span style={{ fontSize: '0.725rem', color: 'var(--color-green-primary)', fontWeight: 600, display: 'block', marginTop: '0.2rem' }}>
+                              Click to view complete medical record & clinical report →
+                            </span>
+                          </div>
+                          <ChevronRight size={20} color="var(--color-green-primary)" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {/* APPOINTMENTS SCHEDULE */}
+              {(activeTab === 'overview' || activeTab === 'appointments') && (
+                <section className="recent-activity-card" style={{ width: '100%' }}>
+                  <div className="recent-activity-header" style={{ justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Calendar size={18} color="#9333EA" />
+                      <h3>Doctor Appointment Schedule</h3>
+                    </div>
+                    <span className="device-name-badge connected" style={{ fontSize: '0.75rem' }}>
+                      {doctorAppointments.length} Appointments
+                    </span>
+                  </div>
+
+                  {loadingAppointments ? (
+                    <p style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-brand-tagline)' }}>
+                      Loading appointments from backend...
+                    </p>
+                  ) : doctorAppointments.length === 0 ? (
+                    <div className="recent-activity-empty-state" style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
+                      <p className="empty-state-title" style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--color-brand-title)' }}>
+                        No appointments scheduled.
+                      </p>
+                      <p className="empty-state-desc" style={{ marginTop: '0.35rem', lineHeight: 1.45 }}>
+                        When caregivers book consultations for your assigned patients, appointments will appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '0.5rem' }}>
+                      {doctorAppointments.map((app) => (
+                        <div
+                          key={app._id}
+                          style={{
+                            padding: '1rem',
+                            borderRadius: '14px',
+                            background: 'var(--color-bg-card, #FFFFFF)',
+                            border: '1px solid var(--border-color)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.6rem'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <h4 style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--color-brand-title)', margin: 0 }}>
+                                Patient: {app.patientId?.fullName || 'Assigned Patient'}
+                              </h4>
+                              {app.patientId?.aphasiaType && (
+                                <span style={{ fontSize: '0.775rem', color: 'var(--color-brand-tagline)' }}>
+                                  Aphasia: {app.patientId.aphasiaType}
+                                </span>
+                              )}
+                            </div>
+                            <span
+                              style={{
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: '999px',
+                                background:
+                                  app.status === 'Pending'
+                                    ? 'rgba(234, 179, 8, 0.12)'
+                                    : app.status === 'Cancelled'
+                                    ? 'rgba(220, 38, 38, 0.12)'
+                                    : app.status === 'Completed'
+                                    ? 'rgba(2, 132, 199, 0.12)'
+                                    : 'rgba(22, 163, 74, 0.12)',
+                                color:
+                                  app.status === 'Pending'
+                                    ? '#D97706'
+                                    : app.status === 'Cancelled'
+                                    ? '#DC2626'
+                                    : app.status === 'Completed'
+                                    ? '#0284C7'
+                                    : 'var(--color-green-primary)',
+                                border: `1px solid ${
+                                  app.status === 'Pending'
+                                    ? '#D97706'
+                                    : app.status === 'Cancelled'
+                                    ? '#DC2626'
+                                    : app.status === 'Completed'
+                                    ? '#0284C7'
+                                    : 'var(--color-green-primary)'
+                                }`
+                              }}
+                            >
+                              {app.status}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--color-brand-title)', fontWeight: 600 }}>
+                            <Clock size={16} color="var(--color-blue-primary)" />
+                            <span>{new Date(app.appointmentDate).toLocaleString()}</span>
+                          </div>
+
+                          {app.clinicalNotes && (
+                            <div style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.03)', fontSize: '0.825rem', color: 'var(--color-brand-tagline)' }}>
+                              <strong>Reason:</strong> {app.clinicalNotes}
+                            </div>
+                          )}
+
+                          {/* STATUS ACTION BUTTONS */}
+                          {app.status === 'Pending' && (
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                              <button
+                                type="button"
+                                className="btn-primary-auth"
+                                onClick={() => handleUpdateStatus(app._id, 'Accepted')}
+                                style={{
+                                  flex: 1,
+                                  padding: '0.45rem',
+                                  fontSize: '0.775rem',
+                                  background: 'var(--color-green-primary)',
+                                  borderColor: 'var(--color-green-primary)'
+                                }}
+                              >
+                                Accept / OK
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-secondary-auth"
+                                onClick={() => handleUpdateStatus(app._id, 'Cancelled')}
+                                style={{
+                                  flex: 1,
+                                  padding: '0.45rem',
+                                  fontSize: '0.775rem',
+                                  color: '#DC2626',
+                                  borderColor: '#DC2626'
+                                }}
+                              >
+                                Cancel / Reject
+                              </button>
+                            </div>
+                          )}
+
+                          {(app.status === 'Accepted' || app.status === 'Confirmed' || app.status === 'Scheduled') && (
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                              <button
+                                type="button"
+                                className="btn-secondary-auth"
+                                onClick={() => handleUpdateStatus(app._id, 'Completed')}
+                                style={{ flex: 1, padding: '0.45rem', fontSize: '0.775rem', color: 'var(--color-green-primary)', borderColor: 'var(--color-green-primary)' }}
+                              >
+                                Mark Completed
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-secondary-auth"
+                                onClick={() => handleUpdateStatus(app._id, 'Cancelled')}
+                                style={{ flex: 1, padding: '0.45rem', fontSize: '0.775rem', color: '#DC2626', borderColor: '#DC2626' }}
+                              >
+                                Cancel Session
+                              </button>
+                            </div>
+                          )}
+
+                          {app.status === 'Cancelled' && (
+                            <div style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', background: 'rgba(220, 38, 38, 0.05)', color: '#DC2626', fontSize: '0.75rem', fontWeight: 600, textAlign: 'center' }}>
+                              Appointment Cancelled (Inactive)
+                            </div>
+                          )}
+
+                          {app.status === 'Completed' && (
+                            <div style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', background: 'rgba(2, 132, 199, 0.05)', color: '#0284C7', fontSize: '0.75rem', fontWeight: 600, textAlign: 'center' }}>
+                              Consultation Completed
+                            </div>
                           )}
                         </div>
-                        <span className="device-name-badge connected" style={{ fontSize: '0.75rem' }}>
-                          {app.status}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--color-brand-title)', fontWeight: 600 }}>
-                        <Clock size={16} color="var(--color-blue-primary)" />
-                        <span>{new Date(app.appointmentDate).toLocaleString()}</span>
-                      </div>
-
-                      {app.clinicalNotes && (
-                        <div style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', background: 'rgba(0,0,0,0.03)', fontSize: '0.825rem', color: 'var(--color-brand-tagline)' }}>
-                          <strong>Reason:</strong> {app.clinicalNotes}
-                        </div>
-                      )}
-
-                      {/* STATUS ACTION BUTTONS (Scheduled -> Completed / Cancelled) */}
-                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
-                        {app.status !== 'Completed' && (
-                          <button
-                            type="button"
-                            className="btn-secondary-auth"
-                            onClick={() => handleUpdateStatus(app._id, 'Completed')}
-                            style={{ flex: 1, padding: '0.45rem', fontSize: '0.775rem', color: 'var(--color-green-primary)', borderColor: 'var(--color-green-primary)' }}
-                          >
-                            Mark Completed
-                          </button>
-                        )}
-                        {app.status !== 'Cancelled' && (
-                          <button
-                            type="button"
-                            className="btn-secondary-auth"
-                            onClick={() => handleUpdateStatus(app._id, 'Cancelled')}
-                            style={{ flex: 1, padding: '0.45rem', fontSize: '0.775rem', color: '#DC2626', borderColor: '#DC2626' }}
-                          >
-                            Cancel Session
-                          </button>
-                        )}
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </section>
               )}
-            </section>
-          )}
-
-          {/* EMERGENCY ALERTS FOR ASSIGNED PATIENTS (READ-ONLY VIEW) */}
-          {(activeTab === 'overview' || activeTab === 'emergency') && (
-            <section className="recent-activity-card" style={{ width: '100%' }}>
-              <div className="recent-activity-header" style={{ justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <AlertTriangle size={18} color="#DC2626" />
-                  <h3>Emergency SOS Alerts</h3>
-                </div>
-                <span className="device-name-badge disconnected" style={{ fontSize: '0.75rem' }}>
-                  {doctorEmergencyAlerts.length} Alerts
-                </span>
-              </div>
-
-              {doctorEmergencyAlerts.length === 0 ? (
-                <div style={{ padding: '1.25rem', textAlign: 'center', color: 'var(--color-brand-tagline)', fontSize: '0.85rem' }}>
-                  No emergency alerts recorded for assigned patients.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.5rem' }}>
-                  {doctorEmergencyAlerts.map((sos) => (
-                    <div key={sos._id} style={{ padding: '0.75rem 1rem', borderRadius: '10px', background: 'rgba(220,38,38,0.06)', border: '1px solid #DC2626', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, color: '#DC2626', fontSize: '0.85rem' }}>
-                        <span>Patient: {sos.patientId?.fullName || 'Assigned Patient'}</span>
-                        <span>{sos.status}</span>
-                      </div>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--color-brand-title)' }}>{sos.message}</span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--color-brand-tagline)' }}>Triggered: {new Date(sos.triggeredAt).toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
+            </>
           )}
 
         </main>
