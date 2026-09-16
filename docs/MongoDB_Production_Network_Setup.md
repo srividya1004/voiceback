@@ -81,7 +81,7 @@ When deploying the VoiceBack Express backend to production, execute the followin
 
 - [x] Client PWA makes 0 direct database connections.
 - [x] No `MONGODB_URI` string exists in `pwa/` build outputs.
-- [x] Backend API brokers all Patient, Doctor, Caregiver, and EMG profile data.
+- [x] Backend API brokers all Patient, Doctor, and Caregiver profile data.
 - [ ] Production Backend Cloud Host provisioned with Static Outbound IP.
 - [ ] MongoDB Atlas Network Access configured with Production Backend Static IP.
 - [ ] `0.0.0.0/0` disabled in production Atlas cluster.

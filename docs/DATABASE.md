@@ -1,6 +1,6 @@
 # VoiceBack – Database Schema Architecture
 
-> **Document Version:** 2.1 (Canonical Production Schema Lock)  
+> **Document Version:** 2.2 (Canonical Production Schema Lock)  
 > **Status:** Fully Implemented & Operational  
 > **Target Database:** MongoDB Atlas (NoSQL)  
 > **ORM Layer:** Mongoose (v9.9.0)  
@@ -12,13 +12,15 @@
 > [!NOTE]
 > **Database implementation is 100% complete and connected to MongoDB Atlas.**
 > 
-> All **10 Mongoose collection schemas** (`UserLogin`, `Patient`, `Doctor`, `Caregiver`, `VoiceProfile`, `EMGProfile`, `TherapyProgress`, `CommunicationHistory`, `Appointment`, `EmergencySOS`) are fully implemented in `backend/src/models/`, integrated into Node.js Express service layers (`backend/src/services/`), and exposed via REST API controllers (`backend/src/controllers/`).
+> All **9 Mongoose collection schemas** (`UserLogin`, `Patient`, `Doctor`, `Caregiver`, `VoiceProfile`, `TherapyProgress`, `CommunicationHistory`, `Appointment`, `EmergencySOS`) are fully implemented in `backend/src/models/`, integrated into Node.js Express service layers (`backend/src/services/`), and exposed via REST API controllers (`backend/src/controllers/`).
+
+*(Note: The legacy `EMGProfile` collection is retired from the active VoiceBack architecture).*
 
 ---
 
-## 2. Implemented MongoDB Collection Architecture (10 Collections)
+## 2. Implemented MongoDB Collection Architecture (9 Collections)
 
-The database utilizes **10 MongoDB Collections** designed for clinical therapy tracking, patient management, voice persistence, and emergency response:
+The database utilizes **9 MongoDB Collections** designed for clinical therapy tracking, patient management, voice persistence, and emergency response:
 
 ```mermaid
 erDiagram
@@ -26,7 +28,6 @@ erDiagram
     UserLogin ||--|| Doctor : "authenticates"
     UserLogin ||--|| Caregiver : "authenticates"
 
-    Patient ||--o{ EMGProfile : "owns"
     Patient ||--o{ VoiceProfile : "owns"
     Patient ||--o{ TherapyProgress : "tracks"
     Patient ||--o{ CommunicationHistory : "records"
@@ -43,7 +44,7 @@ erDiagram
 
 ## 3. Collection Specifications & Mongoose Schemas
 
-### 1. `UserLogin` `[Implemented - backend/src/models/UserLogin.js]`
+### 1. `UserLogin`
 Stores authentication credentials, hashed passwords, and role access control:
 - `_id`: ObjectId (Auto-generated)
 - `email`: String (Required, Unique, Lowercase, Trimmed)
@@ -55,7 +56,7 @@ Stores authentication credentials, hashed passwords, and role access control:
 > [!SECURITY]
 > Password security is strictly enforced at the database service level. All query operations (`find`, `findById`, `findByIdAndUpdate`, `findByIdAndDelete`) exclude `passwordHash` by using `.select('-passwordHash')`. Passwords are plain-text inputs converted into 60-character `bcrypt` hashes before persistence.
 
-### 2. `Patient` `[Implemented - backend/src/models/Patient.js]`
+### 2. `Patient`
 Clinical demographic profile and doctor/caregiver linkage:
 - `_id`: ObjectId
 - `userId`: Schema.Types.ObjectId (Ref: `UserLogin`, Required)
@@ -66,7 +67,7 @@ Clinical demographic profile and doctor/caregiver linkage:
 - `assignedCaregiverId`: Schema.Types.ObjectId (Ref: `Caregiver`)
 - `createdAt` & `updatedAt`: Timestamps
 
-### 3. `Doctor` `[Implemented - backend/src/models/Doctor.js]`
+### 3. `Doctor`
 Medical practitioner details:
 - `_id`: ObjectId
 - `userId`: Schema.Types.ObjectId (Ref: `UserLogin`, Required)
@@ -76,7 +77,7 @@ Medical practitioner details:
 - `licenseNumber`: String (Required, Unique)
 - `createdAt` & `updatedAt`: Timestamps
 
-### 4. `Caregiver` `[Implemented - backend/src/models/Caregiver.js]`
+### 4. `Caregiver`
 Caregiver relationship tracking:
 - `_id`: ObjectId
 - `userId`: Schema.Types.ObjectId (Ref: `UserLogin`, Required)
@@ -85,30 +86,20 @@ Caregiver relationship tracking:
 - `relationshipToPatient`: String (Required)
 - `createdAt` & `updatedAt`: Timestamps
 
-### 5. `VoiceProfile` `[Implemented - backend/src/models/VoiceProfile.js]`
-Personalized TTS audio synthesis settings and ElevenLabs voice cloning ID:
+### 5. `VoiceProfile`
+Personalized TTS audio synthesis settings and **Cartesia voice cloning ID**:
 - `_id`: ObjectId
 - `patientId`: Schema.Types.ObjectId (Ref: `Patient`, Required)
 - `pitch`: Number (Default: 1.0, Range: 0.5 - 2.0)
 - `speedRate`: Number (Default: 1.0, Range: 0.5 - 2.0)
 - `voiceGender`: String (Enum: `Male`, `Female`, `Neutral`; Default: `Neutral`)
 - `customVoiceAssetUrl`: String (Trimmed, Default: '')
-- `voiceId`: String (Trimmed, Default: ''; stores patient's ElevenLabs voice clone ID)
+- `voiceId`: String (Trimmed, Default: ''; stores patient's assigned Cartesia voice ID)
 - `status`: String (Enum: `Not Configured`, `Processing`, `Ready`, `Failed`; Default: `Not Configured`)
 - `lastClonedAt`: Date
 - `createdAt` & `updatedAt`: Timestamps
 
-### 6. `EMGProfile` `[Implemented - backend/src/models/EMGProfile.js]`
-Calibrated sEMG baseline thresholds:
-- `_id`: ObjectId
-- `patientId`: Schema.Types.ObjectId (Ref: `Patient`, Required)
-- `baselineVoltage`: Number (Required)
-- `maxVoluntaryContraction`: Number (Required)
-- `calibrationVector`: [Number] (Array of baseline float values)
-- `calibratedAt`: Date (Default: `Date.now`)
-- `createdAt` & `updatedAt`: Timestamps
-
-### 7. `TherapyProgress` `[Implemented - backend/src/models/TherapyProgress.js]`
+### 6. `TherapyProgress`
 Clinical therapy session scores:
 - `_id`: ObjectId
 - `patientId`: Schema.Types.ObjectId (Ref: `Patient`, Required)
@@ -118,7 +109,7 @@ Clinical therapy session scores:
 - `notes`: String
 - `createdAt` & `updatedAt`: Timestamps
 
-### 8. `CommunicationHistory` `[Implemented - backend/src/models/CommunicationHistory.js]`
+### 7. `CommunicationHistory`
 Real-time speech recognition event logs:
 - `_id`: ObjectId
 - `patientId`: Schema.Types.ObjectId (Ref: `Patient`, Required)
@@ -128,7 +119,7 @@ Real-time speech recognition event logs:
 - `confidenceScore`: Number (Range: 0.0 - 1.0)
 - `createdAt` & `updatedAt`: Timestamps
 
-### 9. `Appointment` `[Implemented - backend/src/models/Appointment.js]`
+### 8. `Appointment`
 Clinical session scheduling:
 - `_id`: ObjectId
 - `patientId`: Schema.Types.ObjectId (Ref: `Patient`, Required)
@@ -138,7 +129,7 @@ Clinical session scheduling:
 - `clinicalNotes`: String
 - `createdAt` & `updatedAt`: Timestamps
 
-### 10. `EmergencySOS` `[Implemented - backend/src/models/EmergencySOS.js]`
+### 9. `EmergencySOS`
 Patient emergency alert dispatch and logging:
 - `_id`: ObjectId
 - `patientId`: Schema.Types.ObjectId (Ref: `Patient`, Required)
@@ -161,5 +152,3 @@ The database implementation has been verified through:
    - `testServices.js`: Validates database CRUD operations, password hashing, and query projection.
    - `testRoutes.js`: Validates Express route routing to Mongoose services.
 3. **Audit Compliance**: Zero fake/dummy test patients; production collection structure adheres to authoritative Mongoose models.
-
-

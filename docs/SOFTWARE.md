@@ -8,28 +8,30 @@
 
 ## 1. Firmware Architecture
 
-The VoiceBack smart neckband firmware is written in modular C++ for the ESP32 microcontroller using the Arduino framework under PlatformIO.
+The VoiceBack smart neckband firmware is written in modular C++ for the ESP32 microcontroller using the Arduino framework under PlatformIO. It leverages a dual-I2S architecture to simultaneously handle microphone ingress and speaker egress.
 
-```
+```text
 firmware/
 ├── platformio.ini         # PlatformIO build configuration & library dependencies
 ├── include/               # Header Files
-│   ├── config.h           # Constants, pin mappings, BLE GATT UUIDs, sampling rate
-│   ├── emg_sensor.h       # BioAmp EXG telemetry acquisition & EMA filter interface
-│   ├── ble_service.h      # NimBLE GATT Server & JSON telemetry / audio packet interface
-│   └── audio_driver.h     # MAX98357A I2S DAC driver interface
+│   ├── config.h           # Constants, pin mappings, BLE GATT UUIDs, sampling rates
+│   ├── mic_driver.h       # INMP441 I2S_NUM_1 driver interface
+│   ├── ble_service.h      # NimBLE GATT Server & bi-directional audio packet interface
+│   └── audio_driver.h     # MAX98357A I2S_NUM_0 DAC driver interface
 └── src/                   # Source Implementation Files
-    ├── main.cpp           # Hardware setup & 50Hz telemetry loop
-    ├── emg_sensor.cpp     # ADC sampling (GPIO34), EMA filter, baseline calibration
-    ├── ble_service.cpp    # JSON telemetry serialization & BLE audio receiver
-    └── audio_driver.cpp   # ESP32 hardware I2S setup & 16kHz PCM audio playback
+    ├── main.cpp           # Hardware setup & loop execution
+    ├── mic_driver.cpp     # I2S hardware setup for INMP441 capture
+    ├── ble_service.cpp    # BLE Upstream/Downstream audio streaming
+    └── audio_driver.cpp   # I2S hardware setup for MAX98357A playback
 ```
+
+> **IMPORTANT:** BioAmp, EMG, and related ADC/EMA filters (`emg_sensor.h`, `emg_sensor.cpp`) have been permanently removed.
 
 ---
 
 ## 2. PlatformIO Project Configuration (`platformio.ini`)
 
-The firmware build system is managed via PlatformIO. The `platformio.ini` configuration defines build parameters, CPU frequencies, and library dependencies:
+The firmware build system is managed via PlatformIO:
 
 ```ini
 [env:esp32dev]
@@ -52,46 +54,42 @@ lib_deps =
 
 ### `include/config.h`
 Defines system-wide constants:
-- **Pin Definitions:** `BIOAMP_ANALOG_PIN` (`34`), `MAX98357_I2S_BCLK` (`26`), `MAX98357_I2S_LRC` (`25`), `MAX98357_I2S_DOUT` (`22`).
-- **ADC Settings:** 12-bit resolution (`ADC_MAX_VALUE = 4095`), 3.3V reference voltage (`ADC_VREF_VOLTS = 3.3f`), 500Hz sampling rate (`EMG_SAMPLE_RATE_HZ = 500`).
-- **DSP Settings:** 50Hz BLE transmission interval (`BLE_NOTIFY_INTERVAL_MS = 20`), EMA filter coefficient (`EMA_ALPHA = 0.15f`).
+- **Pin Definitions:** 
+  - Speaker: `MAX98357_I2S_BCLK` (`26`), `MAX98357_I2S_LRC` (`25`), `MAX98357_I2S_DOUT` (`22`).
+  - Microphone: `MIC_I2S_SCK` (`32`), `MIC_I2S_WS` (`33`), `MIC_I2S_SD` (`35`).
 - **BLE GATT UUIDs:**
   - Device Name: `VoiceBack-Neckband`
   - Service UUID: `4fa8c001-1278-472e-b997-63992e716a4d`
-  - Telemetry Characteristic UUID: `beb5483e-36e1-4688-b7f5-ea07361b26a8` (Notify & Read)
-  - Audio Command Characteristic UUID: `cba1483e-36e1-4688-b7f5-ea07361b26b9` (Write)
+  - Audio Downstream Command Characteristic UUID: `cba1483e-36e1-4688-b7f5-ea07361b26b9` (Write Without Response)
+  - Microphone Upstream & Control UUIDs for bi-directional streaming.
 - **Audio Specs:** 16kHz sample rate, 16-bit mono PCM.
 
-### `include/emg_sensor.h`
-Declares the `EMGData` struct (`rawAnalog`, `filteredVal`, `voltageVolts`, `mav`) and the `EMGSensor` class providing `begin()`, `readData()`, `calibrateBaseline()`, and `getFilteredValue()`. *Used strictly for hardware telemetry and calibration.*
+### `include/mic_driver.h`
+Declares the I2S capture driver for the INMP441 microphone on `I2S_NUM_1`.
 
 ### `include/ble_service.h`
-Declares `BLEServiceManager` inheriting from `BLEServerCallbacks`. Provides BLE server initialization, connection state management, `sendEMGData()` telemetry streaming, and `AudioCommandCallbacks` receiving 180-byte PCM audio chunks.
+Declares `BLEServiceManager` inheriting from `BLEServerCallbacks`. Provides BLE server initialization, connection state management, upstream microphone audio notification loops, and `AudioCommandCallbacks` for receiving downstream PCM audio chunks from the PWA.
 
 ### `include/audio_driver.h`
-Declares `AudioDriver` managing hardware I2S peripheral (`I2S_NUM_0`). Provides `begin()`, `playTestTone()`, `writePCM()`, and `stop()`.
+Declares `AudioDriver` managing hardware I2S peripheral (`I2S_NUM_0`). Provides `writePCM()` and audio output functionality for the MAX98357A.
 
 ---
 
 ## 4. Firmware Source Files (`src/`)
 
-### `src/emg_sensor.cpp`
-Implements 12-bit ADC reading on GPIO34. Computes Exponential Moving Average (EMA) smoothing:
-$$S_t = \alpha \cdot X_t + (1 - \alpha) \cdot S_{t-1}$$
-Computes voltage conversion and baseline deviation (MAV proxy).
+### `src/mic_driver.cpp`
+Configures the ESP32 hardware I2S driver on `GPIO32`, `GPIO33`, and `GPIO35`. Captures mono PCM samples via I2S_NUM_1.
 
 ### `src/ble_service.cpp`
-Implements NimBLE GATT Server creation and advertising. Formats 128-byte JSON payload via `ArduinoJson`:
-```json
-{ "raw": 1842, "flt": 1835.45, "vlt": 1.479 }
-```
-Notifies connected BLE client devices at 50Hz. Also processes incoming 180-byte audio chunks from the PWA, streaming them to `AudioDriver`.
+Implements NimBLE GATT Server creation and advertising. 
+- **Upstream:** Streams captured INMP441 microphone audio chunks back to the PWA over BLE Notify characteristics.
+- **Downstream:** Processes incoming 16kHz PCM audio chunks from the PWA, streaming them to the `AudioDriver`.
 
 ### `src/audio_driver.cpp`
-Configures ESP32 hardware I2S driver (`i2s_driver_install`, `i2s_set_pin`) on `GPIO26`, `GPIO25`, `GPIO22`. Converts incoming mono PCM samples to stereo I2S frames and writes them directly to DMA buffers.
+Configures ESP32 hardware I2S driver on `GPIO26`, `GPIO25`, `GPIO22`. Converts incoming mono PCM samples from BLE to stereo I2S frames and writes them directly to DMA buffers.
 
 ### `src/main.cpp`
-System entry point. Executes `setup()` (serial initialization, ADC calibration, BLE initialization, I2S driver setup) and non-blocking 50Hz `loop()` handling BLE state updates and telemetry serial logging (`>BioAmp_Raw:...,Filtered:...`).
+System entry point initializing serial, BLE, mic driver, and audio driver.
 
 ---
 
@@ -99,58 +97,33 @@ System entry point. Executes `setup()` (serial initialization, ADC calibration, 
 
 The VoiceBack backend is a modular Node.js Express REST API server connected to MongoDB Atlas.
 
-```
+```text
 backend/
-├── package.json          # Node.js dependencies (express, mongoose, bcrypt, jsonwebtoken, dotenv, cors)
-├── .env                  # Environment configuration (PORT, MONGODB_URI, JWT_SECRET, CLIENT_ORIGIN)
-├── .env.example          # Environment configuration template
+├── package.json          # Node.js dependencies
+├── .env                  # Environment configuration
 ├── README.md             # Backend setup & API reference documentation
 │
-├── scripts/              # Standalone verification test scripts
-│   ├── testModels.js     # Validates all 10 Mongoose schema definitions
-│   ├── testServices.js   # Validates database CRUD services & bcrypt hashing
-│   └── testRoutes.js     # Validates Express route handlers
-│
-└── src/                  # Application source code
-    ├── server.js         # HTTP server entry point & graceful shutdown listeners
-    ├── app.js            # Express app, CORS, body parsers, route registration, 404 & error handlers
+└── src/                  
+    ├── server.js         # HTTP server entry point
+    ├── app.js            # Express app, CORS, routes
     │
-    ├── config/           # Centralized configuration & MongoDB connection loader
-    │   ├── index.js      # Central environment config
-    │   └── db.js         # Mongoose connection manager
+    ├── config/           # Centralized DB & Environment config
     │
-    ├── models/           # 10 Mongoose collection schemas
+    ├── models/           # 9 Mongoose collection schemas
     │   ├── UserLogin.js, Patient.js, Doctor.js, Caregiver.js
-    │   ├── VoiceProfile.js, EMGProfile.js, TherapyProgress.js
-    │   ├── CommunicationHistory.js, Appointment.js, EmergencySOS.js, index.js
+    │   ├── VoiceProfile.js, TherapyProgress.js
+    │   ├── CommunicationHistory.js, Appointment.js, EmergencySOS.js
     │
-    ├── services/         # Business logic & cloud integration layer
-    │   ├── userLoginService.js (Auth, bcrypt hashing & JWT token generation)
-    │   ├── patientService.js, doctorService.js, caregiverService.js
-    │   ├── voiceProfileService.js, emgProfileService.js, therapyProgressService.js
-    │   ├── communicationHistoryService.js, appointmentService.js, emergencySOSService.js
-    │   ├── contextEngineService.js, nlpProcessorService.js, elevenLabsService.js, index.js
+    ├── services/         # Business logic layer
+    │   ├── userLoginService.js, contextEngineService.js, elevenLabsService.js, etc.
     │
-    ├── controllers/      # Request/Response orchestration layer
-    │   ├── userLoginController.js, patientController.js, doctorController.js, caregiverController.js
-    │   ├── voiceProfileController.js, emgProfileController.js, therapyProgressController.js
-    │   ├── communicationHistoryController.js, appointmentController.js, emergencySOSController.js
-    │   ├── contextController.js, healthController.js
+    ├── controllers/      # Orchestration layer
     │
     ├── routes/           # REST API Route definitions
-    │   ├── userLoginRoutes.js, patientRoutes.js, doctorRoutes.js, caregiverRoutes.js
-    │   ├── voiceProfileRoutes.js, emgProfileRoutes.js, therapyProgressRoutes.js
-    │   ├── communicationHistoryRoutes.js, appointmentRoutes.js, emergencySOSRoutes.js
-    │   ├── contextRoutes.js, healthRoutes.js, index.js
     │
-    ├── middleware/       # Custom middleware modules
-    │   ├── logger.js     # HTTP request logging middleware
-    │   ├── authMiddleware.js # JWT authentication guard
-    │   └── errorHandler.js# Centralized error handler middleware
+    ├── middleware/       # Custom middleware (JWT auth, error handler)
     │
     └── utils/            # Helper utilities
-        ├── validationHelper.js  # ObjectId validation helper
-        └── responseFormatter.js # Standardized JSON success/error response formatters
 ```
 
 ---
@@ -158,28 +131,17 @@ backend/
 ## 6. Authentication & API Endpoint Reference
 
 ### User Authentication (`POST /api/user-logins/login`)
-- **Password Hashing:** Passwords hashed using `bcrypt` with 10 salt rounds upon creation (`userLoginService.create`).
-- **Query Exclusion:** `passwordHash` field automatically stripped from database queries via `.select('-passwordHash')`.
-- **JWT Generation:** Validates user credentials and issues a signed JSON Web Token valid for 7 days (`expiresIn: "7d"`).
+- **Password Hashing:** Passwords hashed using `bcrypt` with 10 salt rounds.
+- **JWT Generation:** Validates user credentials and issues a signed JSON Web Token valid for 7 days.
 
-### REST API Endpoints Overview
+### Core Architecture APIs
 
-| Resource | Base Endpoint | Supported HTTP Methods | Description |
-| :--- | :--- | :--- | :--- |
-| **Health Check** | `/health` | `GET` | Server health and operational stats |
-| **User Login** | `/api/user-logins` | `GET`, `POST`, `PUT`, `DELETE` | User credential & role CRUD |
-| **Auth Login** | `/api/user-logins/login` | `POST` | Authenticate user & issue JWT token |
-| **Patients** | `/api/patients` | `GET`, `POST`, `PUT`, `DELETE` | Patient clinical profile CRUD |
-| **Doctors** | `/api/doctors` | `GET`, `POST`, `PUT`, `DELETE` | Doctor practitioner record CRUD |
-| **Caregivers** | `/api/caregivers` | `GET`, `POST`, `PUT`, `DELETE` | Caregiver contact record CRUD |
-| **Voice Profiles** | `/api/voice-profiles` | `GET`, `POST`, `PUT`, `DELETE` | TTS audio preference & cloning CRUD |
-| **Voice Synthesis**| `/api/v1/voice-profiles/synthesize` | `POST` | ElevenLabs TTS synthesis via stored `voiceId` |
-| **Context Engine** | `/api/v1/context/generate-responses` | `POST` | Ephemeral response options generation via Gemini |
-| **EMG Profiles** | `/api/emg-profiles` | `GET`, `POST`, `PUT`, `DELETE` | sEMG baseline calibration CRUD |
-| **Therapy Progress** | `/api/therapy-progress` | `GET`, `POST`, `PUT`, `DELETE` | Session exercise & score logs CRUD |
-| **Comm History** | `/api/communication-history`| `GET`, `POST`, `PUT`, `DELETE` | Real-time speech recognition event logs CRUD |
-| **Appointments** | `/api/appointments` | `GET`, `POST`, `PUT`, `DELETE` | Clinical appointment scheduling CRUD |
-| **Emergency SOS** | `/api/emergency-sos` | `GET`, `POST`, `PUT` | Emergency alert dispatch & logging |
+| Category | Endpoint | Method | Description |
+| :--- | :--- | :---: | :--- |
+| **STT Gateway** | `/api/voice-profiles/transcribe` | `POST` | Transcribes patient audio via ElevenLabs Scribe. |
+| **Context Engine** | `/api/context/generate-responses` | `POST` | Gemini LLM dynamically reconstructs meaning or generates Companion Mode choices. |
+| **Voice Synthesis**| `/api/voice-profiles/synthesize` | `POST` | Cartesia TTS speech generation using the patient's assigned `voiceId`. |
+| **Auth Login** | `/api/user-logins/login` | `POST` | Authenticate user & issue JWT token. |
 
 ---
 
@@ -187,11 +149,10 @@ backend/
 
 | Software Module | Directory | Technology | Implementation Status |
 | :--- | :--- | :--- | :--- |
-| **ESP32 Firmware** | `firmware/` | C++ / PlatformIO / NimBLE / I2S DMA | **Verified & Operational** |
-| **Node.js Express Backend** | `backend/` | Node.js / Express / JWT Auth / bcrypt | **Verified & Operational** |
-| **MongoDB Atlas Database** | `backend/` | MongoDB Atlas (10 collections via Mongoose) | **Verified & Operational** |
-| **Context Engine** | `backend/src/services/` | Gemini LLM + Rule Fallback | **Verified & Operational** |
-| **ElevenLabs Voice Gateway**| `backend/src/services/` | ElevenLabs API (`eleven_v3`) | **Verified & Operational** |
-| **React Progressive Web App** | `pwa/` | React 19 / Vite / Web Bluetooth GATT | **Verified & Operational** |
-
-
+| **ESP32 Firmware** | `firmware/` | C++ / NimBLE / Dual I2S DMA | **Verified & Operational** |
+| **Node.js Express Backend** | `backend/` | Node.js / Express / JWT Auth | **Verified & Operational** |
+| **MongoDB Atlas Database** | `backend/` | MongoDB Atlas (9 collections) | **Verified & Operational** |
+| **Context Engine** | `backend/src/services/` | Gemini LLM | **Verified & Operational** |
+| **Cartesia TTS Gateway**| `backend/src/services/` | Cartesia API | **Verified & Operational** |
+| **ElevenLabs STT Gateway**| `backend/src/services/` | ElevenLabs Scribe STT API | **Verified & Operational** |
+| **React Progressive Web App** | `pwa/` | React 19 / Vite / Web Bluetooth | **Verified & Operational** |

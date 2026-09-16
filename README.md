@@ -1,151 +1,107 @@
 # VoiceBack – Embedded AI Healthcare System for Aphasia Patients
 
-> **Project Status:** Production Candidate / Innovation System (Firmware v1.0 | Backend API v1.0 | React PWA v1.0)  
-> **Source of Truth:** [VOICEBACK_FINAL_PRD.md](VOICEBACK_FINAL_PRD.md) (Version 1.0) | [VOICEBACK_FINAL_ARCHITECTURE_SPEC.md](VOICEBACK_FINAL_ARCHITECTURE_SPEC.md) | [VOICEBACK_END_TO_END_WORKFLOW.md](VOICEBACK_END_TO_END_WORKFLOW.md) | [firmware/README.md](firmware/README.md) | [docs/DATABASE.md](docs/DATABASE.md)  
-> **Technical Guides:** [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | [docs/HARDWARE.md](docs/HARDWARE.md) | [docs/SOFTWARE.md](docs/SOFTWARE.md) | [backend/README.md](backend/README.md) | [pwa/README.md](pwa/README.md)
+> **Project Status:** Production Candidate (Firmware v1.0 | Backend API v1.0 | React PWA v1.0)
+> **Source of Truth:** [VOICEBACK_FINAL_ARCHITECTURE_SPEC.md](VOICEBACK_FINAL_ARCHITECTURE_SPEC.md) | [VOICEBACK_END_TO_END_WORKFLOW.md](VOICEBACK_END_TO_END_WORKFLOW.md)
+> **Technical Guides:** [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) | [docs/HARDWARE.md](docs/HARDWARE.md) | [docs/SOFTWARE.md](docs/SOFTWARE.md) | [firmware/README.md](firmware/README.md) | [backend/README.md](backend/README.md) | [pwa/README.md](pwa/README.md)
 
 ---
 
-## 1. Overview & Locked Architecture
+## 1. What is VoiceBack?
 
-**VoiceBack** is an integrated assistive healthcare wearable system engineered to empower individuals with aphasia (speech impairment resulting from stroke or traumatic brain injury) to regain verbal communication.
+**VoiceBack** is an integrated assistive healthcare wearable system engineered to empower individuals with aphasia (speech impairment resulting from stroke or traumatic brain injury) to regain verbal communication. It uses an ESP32-based neckband, a progressive web app, and cloud AI to capture weak or dysarthric speech, reconstruct intended meaning using context, and synthesize speech in the patient's own cloned voice.
 
-### Canonical End-to-End Communication Pipeline
-The system utilizes a physical microphone as the primary speech input, paired with Wispr Flow speech recognition, contextual reasoning, and voice cloning:
+## 2. Current System Architecture
 
-```
-Physical Microphone
-  └──> Wispr Flow / approved STT provider
-        └──> Raw Transcript
-              └──> Speech Cleanup + Meaning Reconstruction
-                    └──> Context / Intent Understanding (Gemini LLM)
-                          └──> Temporary Dynamic Response Choices (Ephemeral)
-                                └──> Patient Selects Response
-                                      └──> Patient Confirms
-                                            └──> Stored Patient Voice ID (MongoDB VoiceProfile)
-                                                  └──> ElevenLabs TTS (eleven_v3 / eleven_multilingual_v2)
-                                                        └──> Audio (16kHz 16-bit Mono PCM)
-                                                              └──> BLE GATT Stream (VoiceBack-Neckband)
-                                                                    └──> ESP32 Microcontroller
-                                                                          └──> MAX98357A I2S DAC (GPIO26/25/22)
-                                                                                └──> Physical Speaker
+The current end-to-end VoiceBack pipeline features a bi-directional audio path over BLE.
+
+### A. Upstream Pipeline (Speech Input)
+```text
+Physical Microphone (INMP441 or Browser Mic)
+  └──> ESP32 Microcontroller (if INMP441)
+        └──> BLE GATT Stream (VoiceBack-Neckband)
+              └──> PWA (React)
+                    └──> ElevenLabs Scribe (STT)
+                          └──> Raw Transcript
 ```
 
-### Core Architectural Invariants
-1. **Primary Speech Input:** The **physical microphone** is the primary speech input mechanism capturing patient vocalizations (weak, whispered, or dysarthric speech).
-2. **Speech-to-Text Layer:** **Wispr Flow** (or approved STT provider) is the intended speech recognition layer. Wispr Flow is never referred to as "Whisper", and OpenAI Whisper is not used.
-3. **No sEMG Speech Recognition:** Legacy CNN + Transformer + CTC sEMG speech-recognition models have been permanently purged and are not active.
-4. **BioAmp EXG Pill Scope:** The BioAmp EXG Pill (analog input on ESP32 `GPIO34`) is utilized strictly for hardware telemetry, baseline muscle calibration, and prototype demonstration.
-5. **Ephemeral Dynamic Choices:** Contextually generated response options exist temporarily during an active interaction and disappear immediately once the interaction is completed or cancelled.
-6. **Patient Voice ID Security:** Stored patient `voiceId` belongs strictly to the authenticated patient, is never duplicated across unrelated patients, and is never hardcoded.
-7. **Kannada PVC Limitation & Fallback:** ElevenLabs `eleven_v3` supports Kannada speech synthesis, but ElevenLabs Professional Voice Cloning (PVC) does not list Kannada as an officially supported PVC training language. Kannada patient-voice cloning is not claimed as guaranteed; an approved fallback voice is used when patient voice cloning is unavailable.
-
----
-
-## 2. Repository Architecture & Directory Index
-
-```
-voiceback/
-├── VOICEBACK_FINAL_PRD.md              # [PRIMARY SOURCE OF TRUTH] Product Requirements Document (v1.0)
-├── VOICEBACK_FINAL_ARCHITECTURE_SPEC.md# [CANONICAL] System architecture specification
-├── VOICEBACK_END_TO_END_WORKFLOW.md    # [CANONICAL] End-to-end 12-step workflow contract
-├── README.md                           # Main repository guide (this file)
-├── PROJECT_CONTEXT.md                  # Comprehensive context, hardware & database specs
-│
-├── docs/                               # Technical & Reference Documentation Suite
-│   ├── DATABASE.md                     # [CANONICAL] MongoDB Atlas schema specification
-│   ├── HARDWARE.md                     # Hardware wiring matrix & GPIO26/25/22 pin specs
-│   ├── SOFTWARE.md                     # Firmware & Express REST API architecture
-│   ├── MongoDB_Production_Network_Setup.md # Network & Atlas cluster configuration
-│   ├── VoiceBack_Environment_Independence_Guide.md # Environment variable guidelines
-│   ├── reports/                        # Audit, diagnostic, verification, and implementation reports
-│   └── archive/                        # Historical research, legacy designs, and decision logs
-│
-├── firmware/                           # ESP32 C++ Arduino Firmware (PlatformIO)
-│   ├── platformio.ini                  # Build parameters & NimBLE/ArduinoJson dependencies
-│   ├── README.md                       # [CANONICAL] Firmware documentation & hardware setup
-│   ├── include/                        # config.h (pins 26/25/22/34), audio, ble, emg headers
-│   └── src/                            # audio_driver, ble_service, emg_sensor, wifi, main
-│
-├── backend/                            # Node.js + Express REST API & MongoDB Atlas
-│   ├── README.md                       # API endpoints & service architecture
-│   ├── package.json                    # Dependencies & test scripts
-│   ├── .env.example                    # Environment variable template
-│   ├── scripts/                        # 35 automated verification test scripts
-│   └── src/                            # Models (10), Controllers (12), Services (13), Routes (12)
-│
-└── pwa/                                # React 19 + Vite Progressive Web Application
-    ├── README.md                       # PWA component guide & Web Bluetooth GATT documentation
-    ├── package.json                    # React, Vite, Lucide icons dependencies
-    ├── index.html                      # HTML entrypoint & meta headers
-    └── src/                            # Components (29), Services (12), Context, i18n
+### B. Cognitive Pipeline (Reconstruction & Companion Mode)
+```text
+Raw Transcript
+  └──> Gemini LLM (Context Engine)
+        └──> Reconstructed Meaning (if speech was broken/slurred) OR Dynamic Caregiver Options
+              └──> Patient Confirmation (Confirm / Change / Cancel)
 ```
 
----
+### C. Downstream Pipeline (Voice Output)
+```text
+Confirmed Meaning
+  └──> Cartesia (Patient Voice Cloning TTS)
+        └──> Audio (16kHz 16-bit Mono PCM)
+              └──> PWA
+                    └──> BLE GATT Stream
+                          └──> ESP32 Microcontroller
+                                └──> MAX98357A I2S DAC (I2S_NUM_0)
+                                      └──> Physical Speaker
+```
 
-## 3. Implementation Status Summary
+## 3. Core Features & Workflows
 
-| Ecosystem Layer | Module / Service | Tech Stack | Status |
-| :--- | :--- | :--- | :---: |
-| **Wearable Firmware** | ESP32 Smart Neckband Core | C++ / PlatformIO / NimBLE | **Verified & Operational** |
-| **Backend REST API** | Express REST API Service | Node.js / Express | **Verified & Operational** |
-| **Database Tier** | MongoDB Atlas Cloud Cluster | Mongoose (10 Collections) | **Verified & Operational** |
-| **User Authentication** | RBAC Auth & JWT Guard | bcrypt (10 rounds) / JWT (7d) | **Verified & Operational** |
-| **Speech-to-Text** | Wispr Flow Primary STT | Cloud STT API | **Target Architecture** |
-| **Context Engine** | Dynamic Ephemeral Suggestions | Gemini LLM + Rule Fallback | **Verified & Operational** |
-| **Voice Synthesis** | ElevenLabs Cloned Voice / TTS | `eleven_v3` / `eleven_multilingual_v2` | **Verified & Operational** |
-| **Audio Transmission** | Web Bluetooth 16kHz PCM Stream | Web Bluetooth GATT API | **Verified & Operational** |
-| **Physical Audio** | MAX98357A I2S DAC Output | GPIO26 (BCLK), 25 (LRC), 22 (DOUT) | **Verified & Operational** |
-| **Client Frontend** | Role-Gated Progressive Web App | React 19 / Vite / Vanilla CSS | **Verified & Operational** |
+### Patient Communication Flow
+1. **Input:** The patient speaks into the active microphone.
+2. **STT:** ElevenLabs Scribe generates a raw transcript.
+3. **Reconstruction:** If the speech is clear and complete, the text is preserved perfectly. If it is broken, phonetic, incomplete, or slurred, the Gemini Context Engine reconstructs the most likely intended meaning without inventing new facts.
+4. **Patient Agency:** The patient must explicitly Confirm, Change, or Cancel the reconstructed output. Cancelling prevents TTS entirely.
+5. **TTS:** Upon confirmation, the text is synthesized using the patient's assigned Cartesia cloned voice ID (with available emotion capabilities).
 
----
+### Companion Mode Flow
+1. A caregiver asks arbitrary/unseen questions to the patient.
+2. STT processes the caregiver's question.
+3. The Gemini Context Engine dynamically generates contextually relevant response options (it is NOT a hardcoded dictionary).
+4. The patient selects a response, which acts as implicit confirmation.
+5. The system speaks the response using the patient's Cartesia cloned voice.
 
-## 4. Hardware Pin Mapping (Verified Firmware Baseline)
+### Language Behavior
+- **Kannada input** results in Kannada output.
+- **English input** results in English output.
+- **Mixed Kannada + English input** results in natural mixed-language output.
 
-| Hardware Module | Module Pin | ESP32 GPIO Pin | Function |
-| :--- | :--- | :--- | :--- |
-| **BioAmp EXG Pill** | `OUT` (Analog) | `GPIO34` (ADC1_CH6) | sEMG analog telemetry (500Hz sample, 50Hz BLE notify) |
-| | `VCC` | `3.3V` | System positive power rail |
-| | `GND` | `GND` | Common system ground |
-| **MAX98357A I2S Amp** | `BCLK` | `GPIO26` | I2S Bit Clock |
-| | `LRC` / `WS` | `GPIO25` | I2S Word Select Clock |
-| | `DIN` / `DOUT` | `GPIO22` | Serial PCM Audio Data |
-| | `GAIN` | `GND` / `3.3V` | Hardware gain setting (12dB / 6dB) |
-| | `VIN` | `3.3V` / `5V` | Amplifier power supply rail |
-| **TP4056 PMIC** | `BAT+` / `BAT-` | Battery Terminals | 3.7V 800mAh Li-Po Cell Connection |
-| | `OUT+` | Power Switch -> `5V/VIN` | Switched battery positive rail |
-| **Mini Speaker** | `+` / `-` | MAX98357A OUT | Differential audio driving 4Ω 3W dynamic speaker |
+## 4. Hardware & Web Bluetooth (BLE)
 
----
+- **Device Name:** `VoiceBack-Neckband`
+- **Service UUID:** `4fa8c001-1278-472e-b997-63992e716a4d`
+- **Audio Format:** 16kHz, 16-bit, Mono PCM
 
-## 5. Quick Start Guides
+### Microphone (INMP441 via I2S_NUM_1)
+- `SCK = GPIO32`
+- `WS = GPIO33`
+- `SD = GPIO35`
+- *Auto-Switching:* When the BLE neckband is connected, the PWA automatically uses the physical INMP441. When disconnected, it automatically falls back to the browser microphone. No manual switching is required.
+
+### Speaker (MAX98357A via I2S_NUM_0)
+- `BCLK = GPIO26`
+- `WS/LRC = GPIO25`
+- `DIN = GPIO22`
+
+> **Note:** The VoiceBack architecture uses **NO BioAmp, NO EMG, and NO GPIO34.** Any references to muscle calibration or 50Hz EMG telemetry belong to retired prototypes.
+
+## 5. Security & Architecture Notes
+- **Patient Voice Mapping:** Each patient securely maps to a specific Cartesia voice ID in the MongoDB database. Voice IDs are never hardcoded.
+- **No Secrets in Frontend:** API keys (ElevenLabs, Cartesia, Gemini, MongoDB) are strictly maintained on the backend.
+- **Database:** Uses MongoDB Atlas for clinical profiles, history, and voice profiles.
+
+## 6. Setup & Execution Instructions
 
 ### A. Node.js Backend API
-1. Navigate to backend:
-   ```bash
-   cd backend
-   npm install
-   ```
-2. Configure `.env` (`PORT=5000`, `MONGODB_URI`, `JWT_SECRET`, `ELEVENLABS_API_KEY`, `GEMINI_API_KEY`).
-3. Start backend:
-   ```bash
-   npm run dev
-   ```
+1. Navigate to backend: `cd backend`
+2. Install dependencies: `npm install`
+3. Configure `.env` with appropriate environment variables: `PORT`, `MONGODB_URI`, `JWT_SECRET`, `ELEVENLABS_API_KEY`, `CARTESIA_API_KEY`, `GEMINI_API_KEY`. (Do not commit actual keys).
+4. Start backend: `npm run dev`
 
 ### B. React Progressive Web App (PWA)
-1. Navigate to PWA:
-   ```bash
-   cd pwa
-   npm install
-   ```
-2. Start local Vite development server:
-   ```bash
-   npm run dev
-   ```
+1. Navigate to PWA: `cd pwa`
+2. Install dependencies: `npm install`
+3. Start local Vite development server: `npm run dev`
 
 ### C. ESP32 Firmware (PlatformIO)
 1. Open `firmware/` in VS Code with PlatformIO extension.
 2. Build and upload: `PlatformIO: Build` and `PlatformIO: Upload`.
-3. Open Serial Monitor at **115200 baud** to view real-time BioAmp telemetry.
-
-
