@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import voiceService from '../services/voiceService';
 import contextService from '../services/contextService';
+import { deviceService } from '../services/deviceService';
 import { useSettings } from '../context/SettingsContext';
 import { generateDynamicResponses, analyzeCompanionSpeechNLP } from './ConversationModeModule';
 
@@ -46,6 +47,21 @@ export const UniversalSpeechInput = ({
   const [statusMessage, setStatusMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [playbackResult, setPlaybackResult] = useState(null);
+
+  const [deviceConnected, setDeviceConnected] = useState(() => deviceService.getDeviceStatus().isConnected);
+  const [micSource, setMicSource] = useState('browser'); // 'browser' | 'neckband'
+
+  React.useEffect(() => {
+    const unsub = deviceService.subscribe((status) => {
+      setDeviceConnected(status.isConnected);
+      if (status.isConnected) {
+        setMicSource('neckband');
+      } else {
+        setMicSource('browser'); // fallback when disconnected
+      }
+    });
+    return unsub;
+  }, []);
 
   // Voice Cloning State
   const [isCloneRecording, setIsCloneRecording] = useState(false);
@@ -146,6 +162,18 @@ export const UniversalSpeechInput = ({
     setStatusMessage('Listening to companion/caregiver speech...');
     audioChunksRef.current = [];
 
+    if (micSource === 'neckband') {
+      try {
+        await deviceService.startMic();
+        return;
+      } catch (err) {
+        console.error('Neckband mic error:', err);
+        setErrorMessage('Failed to start neckband microphone.');
+        setSpeechState('error');
+        return;
+      }
+    }
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setErrorMessage('Microphone recording is not supported in this browser.');
       setSpeechState('error');
@@ -222,7 +250,45 @@ export const UniversalSpeechInput = ({
     }
   };
 
-  const handleStopListening = () => {
+  const handleStopListening = async () => {
+    if (micSource === 'neckband') {
+      try {
+        setSpeechState('processing');
+        setStatusMessage('Transcribing spoken audio & understanding context...');
+        
+        const audioBlob = await deviceService.stopMic();
+        if (!audioBlob) {
+          setErrorMessage('Could not hear speech from neckband. Please try again.');
+          setSpeechState('error');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('audioSample', audioBlob, 'patient_recording.wav');
+        formData.append('language', selectedLanguage === 'Kannada' ? 'kn' : 'en');
+
+        const response = await voiceService.transcribeSpeech(formData);
+        const rawTranscript = response?.data?.text || response?.text || '';
+
+        const nlpResult = analyzeCompanionSpeechNLP(rawTranscript, selectedLanguage);
+        const finalPrompt = nlpResult.normalizedQuestion;
+        const targetLang = nlpResult.effectiveLanguage;
+        if (targetLang !== selectedLanguage) {
+          setSelectedLanguage(targetLang);
+        }
+
+        // Process the recognized speech and generate suited answers
+        processInputPrompt(finalPrompt, targetLang);
+      } catch (err) {
+        console.warn('Neckband speech recognition notice:', err.message);
+        const fallbackPrompt = selectedLanguage === 'Kannada'
+          ? 'ನಿಮಗೆ ಸಹಾಯ ಬೇಕೇ?'
+          : 'Do you need help?';
+        processInputPrompt(fallbackPrompt, selectedLanguage);
+      }
+      return;
+    }
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
@@ -584,6 +650,7 @@ export const UniversalSpeechInput = ({
       {/* PATHWAY 2: 🎤 SPEAK INPUT INTERFACE */}
       {activeTab === 'speak' && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.85rem', padding: '0.5rem 0' }}>
+          
           {speechState === 'listening' ? (
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
               <div style={{ width: '100%', padding: '1.1rem', borderRadius: '18px', background: 'rgba(220, 38, 38, 0.1)', border: '2px solid #DC2626', color: '#DC2626', fontWeight: 800, fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.65rem' }}>

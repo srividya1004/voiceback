@@ -63,6 +63,12 @@ class DeviceService {
     this.volumeCharacteristic = null;
     this.currentVolume = 70;
 
+    // MIC characteristics
+    this.micCtrlCharacteristic = null;
+    this.micAudioCharacteristic = null;
+    this.micAudioChunks = [];
+    this.boundMicAudioHandler = null;
+
     this.boundDisconnectionHandler = null;
     this.boundValueChangedHandler = null;
 
@@ -80,6 +86,12 @@ class DeviceService {
     // ESP32 Volume Control Characteristic
     this.VOLUME_CHAR_UUID =
       '7b9e483e-36e1-4688-b7f5-ea07361b26c0';
+
+    this.MIC_CTRL_CHAR_UUID =
+      'e1f2a3b4-36e1-4688-b7f5-ea07361b26e1';
+
+    this.MIC_AUDIO_CHAR_UUID =
+      'f3d4e5a6-36e1-4688-b7f5-ea07361b26d1';
   }
 
   // ============================================================
@@ -215,6 +227,8 @@ class DeviceService {
           optionalServices: [
             this.SERVICE_UUID,
             this.VOLUME_CHAR_UUID,
+            this.MIC_CTRL_CHAR_UUID,
+            this.MIC_AUDIO_CHAR_UUID,
           ],
         });
       } catch (filterErr) {
@@ -237,6 +251,8 @@ class DeviceService {
           optionalServices: [
             this.SERVICE_UUID,
             this.VOLUME_CHAR_UUID,
+            this.MIC_CTRL_CHAR_UUID,
+            this.MIC_AUDIO_CHAR_UUID,
           ],
         });
       }
@@ -442,6 +458,32 @@ class DeviceService {
         err.message
       );
       this.volumeCharacteristic = null;
+    }
+
+    // ----------------------------------------------------------
+    // 5c. GET MIC CTRL CHARACTERISTIC
+    // ----------------------------------------------------------
+    try {
+      this.micCtrlCharacteristic = await service.getCharacteristic(this.MIC_CTRL_CHAR_UUID);
+      console.log('✅ MIC CTRL characteristic connected.');
+    } catch (err) {
+      console.warn('⚠️ MIC CTRL characteristic not found:', err.message);
+      this.micCtrlCharacteristic = null;
+    }
+
+    // ----------------------------------------------------------
+    // 5d. GET MIC AUDIO CHARACTERISTIC
+    // ----------------------------------------------------------
+    try {
+      this.micAudioCharacteristic = await service.getCharacteristic(this.MIC_AUDIO_CHAR_UUID);
+      console.log('✅ MIC AUDIO characteristic connected.');
+      this.boundMicAudioHandler = this.handleMicAudioData.bind(this);
+      this.micAudioCharacteristic.addEventListener('characteristicvaluechanged', this.boundMicAudioHandler);
+      await this.micAudioCharacteristic.startNotifications();
+      console.log('✅ MIC AUDIO notifications enabled.');
+    } catch (err) {
+      console.warn('⚠️ MIC AUDIO characteristic not found or failed to notify:', err.message);
+      this.micAudioCharacteristic = null;
     }
 
     // ----------------------------------------------------------
@@ -903,10 +945,14 @@ class DeviceService {
     this.emgCharacteristic = null;
     this.audioCharacteristic = null;
     this.volumeCharacteristic = null;
+    this.micCtrlCharacteristic = null;
+    this.micAudioCharacteristic = null;
+    this.micAudioChunks = [];
     this.gattServer = null;
     this.bluetoothDevice = null;
     this.boundDisconnectionHandler = null;
     this.boundValueChangedHandler = null;
+    this.boundMicAudioHandler = null;
   }
 
   // ============================================================
@@ -943,6 +989,79 @@ class DeviceService {
 
   volumeDown(decrement = 10) {
     return this.setVolume(this.currentVolume - decrement);
+  }
+
+  // ============================================================
+  // MICROPHONE (INMP441)
+  // ============================================================
+
+  handleMicAudioData(event) {
+    if (this.micAudioChunks) {
+      const data = new Uint8Array(event.target.value.buffer);
+      this.micAudioChunks.push(data);
+    }
+  }
+
+  async startMic() {
+    if (!this.micCtrlCharacteristic) throw new Error("Mic not supported by this firmware.");
+    this.micAudioChunks = [];
+    await this.micCtrlCharacteristic.writeValue(new Uint8Array([0x01]));
+    console.log("🎙️ Sent START_MIC to ESP32.");
+  }
+
+  async stopMic() {
+    if (!this.micCtrlCharacteristic) return null;
+    await this.micCtrlCharacteristic.writeValue(new Uint8Array([0x00]));
+    console.log("🎙️ Sent STOP_MIC to ESP32. Generating WAV...");
+
+    const chunks = this.micAudioChunks;
+    this.micAudioChunks = [];
+
+    if (chunks.length === 0) return null;
+
+    let totalLength = 0;
+    for (const chunk of chunks) totalLength += chunk.length;
+    const pcmData = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      pcmData.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    // Create 16kHz 16-bit mono WAV header
+    const sampleRate = 16000;
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+    const blockAlign = numChannels * (bitsPerSample / 8);
+
+    const buffer = new ArrayBuffer(44 + pcmData.length);
+    const view = new DataView(buffer);
+
+    const writeString = (view, offset, string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + pcmData.length, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true); // PCM format chunk size
+    view.setUint16(20, 1, true); // Audio format (PCM=1)
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, pcmData.length, true);
+
+    const outData = new Uint8Array(buffer);
+    outData.set(pcmData, 44);
+
+    return new Blob([outData], { type: 'audio/wav' });
   }
 
   // ============================================================

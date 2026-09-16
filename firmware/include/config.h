@@ -42,4 +42,20 @@
 #define AUDIO_SAMPLE_RATE       16000  // 16 kHz audio playback rate
 #define AUDIO_BITS_PER_SAMPLE   16     // 16-bit PCM mono
 
+// ============================================================================
+// INMP441 I2S MICROPHONE INPUT — ADDITIVE ONLY
+// Uses I2S_NUM_1. Does NOT touch I2S_NUM_0, GPIO26, GPIO25, GPIO22, or GPIO34.
+// ============================================================================
+
+#define INMP441_I2S_PORT        I2S_NUM_1   // Separate peripheral from speaker (I2S_NUM_0)
+#define INMP441_SCK_PIN         32          // Bit Clock (BCK / SCK)
+#define INMP441_WS_PIN          33          // Word Select (LRC / WS)
+#define INMP441_SD_PIN          35          // Serial Data — input-only GPIO on ESP32
+
+#define INMP441_SAMPLE_RATE     16000       // 16 kHz — matches existing audio contract
+
+// New BLE characteristics for INMP441 (additive — existing UUIDs unchanged)
+#define MIC_CTRL_CHAR_UUID      "e1f2a3b4-36e1-4688-b7f5-ea07361b26e1"  // WRITE: 0x01=START, 0x00=STOP
+#define MIC_AUDIO_CHAR_UUID     "f3d4e5a6-36e1-4688-b7f5-ea07361b26d1"  // NOTIFY: 16kHz 16-bit mono PCM
+
 #endif // CONFIG_H

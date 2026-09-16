@@ -95,12 +95,34 @@ public:
     }
 };
 
+// Mic Control Characteristic Callback — receives START_MIC (0x01) / STOP_MIC (0x00) from PWA
+// s_micEnabled is defined in mic_driver.cpp and declared extern in mic_driver.h
+extern volatile bool s_micEnabled;
+
+class MicControlCallbacks : public NimBLECharacteristicCallbacks {
+public:
+    void onWrite(NimBLECharacteristic* pCharacteristic) override {
+        std::string data = pCharacteristic->getValue();
+        if (data.empty()) return;
+        uint8_t cmd = (uint8_t)data[0];
+        if (cmd == 0x01) {
+            s_micEnabled = true;
+            Serial.println("[BLE MIC CTRL] START_MIC received -> INMP441 capture ON.");
+        } else if (cmd == 0x00) {
+            s_micEnabled = false;
+            Serial.println("[BLE MIC CTRL] STOP_MIC received -> INMP441 capture OFF.");
+        }
+    }
+};
+
 BLEServiceManager::BLEServiceManager()
     : pServer(nullptr),
       pService(nullptr),
       pAudioCmdCharacteristic(nullptr),
       pVolumeCharacteristic(nullptr),
       pEMGCharacteristic(nullptr),
+      pMicCtrlCharacteristic(nullptr),
+      pMicAudioCharacteristic(nullptr),
       deviceConnected(false) {}
 
 void BLEServiceManager::begin() {
@@ -162,6 +184,26 @@ void BLEServiceManager::begin() {
         Serial.println("[BLE COMPAT] Inert compatibility characteristic initialized.");
     }
 
+    // 4. Mic Control Characteristic: PWA -> ESP32 command (0x01=START_MIC, 0x00=STOP_MIC)
+    pMicCtrlCharacteristic = pService->createCharacteristic(
+        MIC_CTRL_CHAR_UUID,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+    );
+    if (pMicCtrlCharacteristic) {
+        static MicControlCallbacks micCtrlCallbacks;
+        pMicCtrlCharacteristic->setCallbacks(&micCtrlCallbacks);
+        Serial.println("[BLE MIC CTRL] Mic control characteristic ready.");
+    }
+
+    // 5. Mic Audio Characteristic: ESP32 -> PWA NOTIFY (16kHz 16-bit mono PCM from INMP441)
+    pMicAudioCharacteristic = pService->createCharacteristic(
+        MIC_AUDIO_CHAR_UUID,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
+    );
+    if (pMicAudioCharacteristic) {
+        Serial.println("[BLE MIC AUDIO] Mic audio notify characteristic ready.");
+    }
+
     pService->start();
     Serial.println("[BLE Module] VoiceBack BLE service started.");
 
@@ -205,9 +247,16 @@ void BLEServiceManager::onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc
 void BLEServiceManager::onDisconnect(NimBLEServer* /*pServer*/, ble_gap_conn_desc* /*desc*/) {
     if (deviceConnected) {
         deviceConnected = false;
-        Serial.println("[BLE Event] >>> APPLICATION DISCONNECTED <<<");
+        s_micEnabled = false;  // Force mic OFF on disconnect
+        Serial.println("[BLE Event] >>> APPLICATION DISCONNECTED <<< (mic capture OFF)");
         audioDriver.stop();
         audioDriver.playDisconnectedSound();
         NimBLEDevice::startAdvertising();
     }
+}
+
+void BLEServiceManager::sendMicPCM(const uint8_t* pcm, size_t len) {
+    if (!deviceConnected || !pMicAudioCharacteristic || !pcm || len == 0) return;
+    pMicAudioCharacteristic->setValue((uint8_t*)pcm, len);
+    pMicAudioCharacteristic->notify();
 }
