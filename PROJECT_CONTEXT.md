@@ -27,16 +27,16 @@ The wearable component is an ergonomic neckband built from accessible, high-perf
 ```mermaid
 graph TD
     subgraph Audio Capture Subsystem
-        MIC[INMP441 Microphone] -- SCK GPIO32 --> ESP32[ESP32 Dev Board]
-        MIC -- WS GPIO33 --> ESP32
-        MIC -- SD GPIO35 --> ESP32
+        MIC[INMP441 Microphone] -- SCK GPIO26 --> ESP32[ESP32 Dev Board]
+        MIC -- WS GPIO25 --> ESP32
+        MIC -- SD GPIO34 --> ESP32
         ESP32 -- BLE Stream Upstream --> PWA[Client App]
     end
 
     subgraph Audio Playback Subsystem
         PWA -- BLE Stream Downstream --> ESP32
-        ESP32 -- BCLK GPIO26 --> AMP[MAX98357A I2S Class-D Amp]
-        ESP32 -- LRC/WS GPIO25 --> AMP
+        ESP32 -- BCLK GPIO27 --> AMP[MAX98357A I2S Class-D Amp]
+        ESP32 -- LRC/WS GPIO14 --> AMP
         ESP32 -- DIN/DOUT GPIO22 --> AMP
         AMP --> SPK[3W 4Ω Dynamic Mini Speaker]
     end
@@ -50,26 +50,27 @@ graph TD
 
 ### Complete Hardware Wiring Table (Compiled Firmware Baseline)
 
-| Hardware Module | Module Pin | ESP32 GPIO Pin | Function |
+| Hardware Module | Module Pin | ESP32 Pin / Rail | Function |
 | :--- | :--- | :--- | :--- |
-| **INMP441 Microphone** | `SCK` | `GPIO32` | I2S_NUM_1 Clock |
-| | `WS` | `GPIO33` | I2S_NUM_1 Word Select |
-| | `SD` | `GPIO35` | I2S_NUM_1 Serial Data IN |
-| | `VCC` | `3.3V` | System positive 3.3V power rail |
+| **INMP441 Microphone** | `SCK` | `GPIO26` | I2S_NUM_1 Clock |
+| | `WS` | `GPIO25` | I2S_NUM_1 Word Select |
+| | `SD` | `GPIO34` | I2S_NUM_1 Serial Data IN |
+| | `VDD` | `3.3V` | System positive 3.3V power rail |
 | | `GND` | `GND` | Common system ground rail |
-| | `L/R` | `GND` | Left Channel select |
-| **MAX98357A I2S Amp** | `BCLK` | `GPIO26` | I2S_NUM_0 Bit Clock |
-| | `LRC` / `WS` | `GPIO25` | I2S_NUM_0 Left/Right Word Select Clock |
+| | `L/R` | `GND` | Left Channel select (tied to GND) |
+| **MAX98357A I2S Amp** | `BCLK` | `GPIO27` | I2S_NUM_0 Bit Clock |
+| | `LRC` / `WS` | `GPIO14` | I2S_NUM_0 Left/Right Word Select Clock |
 | | `DIN` / `DOUT` | `GPIO22` | I2S_NUM_0 Serial PCM Audio Data line |
 | | `GAIN` | `GND` / `3.3V` | Hardware gain configuration (GND = 12dB, 3.3V = 6dB) |
-| | `VIN` | `3.3V` / `5V` | Amplifier positive power supply rail |
+| | `VIN` | `5V` | Amplifier positive power supply rail |
 | | `GND` | `GND` | Common system ground rail |
+| | `SD` | `3.3V` | SD/SD_MODE tied to 3.3V |
 | **TP4056 PMIC** | `BAT+` / `BAT-` | Battery Terminals | 3.7V 800mAh Li-Po Cell Connection |
 | | `OUT+` | Power Switch -> `VIN` | Switched battery positive rail |
 | | `OUT-` | `GND` | Common system ground rail |
 | **Mini Speaker** | `+` / `-` | MAX98357A OUT | Differential audio output driving 4Ω 3W dynamic speaker |
 
-> **IMPORTANT:** BioAmp EXG and EMG telemetry are permanently removed from the VoiceBack architecture. GPIO34 is completely unused.
+> **IMPORTANT:** BioAmp EXG and EMG telemetry are permanently removed from the VoiceBack architecture.
 
 ---
 
@@ -80,7 +81,7 @@ Located in `firmware/`, the firmware is organized into modular subsystems:
 - **Configuration Module (`include/config.h`)**: Defines pin mappings for the dual I2S pathways (Speaker on `I2S_NUM_0`, Mic on `I2S_NUM_1`) and BLE GATT UUIDs.
 - **Microphone Driver (`src/mic_driver.cpp`)**: Manages I2S_NUM_1 capture from the INMP441.
 - **BLE GATT Server (`src/ble_service.cpp`)**: Implements NimBLE GATT Server under device name `VoiceBack-Neckband`. Streams INMP441 audio upstream to the PWA and receives 16kHz PCM audio packets downstream for playback.
-- **Audio DAC Driver (`src/audio_driver.cpp`)**: Configures hardware I2S DMA on `GPIO26`, `GPIO25`, and `GPIO22` for 16kHz 16-bit mono PCM playback.
+- **Audio DAC Driver (`src/audio_driver.cpp`)**: Configures hardware I2S DMA on `GPIO27`, `GPIO14`, and `GPIO22` for 16kHz 16-bit mono PCM playback.
 
 ---
 

@@ -9,8 +9,10 @@
 #include <cstdlib>
 #include <string>
 #include "audio_driver.h"
+#include "mic_driver.h"
 
 extern AudioDriver audioDriver;
+extern MicDriver micDriver;
 
 // BLE Audio Characteristic Callback
 class AudioCommandCallbacks : public NimBLECharacteristicCallbacks {
@@ -33,42 +35,8 @@ public:
             return;
         }
 
-        uint32_t now = millis();
-        if (now - lastPacketTime > 300) {
-            // New voice utterance ingress
-            packetCount = 0;
-            totalBytes = 0;
-            totalSamples = 0;
-            nonZeroSamples = 0;
-            minSample = 32767;
-            maxSample = -32768;
-            Serial.printf("[BLE AUDIO Stream] Ingress start: %u bytes/pkt\n", (unsigned int)len);
-        }
-        lastPacketTime = now;
-        packetCount++;
-        totalBytes += len;
-
-        // Waveform inspection across received 16-bit samples
-        size_t samplesInPacket = len / 2;
-        for (size_t i = 0; i < samplesInPacket; i++) {
-            size_t off = i * 2;
-            int16_t sample = (int16_t)((uint16_t)pcm[off] | ((uint16_t)pcm[off + 1] << 8));
-            totalSamples++;
-            if (sample != 0) {
-                nonZeroSamples++;
-            }
-            if (sample < minSample) minSample = sample;
-            if (sample > maxSample) maxSample = sample;
-        }
-
-        // Buffer raw 16-bit mono PCM bytes into AudioDriver ring buffer
+        // Fast zero-overhead audio buffer ingress
         audioDriver.writePCM(pcm, len);
-
-        if (packetCount % 50 == 0) {
-            Serial.printf("[BLE AUDIO Stream] Ingress: %u pkts (%u bytes), range=[%d, %d], nonZero=%u/%u\n",
-                          (unsigned int)packetCount, (unsigned int)totalBytes,
-                          minSample, maxSample, (unsigned int)nonZeroSamples, (unsigned int)totalSamples);
-        }
     }
 };
 
@@ -95,22 +63,19 @@ public:
     }
 };
 
-// Mic Control Characteristic Callback — receives START_MIC (0x01) / STOP_MIC (0x00) from PWA
-// s_micEnabled is defined in mic_driver.cpp and declared extern in mic_driver.h
-extern volatile bool s_micEnabled;
-
+// BLE Microphone Control Characteristic Callback (PWA sends 0x01 to start, 0x00 to stop)
 class MicControlCallbacks : public NimBLECharacteristicCallbacks {
 public:
     void onWrite(NimBLECharacteristic* pCharacteristic) override {
-        std::string data = pCharacteristic->getValue();
-        if (data.empty()) return;
-        uint8_t cmd = (uint8_t)data[0];
+        NimBLEAttValue val = pCharacteristic->getValue();
+        if (val.size() == 0) return;
+        uint8_t cmd = val.data()[0];
         if (cmd == 0x01) {
-            s_micEnabled = true;
-            Serial.println("[BLE MIC CTRL] START_MIC received -> INMP441 capture ON.");
+            Serial.println("[BLE MIC] Received START_MIC command (0x01) from PWA.");
+            micDriver.setStreaming(true);
         } else if (cmd == 0x00) {
-            s_micEnabled = false;
-            Serial.println("[BLE MIC CTRL] STOP_MIC received -> INMP441 capture OFF.");
+            Serial.println("[BLE MIC] Received STOP_MIC command (0x00) from PWA.");
+            micDriver.setStreaming(false);
         }
     }
 };
@@ -130,7 +95,7 @@ void BLEServiceManager::begin() {
 
     NimBLEDevice::init(BLE_DEVICE_NAME);
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-    NimBLEDevice::setMTU(517); // Request maximum ATT MTU for larger BLE packets (~512 bytes/pkt vs 180)
+    NimBLEDevice::setMTU(517); // Request maximum MTU (517) to safely allow 512-byte payloads
 
     pServer = NimBLEDevice::createServer();
     if (!pServer) {
@@ -176,7 +141,7 @@ void BLEServiceManager::begin() {
     Serial.println("[BLE VOLUME] Volume characteristic ready.");
 
     // 3. Inert Compatibility Characteristic: Retained strictly so PWA GATT discovery succeeds
-    // without requiring any changes to PWA code. No GPIO34 access, no ADC sampling, no queue, no notifications.
+    // without requiring any changes to PWA code. No ADC sampling, no queue, no notifications.
     pEMGCharacteristic = pService->createCharacteristic(
         EMG_CHARACTERISTIC_UUID,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
@@ -185,25 +150,29 @@ void BLEServiceManager::begin() {
         Serial.println("[BLE COMPAT] Inert compatibility characteristic initialized.");
     }
 
-    // 4. Mic Control Characteristic: PWA -> ESP32 command (0x01=START_MIC, 0x00=STOP_MIC)
+    // 4. Microphone Control Characteristic (Write / WriteNR)
     pMicCtrlCharacteristic = pService->createCharacteristic(
         MIC_CTRL_CHAR_UUID,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
     );
-    if (pMicCtrlCharacteristic) {
-        static MicControlCallbacks micCtrlCallbacks;
-        pMicCtrlCharacteristic->setCallbacks(&micCtrlCallbacks);
-        Serial.println("[BLE MIC CTRL] Mic control characteristic ready.");
+    if (!pMicCtrlCharacteristic) {
+        Serial.println("[BLE ERROR] Failed to create mic control characteristic.");
+        return;
     }
+    static MicControlCallbacks micCtrlCallbacks;
+    pMicCtrlCharacteristic->setCallbacks(&micCtrlCallbacks);
+    Serial.println("[BLE MIC] Control characteristic ready.");
 
-    // 5. Mic Audio Characteristic: ESP32 -> PWA NOTIFY (16kHz 16-bit mono PCM from INMP441)
+    // 5. Microphone Audio Characteristic (Notify / Read)
     pMicAudioCharacteristic = pService->createCharacteristic(
         MIC_AUDIO_CHAR_UUID,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
-    if (pMicAudioCharacteristic) {
-        Serial.println("[BLE MIC AUDIO] Mic audio notify characteristic ready.");
+    if (!pMicAudioCharacteristic) {
+        Serial.println("[BLE ERROR] Failed to create mic audio characteristic.");
+        return;
     }
+    Serial.println("[BLE MIC] Audio streaming characteristic ready.");
 
     pService->start();
     Serial.println("[BLE Module] VoiceBack BLE service started.");
@@ -227,6 +196,13 @@ bool BLEServiceManager::isConnected() const {
     return deviceConnected;
 }
 
+void BLEServiceManager::sendMicAudioChunk(const uint8_t* data, size_t len) {
+    if (pMicAudioCharacteristic && deviceConnected && data && len > 0) {
+        pMicAudioCharacteristic->setValue(data, len);
+        pMicAudioCharacteristic->notify();
+    }
+}
+
 void BLEServiceManager::onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) {
     if (!deviceConnected) {
         deviceConnected = true;
@@ -241,23 +217,17 @@ void BLEServiceManager::onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc
                 pServer->updateConnParams(desc->conn_handle, 6, 12, 0, 400);
             }
         }
-        audioDriver.playConnectedSound();
+        // Connection chime silenced per requirements
     }
 }
 
 void BLEServiceManager::onDisconnect(NimBLEServer* /*pServer*/, ble_gap_conn_desc* /*desc*/) {
     if (deviceConnected) {
         deviceConnected = false;
-        s_micEnabled = false;  // Force mic OFF on disconnect
-        Serial.println("[BLE Event] >>> APPLICATION DISCONNECTED <<< (mic capture OFF)");
+        Serial.println("[BLE Event] >>> APPLICATION DISCONNECTED <<<");
         audioDriver.stop();
-        audioDriver.playDisconnectedSound();
+        micDriver.setStreaming(false);
+        // Disconnection chime silenced per requirements
         NimBLEDevice::startAdvertising();
     }
-}
-
-void BLEServiceManager::sendMicPCM(const uint8_t* pcm, size_t len) {
-    if (!deviceConnected || !pMicAudioCharacteristic || !pcm || len == 0) return;
-    pMicAudioCharacteristic->setValue((uint8_t*)pcm, len);
-    pMicAudioCharacteristic->notify();
 }

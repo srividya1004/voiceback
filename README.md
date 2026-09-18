@@ -72,17 +72,23 @@ Confirmed Meaning
 - **Audio Format:** 16kHz, 16-bit, Mono PCM
 
 ### Microphone (INMP441 via I2S_NUM_1)
-- `SCK = GPIO32`
-- `WS = GPIO33`
-- `SD = GPIO35`
+- `VDD → 3.3V`
+- `GND → GND`
+- `L/R → GND`
+- `SCK → GPIO26`
+- `WS  → GPIO25`
+- `SD  → GPIO34`
 - *Auto-Switching:* When the BLE neckband is connected, the PWA automatically uses the physical INMP441. When disconnected, it automatically falls back to the browser microphone. No manual switching is required.
 
 ### Speaker (MAX98357A via I2S_NUM_0)
-- `BCLK = GPIO26`
-- `WS/LRC = GPIO25`
-- `DIN = GPIO22`
+- `VIN  → 5V`
+- `GND  → GND`
+- `DIN  → GPIO22`
+- `BCLK → GPIO27`
+- `LRC  → GPIO14`
+- `SD   → 3.3V`
 
-> **Note:** The VoiceBack architecture uses **NO BioAmp, NO EMG, and NO GPIO34.** Any references to muscle calibration or 50Hz EMG telemetry belong to retired prototypes.
+> **Note:** The VoiceBack architecture uses **NO BioAmp and NO EMG**. Any references to muscle calibration or 50Hz EMG telemetry belong to retired prototypes. INMP441 digital microphone captures on `I2S_NUM_1`, and MAX98357A amplifier outputs on `I2S_NUM_0`.
 
 ## 5. Security & Architecture Notes
 - **Patient Voice Mapping:** Each patient securely maps to a specific Cartesia voice ID in the MongoDB database. Voice IDs are never hardcoded.

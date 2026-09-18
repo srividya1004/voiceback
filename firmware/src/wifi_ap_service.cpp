@@ -1,5 +1,7 @@
 /**
- * VoiceBack Smart Neckband - Wi-Fi SoftAP Hotspot & Telemetry Server Implementation
+ * HISTORICAL / SUPERSEDED HARDWARE CONFIGURATION
+ *
+ * VoiceBack Smart Neckband - Wi-Fi SoftAP Hotspot & Telemetry Server Implementation (Archived)
  */
 
 #include "wifi_ap_service.h"

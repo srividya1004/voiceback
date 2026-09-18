@@ -32,15 +32,15 @@ Speech Input (Auto-switched INMP441 over BLE OR Browser Mic)
 2. **Speech-to-Text Layer:** **ElevenLabs Scribe** is the designated speech recognition layer. Wispr Flow and OpenAI Whisper are completely purged and must not be reintroduced.
 3. **Meaning Reconstruction:** The Gemini Context Engine dynamically reconstructs unclear, broken, or phonetic speech into intended meaning. Clear and grammatical speech must be preserved without distortion.
 4. **Companion Mode Dynamics:** During Companion Mode, caregivers can ask arbitrary, unseen questions. The Context Engine dynamically generates ephemeral choices; it is NOT a hardcoded dictionary.
-5. **No BioAmp / sEMG / Telemetry:** The legacy BioAmp EXG pill, EMG telemetry, and GPIO34 dependencies have been permanently purged. They must not be restored. The system relies entirely on acoustic speech capture.
+5. **No BioAmp / sEMG / Telemetry:** The legacy BioAmp EXG pill and EMG telemetry have been permanently purged. They must not be restored. The system relies entirely on acoustic speech capture.
 6. **Patient Voice ID Security:** Stored patient `voiceId` values in MongoDB `VoiceProfile` map strictly to the patient's enrolled **Cartesia** voice clone. These IDs belong strictly to the authenticated patient, must never be duplicated across unrelated patients, and must never be hard-coded or exposed in frontend code. Cartesia emotion parameters may be passed dynamically where supported by the implementation.
 7. **Clinical Identity Isolation:** Dedicated Doctor and Caregiver modules remain active in the application. However, Caregiver and Doctor modules **MUST NOT** create, overwrite, duplicate, or corrupt authoritative Patient identity or clinical profile data.
 8. **Language Accuracy:** The pipeline supports the exact languages provided by the speech input (e.g., Kannada input to Kannada output, English input to English output). It does not invent or claim support for languages (like Punjabi or Hindi) unless explicitly verified by the underlying TTS/STT providers in the current codebase.
 9. **Hardware Audio Interfaces:**
     - Microcontroller: ESP32 Dev Board (`VoiceBack-Neckband`).
     - Service UUID: `4fa8c001-1278-472e-b997-63992e716a4d`.
-    - **Microphone (INMP441 / I2S_NUM_1):** `SCK = GPIO32`, `WS = GPIO33`, `SD = GPIO35`.
-    - **Speaker (MAX98357A / I2S_NUM_0):** `BCLK = GPIO26`, `LRC/WS = GPIO25`, `DIN = GPIO22`.
+    - **Microphone (INMP441 / I2S_NUM_1):** `SCK = GPIO26`, `WS = GPIO25`, `SD = GPIO34` (VDD = 3.3V, GND = GND, L/R = GND).
+    - **Speaker (MAX98357A / I2S_NUM_0):** `BCLK = GPIO27`, `LRC/WS = GPIO14`, `DIN = GPIO22` (VIN = 5V, GND = GND, SD = 3.3V).
     - Audio Format: 16kHz, 16-bit, Mono PCM.
 
 ## Final Scope

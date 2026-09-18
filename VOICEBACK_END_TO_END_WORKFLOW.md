@@ -51,8 +51,8 @@ Canonical End-to-End Workflow Specification — Source-of-Truth Lock.
 10. **Physical Speaker Output:**
     - ESP32 firmware receives PCM packets and forwards frames via I2S_NUM_0 DMA.
     - MAX98357A I2S Class-D amplifier drives the physical speaker on:
-      - `BCLK = GPIO26`
-      - `LRC/WS = GPIO25`
+      - `BCLK = GPIO27`
+      - `LRC/WS = GPIO14`
       - `DIN = GPIO22`
     - Audio plays cleanly in the patient's voice.
 
@@ -83,6 +83,6 @@ Canonical End-to-End Workflow Specification — Source-of-Truth Lock.
 3. INMP441 / Browser automatic mic switching established as primary speech input.
 4. ElevenLabs Scribe verified as target STT layer.
 5. Cartesia verified as target TTS layer using patient-specific `voiceId`.
-6. MAX98357A firmware pinout verified: `GPIO26` (BCLK), `GPIO25` (LRC), `GPIO22` (DOUT).
-7. INMP441 firmware pinout verified: `GPIO32` (SCK), `GPIO33` (WS), `GPIO35` (SD).
+6. MAX98357A firmware pinout verified: `GPIO27` (BCLK), `GPIO14` (LRC), `GPIO22` (DIN).
+7. INMP441 firmware pinout verified: `GPIO26` (SCK), `GPIO25` (WS), `GPIO34` (SD).
 8. Documentation 100% consistent across all repository files.

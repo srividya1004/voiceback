@@ -1009,6 +1009,22 @@ class NLPProcessorService {
     let cleaned = this.normalizeInput(text, language);
     if (!cleaned) return '';
 
+    // Guard: Clear speech MUST NOT be altered or reconstructed
+    if (this.isSpeechClear(cleaned, language)) {
+      return cleaned.trim();
+    }
+
+    // Guard: Question preservation - A question from the patient must NEVER become an answer or statement
+    const isQuestion = /[?]$/.test(cleaned.trim()) ||
+      /^(ಹಲೋ,?\s*)?(ಹೇಗಿದ್ದೀರಾ|ಚೆನ್ನಾಗಿದ್ದೀರಾ|ಏನು|ಎಲ್ಲಿ|ಯಾವಾಗ|ಯಾರು|ಹೇಗೆ|ಏಕೆ|how|what|where|when|who|why|can\s+you|could\s+you|are\s+you|is\s+there|do\s+you)\b/iu.test(cleaned.trim());
+
+    if (isQuestion) {
+      // Preserve the patient's question
+      let questionResult = cleaned.trim();
+      if (!/[?]$/.test(questionResult)) questionResult += '?';
+      return questionResult;
+    }
+
     // Context-guided phonetic and phrase reconstruction:
     if (context && typeof context === 'string') {
       const normCtx = context.trim();
@@ -1018,9 +1034,9 @@ class NLPProcessorService {
         return 'Chanakya Dini';
       }
 
-      // Well-being question e.g. "How are you feeling today?" / "hegidira" / "kya haal"
+      // Well-being question answered by patient (e.g. caregiver asks "How are you feeling today?" and patient dysarthrically attempts "tanagidini")
       if (/how are you|feeling|hegidira|kya haal|doing/i.test(normCtx)) {
-        if (/\b(tanagidini|chanagidini|chennagidini)\b/i.test(cleaned)) {
+        if (/\b(tanagidini|chanagidini)\b/i.test(cleaned)) {
           return (language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(cleaned))
             ? 'ಚೆನ್ನಾಗಿದ್ದೀನಿ'
             : 'I am doing well.';
@@ -1049,11 +1065,8 @@ class NLPProcessorService {
       }
     }
 
-    // 0. Handle perseverative repetitive syllables common in aphasia/dysarthria:
-    // e.g. "Na na na na na na na na na" represents perseveration of "ನನಗೆ" ("I want / water")
-    if (/^(\s*na\s*){3,}$/i.test(cleaned) || /\b(na)(?:\s+\1){3,}\b/i.test(cleaned)) {
-      return language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(cleaned) ? 'ನನಗೆ ನೀರು ಬೇಕು' : 'I need water.';
-    }
+    // Collapse consecutive repeated words/syllables without fabricating arbitrary sentences (NO "na na na" -> "I need water")
+    cleaned = cleaned.replace(/\b([a-zA-Z\u0C80-\u0CFF\u0900-\u097F]+)(?:\s+\1\b)+/gi, '$1');
 
     // 0a. Romanized Kannada recovery (e.g. Scribe v2 spelling Kannada phonetically)
     const isRomanizedKn = /\b(ah\s*)?(na\s*na\s*nge|na\s*nge|nanage|nange|nanige|naanage)\s+(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/i.test(cleaned) ||
@@ -1245,6 +1258,87 @@ class NLPProcessorService {
     }
 
     return result;
+  }
+
+  /**
+   * Determines if the input is already clear, grammatical, and meaningful speech.
+   * Clear speech MUST NOT be unnecessarily reconstructed or altered.
+   * Handles Kannada, English, Hindi, and mixed languages.
+   * @param {string} text - Spoken transcript
+   * @param {string} language - 'en' | 'kn' | 'hi'
+   * @returns {boolean} True if speech is already clear and does not warrant reconstruction
+   */
+  isSpeechClear(text, language = 'en') {
+    if (!text || typeof text !== 'string') return false;
+    const trimmed = text.trim();
+    if (trimmed.length < 2) return false;
+
+    // 1. If it fails basic clarity (ellipses, broken phoneme fragments), it's not clear
+    const clarity = this.assessSpeechClarity(trimmed);
+    if (clarity.isUnclear) return false;
+
+    // 2. Reject arbitrary repeated syllables (e.g. "na na na na", "wa wa wa")
+    if (/^(\s*[a-zA-Z\u0C80-\u0CFF\u0900-\u097F]{1,3}\s*){3,}$/i.test(trimmed)) {
+      return false;
+    }
+
+    // 3. Known dysarthric slip tokens that MUST be reconstructed:
+    const dysarthricPattern = /\b(watter|watr|wter|wada|waater|wator|wotar|wa|wan|wnt|wanna|hep|halp|hlp|elpp|elp|hom|hme|hoam|ned|neeed|neeeed|nid|medcin|medsin|medisin|slipin|sleap|hungri|hangry|hongry|thirsti|thursty|washrom|tolet|toylt|bathrom|restrom|doctr|doktor|nurce|plez|stomak|stomac|stomack|stomic)\b/i;
+    if (dysarthricPattern.test(trimmed)) return false;
+
+    // Kannada dysarthric / phonetic slip tokens:
+    const kannadaSlips = /\b(ನೀಲು|ನೆಲ್ಲು|ನೇರು|ಉಡು\s*ಬೇಕು|ಉಟ\s*ಬೇಕು|ಉಟಾ\s*ಬೇಕು|ನೋವು\s*ಬೆಕ್ಕು|ಮಾತ\s*ಬೇಕು|ಮಾತ್ರೆ\s*ಬೆಕ್ಕು|ಮದ್ದು\s*ಬೇಕು|ನನ್ನಿ\s*ನೀಲು|ನೀನು\s*ಬೇಕು|ಸಾಯ\s*ಬೇಕು|ಸಾಯಬೇಕು|ಸಾಯ್|ನಾವು\s*ಆಗ್ತಿದೆ|ನೋವು\s*ಅಗ್ತಿದೆ|ಬೆಕ್ಕು|ಬೇಕ್ಕು)\b/u;
+    if (kannadaSlips.test(trimmed)) return false;
+
+    // Romanized transliteration slips that need conversion to native script:
+    const romanizedSlips = /\b(niru|neeru|neelu|nillu|oota|ootha|uta|ouda|sahaya|saaya|pani|paani|chahiye|chahye|madad|sahayata)\b/i;
+    if (romanizedSlips.test(trimmed)) return false;
+
+    // 4. Incomplete phrases needing grammar expansion (e.g. "i water", "want water", "want go", "pain stomach")
+    const cleanNoPunct = trimmed.replace(/[.,!?]+$/, '').trim();
+    const incompletePatterns = /^(i\s+water|want\s+water|i\s+help|want\s+help|i\s+food|want\s+food|i\s+medicine|want\s+medicine|want\s+go|i\s+want\s+go|need\s+go|i\s+need\s+go|i\s+go\s+home|i\s+home|pain\s+stomach|stomach\s+pain|pain\s+head|head\s+pain|pain\s+chest|chest\s+pain|pain\s+back|back\s+pain|pain\s+leg|leg\s+pain|call\s+doctor|call\s+nurse|call\s+family|me\s+want|me\s+need|me\s+hungry|me\s+thirsty|me\s+cold|me\s+hot|me\s+tired|me\s+in\s+pain|me\s+pain)$/i;
+    if (incompletePatterns.test(cleanNoPunct)) return false;
+
+    // 5. Positive recognition of clear speech:
+    // a. Clear questions:
+    const isQuestion = /[?]$/.test(trimmed) ||
+      /^(ಹಲೋ,?\s*)?(ಹೇಗಿದ್ದೀರಾ|ಚೆನ್ನಾಗಿದ್ದೀರಾ|ಏನು|ಎಲ್ಲಿ|ಯಾವಾಗ|ಯಾರು|ಹೇಗೆ|ಏಕೆ|how|what|where|when|who|why|can\s+you|could\s+you|would\s+you|are\s+you|is\s+there|do\s+you|did\s+you|have\s+you)\b/iu.test(trimmed);
+    if (isQuestion) return true;
+
+    // b. Clear Kannada phrases / sentences
+    if (/[\u0C80-\u0CFF]/.test(trimmed)) {
+      const clearKnWords = /^(ಹಲೋ|ನಮಸ್ಕಾರ|ನನಗೆ\s+ನೀರು\s+ಬೇಕು|ನೀರು\s+ಬೇಕು|ನೀರು\s+ಕೊಡಿ|ನನಗೆ\s+ಊಟ\s+ಬೇಕು|ಊಟ\s+ಬೇಕು|ನನಗೆ\s+ಸಹಾಯ\s+ಬೇಕು|ಸಹಾಯ\s+ಬೇಕು|ನೋವಾಗುತ್ತಿದೆ|ನನಗೆ\s+ನೋವಾಗುತ್ತಿದೆ|ಔಷಧ\s+ಬೇಕು|ಮಾತ್ರೆ\s+ಬೇಕು|ಚೆನ್ನಾಗಿದ್ದೇನೆ|ಚೆನ್ನಾಗಿದ್ದೀನಿ|ನಾನು\s+ಆರಾಮಾಗಿದ್ದೇನೆ|ಧನ್ಯವಾದಗಳು|ಶೌಚಾಲಯಕ್ಕೆ\s+ಹೋಗಬೇಕು)/u;
+      if (clearKnWords.test(trimmed)) return true;
+      const knWords = trimmed.split(/\s+/).filter(Boolean);
+      if (knWords.length >= 2 && !kannadaSlips.test(trimmed)) {
+        return true;
+      }
+    }
+
+    // c. Clear English phrases / sentences
+    const clearEnPhrases = /^(how\s+are\s+you|i\s+want\s+water|i\s+need\s+water|can\s+you\s+help\s+me|i\s+want\s+help|i\s+need\s+help|please\s+help\s+me|i\s+want\s+to\s+go\s+home|i\s+am\s+doing\s+well|i\s+am\s+fine|hello|hi|good\s+morning|good\s+afternoon|good\s+evening|good\s+night|thank\s+you|my\s+head\s+hurts|my\s+stomach\s+hurts|my\s+back\s+hurts|my\s+leg\s+hurts|i\s+have\s+stomach\s+pain|i\s+have\s+chest\s+pain|i\s+need\s+my\s+medicine|i\s+want\s+to\s+sleep|i\s+want\s+to\s+rest|i\s+am\s+hungry|i\s+am\s+thirsty|i\s+am\s+feeling\s+cold|i\s+am\s+feeling\s+hot|i\s+am\s+tired|i\s+need\s+to\s+use\s+the\s+bathroom)/i;
+    if (clearEnPhrases.test(cleanNoPunct)) return true;
+
+    // d. Multi-word complete English sentence (Subject + Verb + Object)
+    const enWords = cleanNoPunct.split(/\s+/).filter(Boolean);
+    if (enWords.length >= 3 && /^(i|you|he|she|we|they|my|please|can|could|would|the|this|that|there)\b/i.test(enWords[0])) {
+      return true;
+    }
+
+    // e. Clear Hindi phrases:
+    if (/[\u0900-\u097F]/.test(trimmed)) {
+      const clearHiPhrases = /^(नमस्ते|मुझे\s+पानी\s+चाहिए|पानी\s+चाहिए|मुझे\s+मदद\s+चाहिए|मदद\s+चाहिए|आप\s+कैसे\s+हैं|क्या\s+आप\s+मेरी\s+मदದ\s+कर\s+सकते\s+हैं)/u;
+      if (clearHiPhrases.test(trimmed)) return true;
+      const hiWords = trimmed.split(/\s+/).filter(Boolean);
+      if (hiWords.length >= 2) return true;
+    }
+
+    // f. Mixed language clear phrases:
+    if (/[\u0C80-\u0CFF]/.test(trimmed) && /[a-zA-Z]/.test(trimmed)) {
+      return true;
+    }
+
+    return false;
   }
 
   /**

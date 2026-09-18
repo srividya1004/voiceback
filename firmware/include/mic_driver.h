@@ -1,11 +1,12 @@
 /**
  * VoiceBack Smart Neckband - INMP441 I2S Microphone Driver Header
  *
- * ADDITIVE ONLY. Does NOT modify speaker output.
- * Speaker: I2S_NUM_0, GPIO26/GPIO25/GPIO22, MAX98357A — UNTOUCHED.
- * Microphone: I2S_NUM_1, GPIO32/GPIO33/GPIO35, INMP441.
- * GPIO34: NOT referenced here.
+ * Configures a second, independent ESP32 I2S peripheral (I2S_NUM_1) for
+ * digital audio capture from an INMP441 MEMS microphone. Runs alongside
+ * the existing MAX98357A playback driver (I2S_NUM_0) without conflict,
+ * since each I2S peripheral has its own BCLK/WS/data lines.
  */
+
 #ifndef MIC_DRIVER_H
 #define MIC_DRIVER_H
 
@@ -15,19 +16,22 @@
 class MicDriver {
 private:
     bool initialized;
+    i2s_port_t i2sPort;
     TaskHandle_t micTaskHandle;
+    volatile bool streamingActive;
 
     static void micTaskWrapper(void* parameter);
     void micTaskLoop();
 
 public:
-    MicDriver();
-    bool begin();
-    void stop();
-    bool isInitialized() const { return initialized; }
-};
+    MicDriver(i2s_port_t port = I2S_NUM_1);
 
-// Mic streaming flag: set true by MicControlCallbacks(0x01), false by (0x00) or BLE disconnect
-extern volatile bool s_micEnabled;
+    bool begin();
+    bool startCaptureTask();
+    void stop();
+    bool isRunning() const;
+    void setStreaming(bool enable);
+    bool isStreaming() const;
+};
 
 #endif // MIC_DRIVER_H

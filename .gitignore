@@ -46,3 +46,8 @@ backend/scratch/
 game3-diff.txt
 *-diff.txt
 
+# Release archives & firmware upload clones
+*.zip
+voiceback_upload/
+compile_commands.json
+python_backend/

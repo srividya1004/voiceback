@@ -118,7 +118,7 @@ class DeviceService {
   }
 
   async announcePhysicalConnection() {
-    console.log('🔊 [BLE Connection] Physical MAX98357A speaker ready. Hardware chime played on neckband.');
+    console.log('🔊 [BLE Connection] Physical MAX98357A speaker ready.');
   }
 
   // ============================================================

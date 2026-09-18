@@ -1360,6 +1360,27 @@ const correctAphasicSpeech = async (params = {}) => {
     return `Did you mean: ${reconstructed}?`;
   };
 
+  // Step 2b: Clear Speech Guard — Clear speech MUST NOT be reconstructed or altered
+  if (nlpProcessorService.isSpeechClear(text, normalizedLang)) {
+    return {
+      rawText: text,
+      rawTranscript: text,
+      correctedText: text,
+      reconstructedText: text,
+      status: 'CLEAR',
+      isAmbiguous: false,
+      isUnclear: false,
+      reconstructionReason: 'Input speech is already clear and meaningful',
+      confirmationPrompt: null,
+      clarificationPrompt: null,
+      intent: initialClass.intent,
+      entities,
+      confidence: 1.0,
+      language: normalizedLang,
+      requiresConfirmation: false
+    };
+  }
+
   // Step 3: Attempt Server-side Gemini LLM contextual reconstruction
   const apiKey = process.env.GEMINI_API_KEY;
   if (apiKey) {
@@ -1367,45 +1388,36 @@ const correctAphasicSpeech = async (params = {}) => {
     const modelCandidates = Array.from(new Set([primaryModel, 'gemini-3.6-flash', 'gemini-flash-latest'])).filter(Boolean);
 
     const systemPrompt = `You are an expert assistive AI for an aphasia, dysarthria, and neurological speech reconstruction system (VoiceBack).
-Patients using VoiceBack often have severe speech impairments: slurred pronunciation, omitted syllables, sound substitutions, dysarthric distortions, or phonetic transcription errors from speech-to-text (STT).
+The patient speaks with dysarthria, slurred pronunciation, omitted syllables, sound substitutions, or phonetic recognition errors from speech-to-text (STT).
 
-YOUR PRIMARY MISSION:
-Infer what the patient most likely INTENDED to say, using the raw acoustic transcript, surrounding conversation context, caregiver questions, previous utterances, and phonetic similarity.
-Produce a clear, natural, grammatically correct PATIENT UTTERANCE representing their intended meaning.
+YOUR ABSOLUTE CORE MISSION:
+Infer ONLY what THE PATIENT INTENDED TO SAY.
+Output MUST strictly be the patient's own intended words.
 
-CRITICAL INSTRUCTIONS & RECONSTRUCTION RULES:
-1. DO NOT MERELY REPEAT THE RAW TRANSCRIPT:
-   - If the raw transcript is unclear, misspelled, incomplete, or phonetically distorted, you MUST actively correct it into the most probable intended patient words.
-   - The patient must not be forced to manually edit normal unclear speech. Your reconstruction should already provide the corrected sentence so they can simply confirm it with one tap.
+CRITICAL RULES — NEVER ANSWER THE PATIENT:
+1. THE RECONSTRUCTION ENGINE MUST NEVER ANSWER THE PATIENT'S UTTERANCE:
+   - You are NOT a chatbot. You are NOT a caregiver. You are NOT having a conversation with the patient.
+   - You are the patient's speech prosthetic repairing their acoustic signal into what THEY wanted to say.
+   - NEVER generate a reply, answer, caregiver response, assistant reaction, or conversational reaction.
 
-2. CONVERSATION CONTEXT & PHONETIC INFERENCE:
-   - Carefully analyze the Surrounding Context (caregiver question, topic, environment) and Previous Utterances.
-   - Map phonetically captured or garbled syllables to the contextually relevant words.
-   - Example: If the raw transcript is "Tanagidini" and the surrounding context or previous words indicate the patient is referring to "Chanakya Dini", reconstruct "Chanakya Dini".
-   - Example: If context asks "How are you feeling today?" and patient says "Tanagidini", reconstruct "ಚೆನ್ನಾಗಿದ್ದೀನಿ" (Kannada) or "I am doing well." (English).
-   - Example: If context asks "Where does it hurt?" and patient says "stomach", reconstruct "My stomach hurts."
-   - Example: If context asks "What do you want to drink?" and patient says "watr" or "wada", reconstruct "I want water."
-   - Example: If raw transcript is Romanized or phonetically captured Kannada/Hindi, recover the intended words in native script (or English if target language is English).
+2. PRESERVE THE EXACT SPEECH ACT:
+   - Question -> Question: If the patient asks "How are you?" or "ಹಲೋ, ಚೆನ್ನಾಗಿದ್ದೀರಾ?", reconstruct "How are you?" or "ಹಲೋ, ಚೆನ್ನಾಗಿದ್ದೀರಾ?". NEVER output "I am fine" or "ನಾನು ಚೆನ್ನಾಗಿದ್ದೀನಿ".
+   - Request -> Request: If the patient asks "Can you help me?", reconstruct "Can you help me?". NEVER output "Yes, I can help you".
+   - Need/Desire -> Need/Desire: If the patient says "I want water." or "I wa wa water", reconstruct "I want water.". NEVER output "Here is some water".
 
-3. CORRECT INCOMPLETE, BROKEN, OR DYSARTHRIC WORDS:
-   - Missing verbs, missing pronouns, missing prepositions: "I wa watter" -> "I want water.", "pain stomach" -> "I have stomach pain.", "want go home" -> "I want to go home.", "me want sleep" -> "I want to sleep."
-   - Repeated syllables / perseverations: "I I I want" -> "I want", "na na na" -> "I need water." or native equivalent.
+3. CLEAR SPEECH MUST REMAIN UNCHANGED:
+   - If the raw transcript is already clear, grammatical, and meaningful, return it EXACTLY as-is.
 
-4. FIRST-PERSON PATIENT UTTERANCE ONLY:
-   - Output "reconstructedText" MUST strictly be the PATIENT'S OWN UTTERANCE (first-person statement, e.g., "I want water.", "My stomach hurts.", "I want to go home.").
-   - NEVER generate a caregiver reply, assistant response, suggestion, promise, or conversational reaction (e.g. NEVER output "Sure, I will get you water.", "I'm right here, I will help you.", or "Are you thirsty?").
-   - Do NOT add promises, actions, explanations, or information that the patient did not intend.
+4. NO HARDCODED SENTENCE MAPPING:
+   - NEVER map arbitrary repeated syllables (such as "na na na na") to "I need water" or "ನನಗೆ ನೀರು ಬೇಕು".
+   - Clean up stuttering by collapsing repeated words/syllables conservatively without inventing facts.
 
-5. LOW CONFIDENCE & AMBIGUITY:
-   - Never invent completely unrelated meanings or fabricate unsolicited facts.
-   - If confidence is low or speech is partially ambiguous, still provide your best contextual candidate in "reconstructedText", set "isAmbiguous": true, set "requiresConfirmation": true, and provide a polite "clarificationQuestion" (e.g. for "bring med" when medicine is unspecified).
-   - This allows the patient to either confirm the best candidate or see the clarification option without having to type.
-
-6. TARGET LANGUAGE & SCRIPT:
+5. TARGET LANGUAGE & SCRIPT:
    - Target Language: "${normalizedLang}" (en = English, kn = Kannada, hi = Hindi).
    - For Kannada: Kannada Unicode script only. NEVER translate to English!
    - For Hindi: Devanagari script only. NEVER translate to English!
    - For English: Natural English.
+   - For mixed Kannada/English: Preserve natural mixed phrasing.
 
 Raw Transcription from STT: "${text}"
 ${context ? `Surrounding Context: "${context}"` : ''}
@@ -1524,10 +1536,35 @@ Return ONLY a valid JSON object matching this schema:
             if (normalizedLang === 'hi' && !/[\u0900-\u097F]/.test(reconstructed)) validScript = false;
 
             // Caregiver / Assistant reply rejection: The output must strictly remain a patient utterance
-            const isCaregiverStyle = /^(sure,?\s*(i'll|i\s+will)|i'm\s+right\s+here|i\s+understand,?\s*i\s+will|let\s+me\s+get|don't\s+worry,?\s*i|of\s+course,?\s*i|ಖಂಡಿತ,?\s*ನಾನು|ನಾನು\s*ಇಲ್ಲೇ\s*ಇದ್ದೇನೆ|ನನಗೆ\s*ಅರ್ಥವಾಯಿತು,?\s*ನಿಮ್ಮ|जरूर,?\s*मैं|मैं\s*यहीं\s*हूँ|मैं\s*समझता\s*हूँ)/i.test(reconstructed);
+            const isCaregiverStyle = /^(sure,?\s*(i'll|i\s+will)|i'm\s+right\s+here|i\s+understand,?\s*i\s+will|let\s+me\s+get|don't\s+worry,?\s*i|of\s+course,?\s*i|here\s+(is|are)|yes,?\s*i\s+can|ಖಂಡಿತ,?\s*ನಾನು|ನಾನು\s*ಇಲ್ಲೇ\s*ಇದ್ದೇನೆ|ನನಗೆ\s*ಅರ್ಥವಾಯಿತು,?\s*ನಿಮ್ಮ|ಇದೋ\s*ತರುತ್ತೇನೆ|ಹೌದು,?\s*ನಾನು|जरूर,?\s*मैं|मैं\s*यहीं\s*हूँ|मैं\s*समझता\s*हूँ|हाँ,?\s*मैं)/i.test(reconstructed);
 
-            if (validScript && !isCaregiverStyle) {
-              const hasChanged = reconstructed.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '') !==
+            // Speech act check: If raw was a question, the reconstruction MUST remain a question and NEVER an answer
+            const rawWasQuestion = /[?]$/.test(text.trim()) ||
+              /^(ಹಲೋ,?\s*)?(ಹೇಗಿದ್ದೀರಾ|ಚೆನ್ನಾಗಿದ್ದೀರಾ|ಏನು|ಎಲ್ಲಿ|ಯಾವಾಗ|ಯಾರು|ಹೇಗೆ|ಏಕೆ|how|what|where|when|who|why|can\s+you|could\s+you|are\s+you|is\s+there|do\s+you)/iu.test(text.trim());
+            const reconIsAnswerToQuestion = rawWasQuestion && (
+              /\b(ನಾನು\s*ಚೆನ್ನಾಗಿದ್ದೀನಿ|ಚೆನ್ನಾಗಿದ್ದೀನಿ|i\s+am\s+fine|i\s+am\s+doing\s+well|i'm\s+fine|i'm\s+good|i\s+am\s+good|yes|sure)\b/i.test(reconstructed) ||
+              !/[?]$/.test(reconstructed.trim())
+            );
+
+            if (validScript && !isCaregiverStyle && !reconIsAnswerToQuestion) {
+              let finalRecon = reconstructed.trim();
+
+              // Prefer complete local conservative reconstruction if Gemini returned a fragment
+              const localRecon = nlpProcessorService.reconstructSpeechConservative(text, normalizedLang, context, previousUtterance);
+              if (localRecon && localRecon !== text) {
+                const isGeminiFragment = !/^(I\b|My\b|Please\b|Can\b|Could\b|ನನಗೆ\b|ನಾನು\b|ನನ್ನ\b|ದಯವಿಟ್ಟು\b|मुझे\b|मेरे\b|कृपया\b)/i.test(finalRecon) &&
+                  /^(I\b|My\b|Please\b|Can\b|Could\b|ನನಗೆ\b|ನಾನು\b|ನನ್ನ\b|ದಯವಿಟ್ಟು\b|मुझे\b|मेरे\b|कृपया\b)/i.test(localRecon);
+                if (isGeminiFragment) {
+                  finalRecon = localRecon;
+                }
+              }
+
+              // Ensure terminal punctuation
+              if (finalRecon.length > 0 && !/[.!?]$/.test(finalRecon)) {
+                finalRecon += (rawWasQuestion ? '?' : '.');
+              }
+
+              const hasChanged = finalRecon.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '') !==
                 text.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '');
 
               const needsConfirm = parsed.requiresConfirmation !== false || hasChanged;
@@ -1535,13 +1572,13 @@ Return ONLY a valid JSON object matching this schema:
               return {
                 rawText: text,
                 rawTranscript: text,
-                correctedText: reconstructed,
-                reconstructedText: reconstructed,
+                correctedText: finalRecon,
+                reconstructedText: finalRecon,
                 status: needsConfirm ? 'NEEDS_CONFIRMATION' : 'CLEAR',
                 isAmbiguous: false,
                 isUnclear: false,
                 reconstructionReason: hasChanged ? 'Contextual LLM speech reconstruction applied' : 'Input speech is clear',
-                confirmationPrompt: needsConfirm ? formatConfirmationPrompt(reconstructed, normalizedLang) : null,
+                confirmationPrompt: needsConfirm ? formatConfirmationPrompt(finalRecon, normalizedLang) : null,
                 clarificationPrompt: null,
                 intent: parsed.intent || initialClass.intent,
                 entities: parsed.entities || entities,

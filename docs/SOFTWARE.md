@@ -55,13 +55,15 @@ lib_deps =
 ### `include/config.h`
 Defines system-wide constants:
 - **Pin Definitions:** 
-  - Speaker: `MAX98357_I2S_BCLK` (`26`), `MAX98357_I2S_LRC` (`25`), `MAX98357_I2S_DOUT` (`22`).
-  - Microphone: `MIC_I2S_SCK` (`32`), `MIC_I2S_WS` (`33`), `MIC_I2S_SD` (`35`).
+  - Speaker: `MAX98357_I2S_BCLK` (`27`), `MAX98357_I2S_LRC` (`14`), `MAX98357_I2S_DOUT` (`22`).
+  - Microphone: `INMP441_I2S_SCK` (`26`), `INMP441_I2S_WS` (`25`), `INMP441_I2S_SD` (`34`).
 - **BLE GATT UUIDs:**
   - Device Name: `VoiceBack-Neckband`
   - Service UUID: `4fa8c001-1278-472e-b997-63992e716a4d`
   - Audio Downstream Command Characteristic UUID: `cba1483e-36e1-4688-b7f5-ea07361b26b9` (Write Without Response)
-  - Microphone Upstream & Control UUIDs for bi-directional streaming.
+  - Volume Control UUID: `7b9e483e-36e1-4688-b7f5-ea07361b26c0`
+  - Microphone Control Characteristic UUID: `e1f2a3b4-36e1-4688-b7f5-ea07361b26e1` (Write Without Response)
+  - Microphone Audio Notify Characteristic UUID: `f3d4e5a6-36e1-4688-b7f5-ea07361b26d1` (Notify)
 - **Audio Specs:** 16kHz sample rate, 16-bit mono PCM.
 
 ### `include/mic_driver.h`
@@ -78,7 +80,7 @@ Declares `AudioDriver` managing hardware I2S peripheral (`I2S_NUM_0`). Provides 
 ## 4. Firmware Source Files (`src/`)
 
 ### `src/mic_driver.cpp`
-Configures the ESP32 hardware I2S driver on `GPIO32`, `GPIO33`, and `GPIO35`. Captures mono PCM samples via I2S_NUM_1.
+Configures the ESP32 hardware I2S driver on `GPIO26`, `GPIO25`, and `GPIO34`. Captures mono PCM samples via I2S_NUM_1 and streams them upstream over BLE notifications.
 
 ### `src/ble_service.cpp`
 Implements NimBLE GATT Server creation and advertising. 
@@ -86,7 +88,7 @@ Implements NimBLE GATT Server creation and advertising.
 - **Downstream:** Processes incoming 16kHz PCM audio chunks from the PWA, streaming them to the `AudioDriver`.
 
 ### `src/audio_driver.cpp`
-Configures ESP32 hardware I2S driver on `GPIO26`, `GPIO25`, `GPIO22`. Converts incoming mono PCM samples from BLE to stereo I2S frames and writes them directly to DMA buffers.
+Configures ESP32 hardware I2S driver on `GPIO27`, `GPIO14`, `GPIO22`. Converts incoming mono PCM samples from BLE to stereo I2S frames and writes them directly to DMA buffers.
 
 ### `src/main.cpp`
 System entry point initializing serial, BLE, mic driver, and audio driver.

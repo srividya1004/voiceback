@@ -1,8 +1,10 @@
 /**
- * VoiceBack Smart Neckband - Wi-Fi SoftAP Hotspot & Telemetry Server Header
- * 
- * Manages ESP32 Wi-Fi Access Point mode, embedded HTTP Live EMG Telemetry Dashboard,
- * JSON API streaming endpoints (http://192.168.4.1/api/emg), and client connection handling.
+ * HISTORICAL / SUPERSEDED HARDWARE CONFIGURATION
+ *
+ * VoiceBack Smart Neckband - Wi-Fi SoftAP Hotspot & Telemetry Server Header (Archived)
+ *
+ * Manages legacy prototype Wi-Fi Access Point mode and embedded EMG dashboard.
+ * Retained strictly as historical prototype code; not used in current BLE production architecture.
  */
 
 #ifndef WIFI_AP_SERVICE_H

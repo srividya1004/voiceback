@@ -8,6 +8,7 @@ const axios = require('axios');
 const voiceProfileService = require('../services/voiceProfileService');
 const elevenLabsService = require('../services/elevenLabsService');
 const cartesiaService = require('../services/cartesiaService');
+const nlpProcessorService = require('../services/nlpProcessorService');
 const { authorizeUserForPatient } = require('./personalScriptController');
 const { Patient } = require('../models');
 const { sendSuccess, sendError } = require('../utils/responseFormatter');
@@ -421,16 +422,10 @@ const synthesizeSpeech = async (req, res) => {
  */
 const reconstructTranscriptWithGemini = async (rawTranscript, language = 'en') => {
   if (!rawTranscript || typeof rawTranscript !== 'string' || !rawTranscript.trim()) {
-    return rawTranscript || '';
+    return '';
   }
 
   const cleanRaw = rawTranscript.trim();
-  const apiKey = process.env.GEMINI_API_KEY;
-
-  if (!apiKey) {
-    console.warn('⚠️ GEMINI_API_KEY not configured. Returning raw ASR transcript.');
-    return cleanRaw;
-  }
 
   const normalizedLang = (language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(cleanRaw))
     ? 'kn'
@@ -438,20 +433,31 @@ const reconstructTranscriptWithGemini = async (rawTranscript, language = 'en') =
     ? 'hi'
     : 'en';
 
-  const prompt = `You are an assistive speech reconstruction AI for the VoiceBack patient application.
-A speech recognition (ASR) system captured a raw transcript of a patient's speech.
+  // Guard: Clear speech MUST NOT be altered or reconstructed
+  if (nlpProcessorService.isSpeechClear(cleanRaw, normalizedLang)) {
+    return cleanRaw;
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn('⚠️ GEMINI_API_KEY not configured. Returning raw ASR transcript.');
+    return cleanRaw;
+  }
+
+  const prompt = `You are an assistive speech reconstruction engine for the VoiceBack patient application.
+A speech recognition (ASR) system captured a raw transcript of an aphasic or dysarthric patient's speech.
 
 Reconstruction guidelines:
-1. Correct broken, incomplete, unclear, or misspelled words into the most likely sentence the patient intended to say.
-2. Preserve the patient's original meaning and intent.
-3. Keep already-correct text unchanged whenever possible.
-4. Format output as a complete, naturally punctuated sentence ending with appropriate punctuation (such as a period).
-5. Support both English and Kannada workflows:
-   - For Kannada input (in native script or Romanized transliteration such as "nanage neeru beku" or "oota beku"), output clean, natural, correct Kannada (e.g. "ನನಗೆ ನೀರು ಬೇಕು").
-6. Avoid inventing symptoms, diagnoses, medicines, names, or other information not present or intended.
-7. Never make a medical diagnosis or add medical advice.
-8. If the meaning is completely uncertain, fragmented, or ambiguous, return the original raw transcript unchanged.
-9. Return a JSON object with exactly one field: "correctedText".
+1. Reconstruct ONLY WHAT THE PATIENT INTENDED TO SAY. You are repairing their speech.
+2. NEVER ANSWER THE PATIENT OR GENERATE A REPLY:
+   - You are NOT a chatbot. NEVER converse with or answer the patient.
+   - If the patient asked a question (e.g. "How are you?" or "ಹಲೋ, ಚೆನ್ನಾಗಿದ್ದೀರಾ?"), reconstruct the question. NEVER output an answer like "I am fine" or "ನಾನು ಚೆನ್ನಾಗಿದ್ದೀನಿ".
+   - If the patient made a request (e.g. "I want water" or "Can you help me?"), reconstruct the request. NEVER output "Here is water" or "Yes, I can help you".
+3. Keep already-clear speech unchanged.
+4. Format output as a complete, naturally punctuated sentence ending with appropriate punctuation.
+5. Support native scripts without unwanted translation (Kannada in Kannada Unicode script, English in English, Hindi in Devanagari script, natural mixed language preserved).
+6. Avoid inventing symptoms, diagnoses, medicines, names, or unsupported facts.
+7. Return a JSON object with exactly one field: "correctedText".
 
 Raw transcript: "${cleanRaw}"
 Target language: "${normalizedLang}"
@@ -487,8 +493,23 @@ Output format:
         const parsed = JSON.parse(rawJson);
         if (parsed && typeof parsed.correctedText === 'string' && parsed.correctedText.trim()) {
           const result = parsed.correctedText.trim();
-          console.log(`✅ [Gemini ASR Correction (${model})] "${cleanRaw}" -> "${result}"`);
-          return result;
+
+          // Rejection guards: Never allow assistant reply or answering a question
+          const isCaregiverStyle = /^(sure|yes|here\s+is|of\s+course|i'm\s+right\s+here|ಖಂಡಿತ|ಹೌದು|ಇದೋ|ನಾನು\s*ತರುತ್ತೇನೆ|ನಾನು\s*ಸಹಾಯ)/i.test(result);
+          const rawWasQuestion = /[?]$/.test(cleanRaw) ||
+            /^(ಹಲೋ,?\s*)?(ಹೇಗಿದ್ದೀರಾ|ಚೆನ್ನಾಗಿದ್ದೀರಾ|how|what|where|when|who|why|can\s+you|could\s+you|are\s+you)/iu.test(cleanRaw);
+          const reconIsAnswer = rawWasQuestion && (
+            /\b(ನಾನು\s*ಚೆನ್ನಾಗಿದ್ದೀನಿ|ಚೆನ್ನಾಗಿದ್ದೀನಿ|i\s+am\s+fine|i\s+am\s+doing\s+well|i'm\s+fine)\b/i.test(result) ||
+            !/[?]$/.test(result)
+          );
+
+          if (!isCaregiverStyle && !reconIsAnswer) {
+            console.log(`✅ [Gemini ASR Correction (${model})] "${cleanRaw}" -> "${result}"`);
+            return result;
+          } else {
+            console.warn(`⚠️ [Gemini ASR Correction (${model})] Rejected reply/answer candidate "${result}" for raw "${cleanRaw}"`);
+            return cleanRaw;
+          }
         }
       }
     } catch (modelErr) {

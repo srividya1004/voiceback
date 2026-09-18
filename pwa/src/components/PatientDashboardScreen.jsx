@@ -92,9 +92,75 @@ const KANNADA_STT_CORRECTIONS = [
   { pattern: /(^|[\s,.\?!;:])(ಮಾತಾಡ್ಬೇಕು)(?=[\s,.\?!;:]|$)/gu, word: 'ಮಾತನಾಡಬೇಕು' }
 ];
 
+const isSpeechClearClient = (text, language = 'English') => {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 2) return false;
+
+  // Question recognition: Any question is already clear and must be preserved
+  const isQuestion = /[?]$/.test(trimmed) ||
+    /^(ಹಲೋ,?\s*)?(ಹೇಗಿದ್ದೀರಾ|ಚೆನ್ನಾಗಿದ್ದೀರಾ|ಏನು|ಎಲ್ಲಿ|ಯಾವಾಗ|ಯಾರು|ಹೇಗೆ|ಏಕೆ|how|what|where|when|who|why|can\s+you|could\s+you|would\s+you|are\s+you|is\s+there|do\s+you|did\s+you|have\s+you)\b/iu.test(trimmed);
+  if (isQuestion) return true;
+
+  // Known dysarthric slip tokens requiring reconstruction
+  const dysarthricPattern = /\b(watter|watr|wter|wada|waater|wator|wotar|wa|wan|wnt|wanna|hep|halp|hlp|elpp|elp|hom|hme|hoam|ned|neeed|neeeed|nid|medcin|medsin|medisin|slipin|sleap|hungri|hangry|hongry|thirsti|thursty|washrom|tolet|toylt|bathrom|restrom|doctr|doktor|nurce|plez|stomak|stomac|stomack|stomic)\b/i;
+  if (dysarthricPattern.test(trimmed)) return false;
+
+  // Kannada slips
+  const kannadaSlips = /\b(ನೀಲು|ನೆಲ್ಲು|ನೇರು|ಉಡು\s*ಬೇಕು|ಉಟ\s*ಬೇಕು|ಉಟಾ\s*ಬೇಕು|ನೋವು\s*ಬೆಕ್ಕು|ಮಾತ\s*ಬೇಕು|ಮಾತ್ರೆ\s*ಬೆಕ್ಕು|ಮದ್ದು\s*ಬೇಕು|ನನ್ನಿ\s*ನೀಲು|ನೀನು\s*ಬೇಕು|ಸಾಯ\s*ಬೇಕು|ಸಾಯಬೇಕು|ಸಾಯ್|ನಾವು\s*ಆಗ್ತಿದೆ|ನೋವು\s*ಅಗ್ತಿದೆ|ಬೆಕ್ಕು|ಬೇಕ್ಕು)\b/u;
+  if (kannadaSlips.test(trimmed)) return false;
+
+  // Incomplete requests
+  const cleanNoPunct = trimmed.replace(/[.,!?]+$/, '').trim();
+  const incompletePatterns = /^(i\s+water|want\s+water|i\s+help|want\s+help|i\s+food|want\s+food|i\s+medicine|want\s+medicine|want\s+go|i\s+want\s+go|need\s+go|i\s+need\s+go|i\s+go\s+home|i\s+home|pain\s+stomach|stomach\s+pain|pain\s+head|head\s+pain|pain\s+chest|chest\s+pain|pain\s+back|back\s+pain|pain\s+leg|leg\s+pain|call\s+doctor|call\s+nurse|call\s+family|me\s+want|me\s+need|me\s+hungry|me\s+thirsty|me\s+cold|me\s+hot|me\s+tired|me\s+in\s+pain|me\s+pain)$/i;
+  if (incompletePatterns.test(cleanNoPunct)) return false;
+
+  // Clear Kannada phrases
+  if (/[\u0C80-\u0CFF]/.test(trimmed)) {
+    const clearKnWords = /^(ಹಲೋ|ನಮಸ್ಕಾರ|ನನಗೆ\s+ನೀರು\s+ಬೇಕು|ನೀರು\s+ಬೇಕು|ನೀರು\s+ಕೊಡಿ|ನನಗೆ\s+ಊಟ\s+ಬೇಕು|ಊಟ\s+ಬೇಕು|ನನಗೆ\s+ಸಹಾಯ\s+ಬೇಕು|ಸಹಾಯ\s+ಬೇಕು|ನೋವಾಗುತ್ತಿದೆ|ನನಗೆ\s+ನೋವಾಗುತ್ತಿದೆ|ಔಷಧ\s+ಬೇಕು|ಮಾತ್ರೆ\s+ಬೇಕು|ಚೆನ್ನಾಗಿದ್ದೇನೆ|ಚೆನ್ನಾಗಿದ್ದೀನಿ|ನಾನು\s+ಆರಾಮಾಗಿದ್ದೇನೆ|ಧನ್ಯವಾದಗಳು|ಶೌಚಾಲಯಕ್ಕೆ\s+ಹೋಗಬೇಕು)/u;
+    if (clearKnWords.test(trimmed)) return true;
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    if (words.length >= 2 && !kannadaSlips.test(trimmed)) return true;
+  }
+
+  // Clear English phrases
+  const clearEnPhrases = /^(how\s+are\s+you|i\s+want\s+water|i\s+need\s+water|can\s+you\s+help\s+me|i\s+want\s+help|i\s+need\s+help|please\s+help\s+me|i\s+want\s+to\s+go\s+home|i\s+am\s+doing\s+well|i\s+am\s+fine|hello|hi|good\s+morning|good\s+afternoon|good\s+evening|good\s+night|thank\s+you|my\s+head\s+hurts|my\s+stomach\s+hurts|my\s+back\s+hurts|my\s+leg\s+hurts|i\s+have\s+stomach\s+pain|i\s+have\s+chest\s+pain|i\s+need\s+my\s+medicine|i\s+want\s+to\s+sleep|i\s+want\s+to\s+rest|i\s+am\s+hungry|i\s+am\s+thirsty|i\s+am\s+feeling\s+cold|i\s+am\s+feeling\s+hot|i\s+am\s+tired|i\s+need\s+to\s+use\s+the\s+bathroom)/i;
+  if (clearEnPhrases.test(cleanNoPunct)) return true;
+
+  const words = cleanNoPunct.split(/\s+/).filter(Boolean);
+  if (words.length >= 3 && /^(i|you|he|she|we|they|my|please|can|could|would|the|this|that|there)\b/i.test(words[0])) {
+    return true;
+  }
+
+  // Clear Hindi phrases
+  if (/[\u0900-\u097F]/.test(trimmed)) {
+    const clearHiPhrases = /^(नमस्ते|मुझे\s+पानी\s+चाहिए|पानी\s+चाहिए|मुझे\s+मदद\s+चाहिए|मदद\s+चाहिए|आप\s+कैसे\s+हैं|क्या\s+आप\s+मेरी\s+मदद\s+कर\s+सकते\s+हैं)/u;
+    if (clearHiPhrases.test(trimmed)) return true;
+    const hiWords = trimmed.split(/\s+/).filter(Boolean);
+    if (hiWords.length >= 2) return true;
+  }
+
+  // Mixed natural phrases
+  if (/[\u0C80-\u0CFF]/.test(trimmed) && /[a-zA-Z]/.test(trimmed)) return true;
+
+  return false;
+};
+
 const reconstructPatientUtterance = (transcript, language = 'English', context = '') => {
   if (!transcript || !transcript.trim()) return '';
-  const text = transcript.trim();
+  let text = transcript.trim();
+
+  // Guard: Clear speech MUST NOT be altered or reconstructed
+  if (isSpeechClearClient(text, language)) {
+    return text;
+  }
+
+  // Guard: Question preservation - A question from the patient must NEVER become an answer or statement
+  const isQuestion = /[?]$/.test(text) ||
+    /^(ಹಲೋ,?\s*)?(ಹೇಗಿದ್ದೀರಾ|ಚೆನ್ನಾಗಿದ್ದೀರಾ|ಏನು|ಎಲ್ಲಿ|ಯಾವಾಗ|ಯಾರು|ಹೇಗೆ|ಏಕೆ|how|what|where|when|who|why|can\s+you|could\s+you|are\s+you|is\s+there|do\s+you)\b/iu.test(text);
+  if (isQuestion) {
+    return text.endsWith('?') ? text : text + '?';
+  }
 
   // Context-guided phonetic and phrase reconstruction:
   if (context && typeof context === 'string') {
@@ -105,9 +171,9 @@ const reconstructPatientUtterance = (transcript, language = 'English', context =
       return 'Chanakya Dini';
     }
 
-    // Well-being question e.g. "How are you feeling today?" / "hegidira"
+    // Well-being question answered by patient (e.g. caregiver asks "How are you feeling today?" and patient says "tanagidini")
     if (/how are you|feeling|hegidira|kya haal|doing/i.test(normCtx)) {
-      if (/\b(tanagidini|chanagidini|chennagidini)\b/i.test(text)) {
+      if (/\b(tanagidini|chanagidini)\b/i.test(text)) {
         return (language === 'Kannada' || /[\u0C80-\u0CFF]/.test(text))
           ? 'ಚೆನ್ನಾಗಿದ್ದೀನಿ'
           : 'I am doing well.';
@@ -115,11 +181,8 @@ const reconstructPatientUtterance = (transcript, language = 'English', context =
     }
   }
 
-  // 0a. Handle perseverative repetitive syllables common in aphasia/dysarthria:
-  // e.g. "Na na na na na na na na na" represents perseveration of "ನನಗೆ" ("I want / water")
-  if (/^(\s*na\s*){3,}$/i.test(text) || /\b(na)(?:\s+\1){3,}\b/i.test(text)) {
-    return language === 'Kannada' || /[\u0C80-\u0CFF]/.test(text) ? 'ನನಗೆ ನೀರು ಬೇಕು' : 'I need water.';
-  }
+  // Collapse consecutive repeated words/syllables without fabricating arbitrary sentences (NO "na na na" -> "I need water")
+  text = text.replace(/\b([a-zA-Z\u0C80-\u0CFF\u0900-\u097F]+)(?:\s+\1\b)+/gi, '$1');
 
   // 0b. Check for Romanized Kannada speech (e.g. Scribe v2 spelling Kannada phonetically)
   const isRomanizedKannada = /\b(ah\s*)?(na\s*na\s*nge|na\s*nge|nanage|nange|nanige|naanage)\s+(niru|neeru|neer|neelu|nillu)\s+(be\s*ko|beku|beko|bekku|beeku)\b/i.test(text) ||
@@ -404,9 +467,8 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const handleChangeReconstruction = () => {
     setConfirmationState('CHANGED');
     setIsEditingCorrection(true);
-    if (!editableCorrectionText) {
-      setEditableCorrectionText(pendingReconstruction?.candidateText || patientCorrectedUtterance);
-    }
+    const candidate = pendingReconstruction?.candidateText || patientCorrectedUtterance || '';
+    setEditableCorrectionText(candidate);
   };
 
   /**
@@ -428,6 +490,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const mediaStreamRef = useRef(null);
+  const recordingSourceRef = useRef('browser');
 
   // Backend Profile State
   const [profileData, setProfileData] = useState({
@@ -446,7 +509,7 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   const [therapyProgress, setTherapyProgress] = useState([]);
   const [voiceProfiles, setVoiceProfiles] = useState([]);
   const [deviceStatus, setDeviceStatus] = useState(() => deviceService.getDeviceStatus());
-  const [activeCaregiverQuestion, setActiveCaregiverQuestion] = useState('How are you feeling today?');
+  const [activeCaregiverQuestion, setActiveCaregiverQuestion] = useState('');
 
   useEffect(() => {
     const unsubscribe = deviceService.subscribe((status) => {
@@ -717,7 +780,192 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     } catch (e) {}
   };
 
-  // Start In-Place Dashboard Speech Audio Recording using MediaRecorder -> ElevenLabs Scribe v2 STT
+  // Process Spoken Audio Blob (from either INMP441 BLE Neckband Mic or Browser MediaRecorder) -> Scribe v2 STT
+  const processAudioForSTT = async (audioBlob) => {
+    setIsProcessing(true);
+    console.log('⏳ Processing... Sending audio to ElevenLabs Scribe v2 STT API...');
+
+    try {
+      const prefLang = (profileData?.preferredLanguage || '').toLowerCase();
+      const activeLangCode = (language === 'kn' || language === 'Kannada' || prefLang.includes('kannada'))
+        ? 'kn'
+        : (language === 'hi' || language === 'Hindi' || prefLang.includes('hindi'))
+        ? 'hi'
+        : 'en';
+
+      const formData = new FormData();
+      formData.append('audioSample', audioBlob, 'patient_recording.wav');
+      formData.append('language', activeLangCode);
+
+      const response = await voiceService.transcribeSpeech(formData);
+      const transcript = response?.data?.rawTranscript || response?.data?.text || response?.text || '';
+      const rawTranscript = (transcript || '').trim();
+
+      // Reject empty audio or purely acoustic noise tags ([mumbling], [cough], [inaudible], etc.)
+      const cleanTextWithoutNoiseTags = rawTranscript
+        .replace(/\[(mumbling|inaudible|unintelligible|cough|sigh|snort|laughter|music|clearing|throat-clearing|applause|cheering|noise|static|whisper|whispering|groan|grunt|pause|silence)\]/gi, '')
+        .replace(/\[.*?\]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!cleanTextWithoutNoiseTags) {
+        console.warn('⚠️ Only acoustic noise / inaudible sound captured:', rawTranscript);
+        setSpeechErrorMsg(
+          activeLangCode === 'kn'
+            ? 'ಧ್ವನಿ ಸ್ಪಷ್ಟವಾಗಿ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮೈಕ್‌ಗೆ ಹತ್ತಿರವಾಗಿ ಮಾತನಾಡಿ ಅಥವಾ ಕೆಳಗಿನ ಬಟನ್‌ಗಳನ್ನು ಬಳಸಿ.'
+            : activeLangCode === 'hi'
+            ? 'आवाज़ स्पष्ट सुनाई नहीं दी। कृपया माइक के पास बोलें या नीचे दिए गए बटन पर टैप करें।'
+            : "Couldn't hear clearly. Please speak a little closer to the mic or choose a quick message below."
+        );
+        setIsListening(false);
+        setIsProcessing(false);
+        return;
+      }
+
+      // 1. Dynamic language resolution with script & transliteration check
+      const hasKannadaScript = /[\u0C80-\u0CFF]/.test(cleanTextWithoutNoiseTags);
+      const hasHindiScript = /[\u0900-\u097F]/.test(cleanTextWithoutNoiseTags);
+      const isRomanKannada = /\b(niru|neeru|neer|beku|beko|nanage|nange|oota|uta|sahaya)\b/i.test(cleanTextWithoutNoiseTags);
+      const isRomanHindi = /\b(pani|paani|chahiye|madad|khana)\b/i.test(cleanTextWithoutNoiseTags);
+
+      let effectiveLang = 'English';
+      if (hasKannadaScript || isRomanKannada) {
+        effectiveLang = 'Kannada';
+      } else if (hasHindiScript || isRomanHindi) {
+        effectiveLang = 'Hindi';
+      } else if (/[a-zA-Z]/.test(cleanTextWithoutNoiseTags)) {
+        effectiveLang = 'English';
+      } else if (activeLangCode === 'kn') {
+        effectiveLang = 'Kannada';
+      } else if (activeLangCode === 'hi') {
+        effectiveLang = 'Hindi';
+      } else {
+        effectiveLang = 'English';
+      }
+
+      const cleanTranscript = cleanTextWithoutNoiseTags;
+      console.log(`✅ Scribe v2 Vocalization received: "${rawTranscript}" -> Cleaned: "${cleanTranscript}" (Lang: ${effectiveLang})`);
+      setSpeechErrorMsg('');
+
+      // Check if speech is already clear and grammatical
+      const isClear = isSpeechClearClient(cleanTranscript, effectiveLang);
+
+      let candidateText = cleanTranscript;
+      let reconResult = null;
+
+      if (isClear) {
+        console.log(`✨ Speech is already clear and grammatical: "${cleanTranscript}". Preserving raw transcript as candidate.`);
+        candidateText = cleanTranscript;
+      } else {
+        // 2. AI Contextual Speech Interpretation & Conservative Reconstruction Layer
+        const initialCorrected = reconstructPatientUtterance(cleanTranscript, effectiveLang, activeCaregiverQuestion);
+        candidateText = initialCorrected || cleanTranscript;
+
+        // 3. Server-side AI Contextual Interpretation
+        try {
+          const langCode = effectiveLang === 'Kannada' ? 'kn' : effectiveLang === 'Hindi' ? 'hi' : 'en';
+          reconResult = await contextService.reconstructSpeech({
+            rawTranscript: cleanTranscript,
+            language: langCode,
+            context: activeCaregiverQuestion || '',
+            previousUtterance: previousUtteranceRef.current || ''
+          });
+        } catch (aiErr) {
+          console.warn('AI speech reconstruction notice, preserved safe reconstruction:', aiErr.message);
+        }
+
+        const backendRecon = reconResult && (reconResult.reconstructedText || reconResult.correctedText);
+        if (backendRecon && backendRecon.trim() && backendRecon.trim().toLowerCase() !== cleanTranscript.toLowerCase()) {
+          candidateText = backendRecon.trim();
+        } else if (initialCorrected && initialCorrected.trim()) {
+          candidateText = initialCorrected.trim();
+        }
+      }
+
+      // CRITICAL CONTRACT: Reconstructed text means "WHAT THE PATIENT INTENDED TO SAY".
+      // It must NEVER generate an answer to the patient's speech!
+      const isQuestion = /[?]$/.test(cleanTranscript) ||
+        /^(ಹಲೋ,?\s*)?(ಹೇಗಿದ್ದೀರಾ|ಚೆನ್ನಾಗಿದ್ದೀರಾ|ಏನು|ಎಲ್ಲಿ|ಯಾವಾಗ|ಯಾರು|ಹೇಗೆ|ಏಕೆ|how|what|where|when|who|why|can\s+you|could\s+you|are\s+you|is\s+there|do\s+you)\b/iu.test(cleanTranscript);
+      const isConversationalReply = /(ನಾನು\s+ಚೆನ್ನಾಗಿದ್ದೀನಿ|ಚೆನ್ನಾಗಿದ್ದೇನೆ|i\s+am\s+(fine|good|well|doing\s+well)|yes,?\s+i\s+can|here\s+(is|you\s+go))/i.test(candidateText);
+      if (isQuestion && isConversationalReply) {
+        console.warn('⚠️ Reconstruction incorrectly answered patient question! Restoring raw transcript:', cleanTranscript);
+        candidateText = cleanTranscript;
+      }
+
+      setIsListening(false);
+      setIsProcessing(false);
+
+      setPatientSpokenAttempt(cleanTranscript);
+      setPatientCorrectedUtterance(candidateText);
+      setActiveOutputPhrase(candidateText);
+      setConfirmationState('PENDING_CONFIRMATION');
+
+      const isAmbiguous = Boolean(reconResult && reconResult.isAmbiguous);
+      const isUnclear = Boolean(reconResult && reconResult.isUnclear);
+      const clarificationPrompt = reconResult && reconResult.clarificationPrompt;
+
+      const confirmationPrompt = (reconResult && reconResult.confirmationPrompt) || (
+        effectiveLang === 'Kannada'
+          ? `ನಿಮ್ಮ ಅರ್ಥ: "${candidateText}" ಎಂದೇ?`
+          : effectiveLang === 'Hindi'
+          ? `क्या आपका मतलब: "${candidateText}" है?`
+          : `Did you mean: ${candidateText}?`
+      );
+
+      const pendingObj = {
+        rawTranscript: cleanTranscript,
+        candidateText,
+        status: (reconResult && reconResult.status) || 'NEEDS_CONFIRMATION',
+        isAmbiguous,
+        isUnclear,
+        confirmationPrompt,
+        clarificationPrompt,
+        intent: (reconResult && reconResult.intent) || 'GENERIC_FALLBACK',
+        entities: (reconResult && reconResult.entities) || {},
+        language: effectiveLang
+      };
+
+      setPendingReconstruction(pendingObj);
+      setEditableCorrectionText(candidateText);
+      setPatientCorrectedUtterance(candidateText);
+      setActiveOutputPhrase(candidateText);
+
+      // Update Status UI: Awaiting patient confirmation
+      if (isAmbiguous) {
+        setPatientUtteranceStatus(
+          effectiveLang === 'Kannada'
+            ? '⚠️ ಸ್ಪಷ್ಟನೆ ಅಗತ್ಯ: ವಿವರಗಳನ್ನು ದಯವಿಟ್ಟು ಖಚಿತಪಡಿಸಿ'
+            : effectiveLang === 'Hindi'
+            ? '⚠️ स्पष्टीकरण आवश्यक: कृपया विवरण की पुष्टि करें'
+            : '⚠️ Clarification needed: Please clarify before speaking'
+        );
+      } else if (isUnclear) {
+        setPatientUtteranceStatus(
+          effectiveLang === 'Kannada'
+            ? '⚠️ ಧ್ವನಿ ಅಪೂರ್ಣ ಅಥವಾ ಅಸ್ಪಷ್ಟವಾಗಿದೆ'
+            : effectiveLang === 'Hindi'
+            ? '⚠️ वाणी प्रयास अधूरा या अस्पष्ट है'
+            : '⚠️ Speech attempt incomplete or unclear'
+        );
+      } else {
+        setPatientUtteranceStatus(
+          effectiveLang === 'Kannada'
+            ? 'ಖಚಿತಪಡಿಸಲು ಕಾಯಲಾಗುತ್ತಿದೆ: ಮಾತನಾಡಲು "ದೃಢೀಕರಿಸಿ" ಒತ್ತಿರಿ'
+            : effectiveLang === 'Hindi'
+            ? 'पुष्टि की प्रतीक्षा: बोलने के लिए "पुष्टि करें" दबाएं'
+            : 'Pending confirmation: Tap CONFIRM to speak'
+        );
+      }
+    } catch (sttErr) {
+      console.error('ElevenLabs Scribe v2 Speech-to-Text error:', sttErr.message);
+      setSpeechErrorMsg("Could not understand speech. Please try again.");
+      setTimeout(() => setSpeechErrorMsg(''), 3500);
+      setIsProcessing(false);
+      setIsListening(false);
+    }
+  };
+
+  // Start In-Place Dashboard Speech Audio Recording using INMP441 BLE Neckband Mic or MediaRecorder -> ElevenLabs Scribe v2 STT
   const handleStartListening = async () => {
     setSpeechErrorMsg('');
     setListeningTranscript('');
@@ -725,6 +973,20 @@ export const PatientDashboardScreen = ({ onLogout }) => {
     setIsListening(true);
     audioChunksRef.current = [];
 
+    // Check if physical INMP441 neckband microphone is connected via BLE
+    const isNeckbandActive = Boolean(deviceStatus?.isConnected && deviceService.micCtrlCharacteristic);
+    if (isNeckbandActive) {
+      try {
+        console.log('🎙️ Using INMP441 physical neckband microphone via BLE...');
+        recordingSourceRef.current = 'neckband';
+        await deviceService.startMic();
+        return;
+      } catch (err) {
+        console.warn('Neckband mic start notice, falling back to browser microphone:', err.message);
+      }
+    }
+
+    recordingSourceRef.current = 'browser';
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setSpeechErrorMsg('Microphone recording is not supported in this browser environment.');
       setIsListening(false);
@@ -777,187 +1039,10 @@ export const PatientDashboardScreen = ({ onLogout }) => {
           return;
         }
 
-        setIsProcessing(true);
-        console.log('⏳ Processing... Sending recorded audio to ElevenLabs Scribe v2 STT API...');
-
-        try {
-          const audioBlob = new Blob(recordedChunks, {
-            type: mediaRecorder.mimeType || 'audio/webm',
-          });
-
-          // Explicitly pass patient's selected or preferred language to STT model for native phonetic recognition
-          const prefLang = (profileData?.preferredLanguage || '').toLowerCase();
-          const activeLangCode = (language === 'kn' || language === 'Kannada' || prefLang.includes('kannada'))
-            ? 'kn'
-            : (language === 'hi' || language === 'Hindi' || prefLang.includes('hindi'))
-            ? 'hi'
-            : 'en';
-
-          const formData = new FormData();
-          formData.append('audioSample', audioBlob, 'patient_recording.webm');
-          formData.append('language', activeLangCode);
-
-          const response = await voiceService.transcribeSpeech(formData);
-          const transcript = response?.data?.text || response?.text || '';
-
-          const rawTranscript = (transcript || '').trim();
-
-          // Reject empty audio or purely acoustic noise tags ([mumbling], [cough], [inaudible], etc.)
-          const cleanTextWithoutNoiseTags = rawTranscript
-            .replace(/\[(mumbling|inaudible|unintelligible|cough|sigh|snort|laughter|music|clearing|throat-clearing|applause|cheering|noise|static|whisper|whispering|groan|grunt|pause|silence)\]/gi, '')
-            .replace(/\[.*?\]/g, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-
-          if (!cleanTextWithoutNoiseTags) {
-            console.warn('⚠️ Only acoustic noise / inaudible sound captured:', rawTranscript);
-            setSpeechErrorMsg(
-              activeLangCode === 'kn'
-                ? 'ಧ್ವನಿ ಸ್ಪಷ್ಟವಾಗಿ ಕೇಳಿಸಲಿಲ್ಲ. ದಯವಿಟ್ಟು ಮೈಕ್‌ಗೆ ಹತ್ತಿರವಾಗಿ ಮಾತನಾಡಿ ಅಥವಾ ಕೆಳಗಿನ ಬಟನ್‌ಗಳನ್ನು ಬಳಸಿ.'
-                : activeLangCode === 'hi'
-                ? 'आवाज़ स्पष्ट सुनाई नहीं दी। कृपया माइक के पास बोलें या नीचे दिए गए बटन पर टैप करें।'
-                : "Couldn't hear clearly. Please speak a little closer to the mic or choose a quick message below."
-            );
-            setIsListening(false);
-            setIsProcessing(false);
-            return;
-          }
-
-          // 1. Dynamic language resolution with script & transliteration check
-          const hasKannadaScript = /[\u0C80-\u0CFF]/.test(cleanTextWithoutNoiseTags);
-          const hasHindiScript = /[\u0900-\u097F]/.test(cleanTextWithoutNoiseTags);
-          const isRomanKannada = /\b(niru|neeru|neer|beku|beko|nanage|nange|oota|uta|sahaya)\b/i.test(cleanTextWithoutNoiseTags);
-          const isRomanHindi = /\b(pani|paani|chahiye|madad|khana)\b/i.test(cleanTextWithoutNoiseTags);
-
-          let effectiveLang = 'English';
-          if (hasKannadaScript || isRomanKannada) {
-            effectiveLang = 'Kannada';
-          } else if (hasHindiScript || isRomanHindi) {
-            effectiveLang = 'Hindi';
-          } else if (/[a-zA-Z]/.test(cleanTextWithoutNoiseTags)) {
-            effectiveLang = 'English';
-          } else if (activeLangCode === 'kn') {
-            effectiveLang = 'Kannada';
-          } else if (activeLangCode === 'hi') {
-            effectiveLang = 'Hindi';
-          } else {
-            effectiveLang = 'English';
-          }
-
-          const cleanTranscript = cleanTextWithoutNoiseTags;
-
-          console.log(`✅ Scribe v2 Vocalization received: "${rawTranscript}" -> Cleaned: "${cleanTranscript}" (Lang: ${effectiveLang})`);
-          setSpeechErrorMsg('');
-
-          // 2. AI Contextual Speech Interpretation & Conservative Reconstruction Layer
-          const initialCorrected = reconstructPatientUtterance(cleanTranscript, effectiveLang, activeCaregiverQuestion);
-
-          setIsListening(false);
-          setIsProcessing(false);
-
-          setPatientSpokenAttempt(cleanTranscript);
-          setPatientCorrectedUtterance(initialCorrected);
-          setActiveOutputPhrase(initialCorrected);
-          setConfirmationState('PENDING_CONFIRMATION');
-
-          // 3. Server-side AI Contextual Interpretation, Ambiguity & Clarity Check
-          let reconResult = null;
-          try {
-            const langCode = effectiveLang === 'Kannada' ? 'kn' : effectiveLang === 'Hindi' ? 'hi' : 'en';
-            reconResult = await contextService.reconstructSpeech({
-              rawTranscript: cleanTranscript,
-              language: langCode,
-              context: activeCaregiverQuestion,
-              previousUtterance: previousUtteranceRef.current || ''
-            });
-          } catch (aiErr) {
-            console.warn('AI speech reconstruction notice, preserved safe reconstruction:', aiErr.message);
-          }
-
-          // Priority:
-          // 1. Valid backend reconstructed text
-          // 2. Valid local reconstruction
-          // 3. Raw STT only when no meaningful reconstruction is possible
-          const backendRecon = reconResult && (reconResult.reconstructedText || reconResult.correctedText);
-          let candidateText = cleanTranscript;
-          if (backendRecon && backendRecon.trim() && backendRecon.trim().toLowerCase() !== cleanTranscript.toLowerCase()) {
-            candidateText = backendRecon.trim();
-          } else if (initialCorrected && initialCorrected.trim() && initialCorrected.trim().toLowerCase() !== cleanTranscript.toLowerCase()) {
-            candidateText = initialCorrected.trim();
-          } else if (backendRecon && backendRecon.trim()) {
-            candidateText = backendRecon.trim();
-          } else if (initialCorrected && initialCorrected.trim()) {
-            candidateText = initialCorrected.trim();
-          } else {
-            candidateText = cleanTranscript;
-          }
-          const isAmbiguous = Boolean(reconResult && reconResult.isAmbiguous);
-          const isUnclear = Boolean(reconResult && reconResult.isUnclear);
-          const clarificationPrompt = reconResult && reconResult.clarificationPrompt;
-
-          const confirmationPrompt = (reconResult && reconResult.confirmationPrompt) || (
-            effectiveLang === 'Kannada'
-              ? `ನಿಮ್ಮ ಅರ್ಥ: "${candidateText}" ಎಂದೇ?`
-              : effectiveLang === 'Hindi'
-              ? `क्या आपका मतलब: "${candidateText}" है?`
-              : `Did you mean: ${candidateText}?`
-          );
-
-          const pendingObj = {
-            rawTranscript: cleanTranscript,
-            candidateText,
-            status: (reconResult && reconResult.status) || 'NEEDS_CONFIRMATION',
-            isAmbiguous,
-            isUnclear,
-            confirmationPrompt,
-            clarificationPrompt,
-            intent: (reconResult && reconResult.intent) || 'GENERIC_FALLBACK',
-            entities: (reconResult && reconResult.entities) || {},
-            language: effectiveLang
-          };
-
-          setPendingReconstruction(pendingObj);
-          setEditableCorrectionText(candidateText);
-          setPatientCorrectedUtterance(candidateText);
-          setActiveOutputPhrase(candidateText);
-
-          // Update Status UI: Awaiting patient confirmation
-          if (isAmbiguous) {
-            setPatientUtteranceStatus(
-              effectiveLang === 'Kannada'
-                ? '⚠️ ಸ್ಪಷ್ಟನೆ ಅಗತ್ಯ: ವಿವರಗಳನ್ನು ದಯವಿಟ್ಟು ಖಚಿತಪಡಿಸಿ'
-                : effectiveLang === 'Hindi'
-                ? '⚠️ स्पष्टीकरण आवश्यक: कृपया विवरण की पुष्टि करें'
-                : '⚠️ Clarification needed: Please clarify before speaking'
-            );
-          } else if (isUnclear) {
-            setPatientUtteranceStatus(
-              effectiveLang === 'Kannada'
-                ? '⚠️ ಧ್ವನಿ ಅಪೂರ್ಣ ಅಥವಾ ಅಸ್ಪಷ್ಟವಾಗಿದೆ'
-                : effectiveLang === 'Hindi'
-                ? '⚠️ वाणी प्रयास अधूरा या अस्पष्ट है'
-                : '⚠️ Speech attempt incomplete or unclear'
-            );
-          } else {
-            setPatientUtteranceStatus(
-              effectiveLang === 'Kannada'
-                ? 'ಖಚಿತಪಡಿಸಲು ಕಾಯಲಾಗುತ್ತಿದೆ: ಮಾತನಾಡಲು "ದೃಢೀಕರಿಸಿ" ಒತ್ತಿರಿ'
-                : effectiveLang === 'Hindi'
-                ? 'पुष्टि की प्रतीक्षा: बोलने के लिए "पुष्टि करें" दबाएं'
-                : 'Pending confirmation: Tap CONFIRM to speak'
-            );
-          }
-
-          // 4. IMPORTANT: Reconstructed meaning remains temporary until patient confirmation.
-          // We DO NOT auto-execute processPhraseOutput here. Execution requires explicit patient confirmation!
-
-        } catch (sttErr) {
-          console.error('ElevenLabs Scribe v2 Speech-to-Text error:', sttErr.message);
-          setSpeechErrorMsg("Could not understand speech. Please try again.");
-          setTimeout(() => setSpeechErrorMsg(''), 3500);
-          setIsProcessing(false);
-          setIsListening(false);
-        }
+        const audioBlob = new Blob(recordedChunks, {
+          type: mediaRecorder.mimeType || 'audio/webm',
+        });
+        await processAudioForSTT(audioBlob);
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -972,8 +1057,29 @@ export const PatientDashboardScreen = ({ onLogout }) => {
   };
 
   // Stop In-Place Speech Audio Recording
-  const handleStopListening = () => {
+  const handleStopListening = async () => {
     console.log('User manually tapped STOP LISTENING.');
+    if (recordingSourceRef.current === 'neckband') {
+      try {
+        setIsProcessing(true);
+        setIsListening(false);
+        const audioBlob = await deviceService.stopMic();
+        if (!audioBlob) {
+          console.warn('No audio captured from neckband mic.');
+          setSpeechErrorMsg("Couldn't hear that. Please try again or choose a message below.");
+          setIsProcessing(false);
+          return;
+        }
+        await processAudioForSTT(audioBlob);
+      } catch (err) {
+        console.error('Error stopping neckband mic:', err);
+        setSpeechErrorMsg("Could not process audio from neckband.");
+        setIsProcessing(false);
+        setIsListening(false);
+      }
+      return;
+    }
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
         mediaRecorderRef.current.stop();
