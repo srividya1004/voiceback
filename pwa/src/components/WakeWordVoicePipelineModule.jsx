@@ -139,6 +139,7 @@ export const WakeWordVoicePipelineModule = ({
           const audioBlob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
           const formData = new FormData();
           formData.append('audioSample', audioBlob, 'wake_pipeline.webm');
+          formData.append('language', selectedLanguage === 'Kannada' ? 'kn' : 'en');
 
           const response = await voiceService.transcribeSpeech(formData);
           const rawTranscript = response?.data?.text || response?.text || '';

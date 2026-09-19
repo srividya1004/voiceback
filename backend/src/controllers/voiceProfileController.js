@@ -427,10 +427,19 @@ const reconstructTranscriptWithGemini = async (rawTranscript, language = 'en') =
 
   const cleanRaw = rawTranscript.trim();
 
-  const normalizedLang = (language === 'kn' || language === 'Kannada' || /[\u0C80-\u0CFF]/.test(cleanRaw))
+  const hasKannadaChars = /[\u0C80-\u0CFF]/.test(cleanRaw);
+  const hasHindiChars = /[\u0900-\u097F]/.test(cleanRaw);
+
+  const normalizedLang = hasKannadaChars
     ? 'kn'
-    : (language === 'hi' || language === 'Hindi' || /[\u0900-\u097F]/.test(cleanRaw))
+    : hasHindiChars
     ? 'hi'
+    : (language === 'kn' || language === 'Kannada') && !/^[A-Za-z0-9\s.,!?'"-]+$/.test(cleanRaw)
+    ? 'kn'
+    : (language === 'hi' || language === 'Hindi') && !/^[A-Za-z0-9\s.,!?'"-]+$/.test(cleanRaw)
+    ? 'hi'
+    : (language && language !== 'auto')
+    ? language
     : 'en';
 
   // Guard: Clear speech MUST NOT be altered or reconstructed
@@ -455,7 +464,7 @@ Reconstruction guidelines:
    - If the patient made a request (e.g. "I want water" or "Can you help me?"), reconstruct the request. NEVER output "Here is water" or "Yes, I can help you".
 3. Keep already-clear speech unchanged.
 4. Format output as a complete, naturally punctuated sentence ending with appropriate punctuation.
-5. Support native scripts without unwanted translation (Kannada in Kannada Unicode script, English in English, Hindi in Devanagari script, natural mixed language preserved).
+5. DO NOT TRANSLATE. NEVER translate English words into Kannada or Kannada words into English. Support native scripts without unwanted translation (Kannada in Kannada Unicode script, English in English, Hindi in Devanagari script, natural mixed language preserved).
 6. Avoid inventing symptoms, diagnoses, medicines, names, or unsupported facts.
 7. Return a JSON object with exactly one field: "correctedText".
 
@@ -466,7 +475,6 @@ Output format:
 {"correctedText": "..."}`;
 
   const models = [
-    'gemini-2.5-flash',
     process.env.GEMINI_MODEL,
     'gemini-3.6-flash',
     'gemini-3.5-flash-lite'
@@ -538,11 +546,11 @@ const transcribeSpeech = async (req, res) => {
     // 1. Existing ASR generates raw transcript
     const rawTranscript = await elevenLabsService.transcribeSpeech({
       audioFilePath: req.file.path,
-      language: language || 'kn'
+      language: language || 'auto'
     });
 
-    // 2. Gemini 2.5 Flash Correction/Reconstruction Layer
-    const correctedText = await reconstructTranscriptWithGemini(rawTranscript, language || 'kn');
+    // 2. Gemini Correction/Reconstruction Layer
+    const correctedText = await reconstructTranscriptWithGemini(rawTranscript, language || 'auto');
 
     // 3. Return corrected text in format expected by existing display, preserving raw transcript metadata
     return sendSuccess(res, 200, 'Speech transcribed successfully', {

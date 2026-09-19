@@ -250,7 +250,10 @@ const reconstructPatientUtterance = (transcript, language = 'English', context =
   }
 
   // English Language Conservative Reconstruction
-  // 1. Remove consecutive word repetitions e.g. "I I want want" -> "I want"
+  const rawWasQuestion = /[?]$/.test(text) ||
+    /^(who|what|where|when|why|how|can|could|would|will|may|shall|should|is|are|am|do|does|did)\b/i.test(text.trim());
+
+  // 1. Remove consecutive word repetitions e.g. "I I want want" -> "I want", "ba ba ba" -> "ba"
   let cleanWords = text.replace(/\b([a-zA-Z]+)(?:\s+\1\b)+/gi, '$1');
 
   // Strip trailing punctuation temporarily for clean pattern matching
@@ -288,68 +291,64 @@ const reconstructPatientUtterance = (transcript, language = 'English', context =
     .replace(/^me\s+in\s+pain\b/i, 'I am in pain')
     .replace(/^me\s+pain\b/i, 'I am in pain');
 
-  // 4. Missing verbs, subjects, & infinitive particles (Compositional)
+  // 4. Generalized Subject & Volitional Verb Restoration
+  cleanNoPunct = cleanNoPunct.replace(/^(want|need|wish|hope|like|feel|have)\s+/i, 'I $1 ');
+
+  // 5. Generalized Infinitive Insertion ("to")
+  cleanNoPunct = cleanNoPunct.replace(
+    /\b(want|need|like|hope|love|wish)\s+(go|sleep|rest|eat|drink|walk|sit|stand|read|see|talk|come|open|close|use|take|call|wash|lie|leave)\b/gi,
+    '$1 to $2'
+  );
+
+  // 6. Generalized Action Desire without subject (e.g. "read book" -> "I want to read book")
+  cleanNoPunct = cleanNoPunct.replace(/^(read|eat|drink|see|watch)\s+(the\s+|a\s+)?([a-zA-Z]+)$/i, 'I want to $1 $2$3');
+
+  // 7. Generalized Incomplete Desire / Needs (Subject "I" + bare object noun)
   cleanNoPunct = cleanNoPunct
-    .replace(/^i\s+water$/i, 'I want water')
-    .replace(/^want\s+water$/i, 'I want water')
-    .replace(/^need\s+water$/i, 'I need water')
+    .replace(/^i\s+(water|food|tea|coffee|milk|juice|blanket|pillow|jacket|book|phone|towel)$/i, 'I want $1')
+    .replace(/^i\s+(medicine|meds|pills?)$/i, 'I need my medicine')
+    .replace(/^i\s+(glasses)$/i, 'I want my glasses')
     .replace(/^i\s+help$/i, 'I want help')
-    .replace(/^want\s+help$/i, 'I want help')
-    .replace(/^need\s+help$/i, 'I need help')
-    .replace(/^i\s+food$/i, 'I want food')
-    .replace(/^want\s+food$/i, 'I want food')
-    .replace(/^i\s+medicine$/i, 'I need my medicine')
-    .replace(/^want\s+medicine$/i, 'I need my medicine')
-    .replace(/^need\s+medicine$/i, 'I need my medicine');
+    .replace(/^i\s+(?:go\s+)?home$/i, 'I want to go home');
 
-  // Missing infinitive "to": "want go" -> "I want to go", "I want go home" -> "I want to go home"
+  // 8. Generalized Symptom / Pain Reconstruction (Never infer medical diagnoses)
   cleanNoPunct = cleanNoPunct
-    .replace(/^want\s+go\s+home$/i, 'I want to go home')
-    .replace(/^i\s+want\s+go\s+home$/i, 'I want to go home')
-    .replace(/^want\s+go$/i, 'I want to go')
-    .replace(/^i\s+want\s+go$/i, 'I want to go')
-    .replace(/^need\s+go$/i, 'I need to go')
-    .replace(/^i\s+need\s+go$/i, 'I need to go')
-    .replace(/^i\s+go\s+home$/i, 'I want to go home')
-    .replace(/^i\s+home$/i, 'I want to go home')
-    .replace(/\bwant\s+go\s+home\b/gi, 'want to go home')
-    .replace(/\bwant\s+go\b/gi, 'want to go')
-    .replace(/\bneed\s+go\b/gi, 'need to go')
-    .replace(/\blike\s+go\b/gi, 'like to go')
-    .replace(/\bwant\s+sleep\b/gi, 'want to sleep')
-    .replace(/\bneed\s+sleep\b/gi, 'need to sleep')
-    .replace(/\bwant\s+rest\b/gi, 'want to rest')
-    .replace(/\bneed\s+rest\b/gi, 'need to rest');
-
-  // 5. Symptom / Pain Reconstruction (Never infer diagnoses, keep conservative)
-  cleanNoPunct = cleanNoPunct
-    .replace(/^(?:pain\s+stomach|stomach\s+pain)$/i, 'I have stomach pain')
     .replace(/^(?:pain\s+head|head\s+pain)$/i, 'My head hurts')
-    .replace(/^(?:pain\s+chest|chest\s+pain)$/i, 'I have chest pain')
-    .replace(/^(?:pain\s+back|back\s+pain)$/i, 'I have back pain')
-    .replace(/^(?:pain\s+leg|leg\s+pain)$/i, 'I have leg pain')
-    .replace(/^(?:head|my\s+head)\s+(?:hurt|hurts|hurting)$/i, 'My head hurts')
-    .replace(/^(?:stomach|my\s+stomach)\s+(?:hurt|hurts|hurting)$/i, 'My stomach hurts')
-    .replace(/^(?:chest|my\s+chest)\s+(?:hurt|hurts|hurting)$/i, 'My chest hurts')
-    .replace(/^(?:back|my\s+back)\s+(?:hurt|hurts|hurting)$/i, 'My back hurts')
-    .replace(/^(?:leg|my\s+leg)\s+(?:hurt|hurts|hurting)$/i, 'My leg hurts')
-    .replace(/^(?:want|need)\s+(?:toilet|bathroom|pee)$/i, 'I need to use the bathroom')
-    .replace(/^call\s+doctor$/i, 'Please call the doctor')
-    .replace(/^call\s+nurse$/i, 'Please call the nurse')
-    .replace(/^call\s+family$/i, 'Please call my family');
+    .replace(/^(?:pain\s+([a-zA-Z]+)|([a-zA-Z]+)\s+pain)$/i, (m, p1, p2) => 'I have ' + (p1 || p2) + ' pain')
+    .replace(/^(?:my\s+)?([a-zA-Z]+)\s+(?:hurt|hurts|hurting)$/i, (m, part) => 'My ' + part + ' hurts');
 
-  // 6. Capitalize "I" when used as isolated pronoun
+  // 9. Generalized Imperative & Polite Request Repairs
+  cleanNoPunct = cleanNoPunct
+    .replace(/^(call|contact|phone)\s+(the\s+|my\s+)?(doctor|nurse|caregiver|family|mom|dad|son|daughter)\b/i, (m, v, det, pers) => {
+      const article = det ? det : (['doctor', 'nurse', 'caregiver'].includes(pers.toLowerCase()) ? 'the ' : 'my ');
+      return `Please call ${article}${pers}`;
+    })
+    .replace(/^(open|close|turn\s+on|turn\s+off|switch\s+on|switch\s+off)\s+(the\s+)?(door|window|fan|light|lights|tv|curtain|curtains)\b/i, (m, action, det, obj) => {
+      return `Please ${action} the ${obj}`;
+    })
+    .replace(/^turn\s+(the\s+)?(fan|light|lights|tv)\s+(on|off)$/i, (m, det, obj, state) => {
+      return `Please turn ${state} the ${obj}`;
+    })
+    .replace(/^help\s+(me\s+)?(walk|stand|sit|move|up|down)\b/i, (m, me, act) => {
+      return `Please help me ${act}`;
+    })
+    .replace(/^(?:want|need)\s+(?:toilet|bathroom|pee)$/i, 'I need to use the bathroom');
+
+  // 10. Interrogative Questions Copula Repair (e.g. "where my glasses" -> "where are my glasses")
+  cleanNoPunct = cleanNoPunct.replace(/^where\s+(my\s+[a-zA-Z]+)$/i, 'where are $1');
+
+  // 11. Capitalize "I" when used as isolated pronoun
   cleanNoPunct = cleanNoPunct.replace(/\bi\b/g, 'I');
 
-  // 7. Ensure first character capitalized
+  // 12. Ensure first character capitalized
   let result = cleanNoPunct.trim();
   if (result.length > 0) {
     result = result.charAt(0).toUpperCase() + result.slice(1);
   }
 
-  // 8. Ensure terminal period (preserve existing ? or !)
+  // 13. Ensure terminal punctuation (preserves ? for questions, adds . otherwise)
   if (result.length > 0 && !/[.!?]$/.test(result)) {
-    result += '.';
+    result += (rawWasQuestion ? '?' : '.');
   }
 
   return result;

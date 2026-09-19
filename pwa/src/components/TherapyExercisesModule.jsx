@@ -88,84 +88,90 @@ export const TherapyExercisesModule = ({
     {
       level: 1,
       typeTitle: 'Speak & Build — Level 1: Single Words',
+      typeTitleKn: 'ಮಾತನಾಡಿ ಮತ್ತು ನಿರ್ಮಿಸಿ — ಹಂತ 1: ಒಂಟಿ ಪದಗಳು',
       keyTitle: 'level1Name',
       keyDesc: 'level1Desc',
       validationMode: 'exact',
       items: [
-        { id: 'apple', label: 'APPLE', target: 'APPLE', hint: 'Say "APPLE"', icon: Apple, color: '#DC2626' },
-        { id: 'book', label: 'BOOK', target: 'BOOK', hint: 'Say "BOOK"', icon: Book, color: '#9333EA' },
-        { id: 'cup', label: 'CUP', target: 'CUP', hint: 'Say "CUP"', icon: Coffee, color: '#EAB308' },
-        { id: 'chair', label: 'CHAIR', target: 'CHAIR', hint: 'Say "CHAIR"', icon: Home, color: '#16A34A' },
-        { id: 'phone', label: 'PHONE', target: 'PHONE', hint: 'Say "PHONE"', icon: Smartphone, color: '#0284C7' },
+        { id: 'apple', label: 'APPLE', labelKn: 'ಸೇಬು', target: 'APPLE', targetKn: 'ಸೇಬು', hint: 'Say "APPLE"', hintKn: '"ಸೇಬು" ಎಂದು ಹೇಳಿ', icon: Apple, color: '#DC2626', keywords: ['apple', 'ಸೇಬು', 'seb', 'sebu'] },
+        { id: 'book', label: 'BOOK', labelKn: 'ಪುಸ್ತಕ', target: 'BOOK', targetKn: 'ಪುಸ್ತಕ', hint: 'Say "BOOK"', hintKn: '"ಪುಸ್ತಕ" ಎಂದು ಹೇಳಿ', icon: Book, color: '#9333EA', keywords: ['book', 'ಪುಸ್ತಕ', 'pustaka'] },
+        { id: 'cup', label: 'CUP', labelKn: 'ಕಪ್', target: 'CUP', targetKn: 'ಕಪ್', hint: 'Say "CUP"', hintKn: '"ಕಪ್" ಎಂದು ಹೇಳಿ', icon: Coffee, color: '#EAB308', keywords: ['cup', 'ಕಪ್', 'ಲೋಟ', 'lota'] },
+        { id: 'chair', label: 'CHAIR', labelKn: 'ಕುರ್ಚಿ', target: 'CHAIR', targetKn: 'ಕುರ್ಚಿ', hint: 'Say "CHAIR"', hintKn: '"ಕುರ್ಚಿ" ಎಂದು ಹೇಳಿ', icon: Home, color: '#16A34A', keywords: ['chair', 'ಕುರ್ಚಿ', 'kurchi'] },
+        { id: 'phone', label: 'PHONE', labelKn: 'ದೂರವಾಣಿ', target: 'PHONE', targetKn: 'ದೂರವಾಣಿ', hint: 'Say "PHONE"', hintKn: '"ದೂರವಾಣಿ" ಎಂದು ಹೇಳಿ', icon: Smartphone, color: '#0284C7', keywords: ['phone', 'ದೂರವಾಣಿ', 'ಫೋನ್'] },
       ]
     },
     {
       level: 2,
       typeTitle: 'Speak & Build — Level 2: Two-Word Phrases',
+      typeTitleKn: 'ಮಾತನಾಡಿ ಮತ್ತು ನಿರ್ಮಿಸಿ — ಹಂತ 2: ವಾಕ್ಯಾಂಶ ಅಭ್ಯಾಸ',
       keyTitle: 'level2Name',
       keyDesc: 'level2Desc',
       validationMode: 'phrase',
       items: [
-        { id: 'need_water', label: 'NEED WATER', target: 'NEED WATER', keywords: ['need water', 'want water', 'water'], hint: 'Say "NEED WATER"', icon: Droplet, color: '#0284C7' },
-        { id: 'want_food', label: 'WANT FOOD', target: 'WANT FOOD', keywords: ['want food', 'need food', 'food'], hint: 'Say "WANT FOOD"', icon: Utensils, color: '#EAB308' },
-        { id: 'call_mom', label: 'CALL MOM', target: 'CALL MOM', keywords: ['call mom', 'call family', 'mom'], hint: 'Say "CALL MOM"', icon: Phone, color: '#DB2777' },
-        { id: 'need_medicine', label: 'NEED MEDICINE', target: 'NEED MEDICINE', keywords: ['need medicine', 'medicine'], hint: 'Say "NEED MEDICINE"', icon: Sparkles, color: '#9333EA' },
+        { id: 'need_water', label: 'NEED WATER', labelKn: 'ನೀರು ಬೇಕು', target: 'NEED WATER', targetKn: 'ನೀರು ಬೇಕು', keywords: ['need water', 'want water', 'water', 'ನೀರು ಬೇಕು', 'ನೀರು'], hint: 'Say "NEED WATER"', hintKn: '"ನೀರು ಬೇಕು" ಎಂದು ಹೇಳಿ', icon: Droplet, color: '#0284C7' },
+        { id: 'want_food', label: 'WANT FOOD', labelKn: 'ಊಟ ಬೇಕು', target: 'WANT FOOD', targetKn: 'ಊಟ ಬೇಕು', keywords: ['want food', 'need food', 'food', 'ಊಟ ಬೇಕು', 'ಊಟ', 'ತಿಂಡಿ'], hint: 'Say "WANT FOOD"', hintKn: '"ಊಟ ಬೇಕು" ಎಂದು ಹೇಳಿ', icon: Utensils, color: '#EAB308' },
+        { id: 'call_mom', label: 'CALL MOM', labelKn: 'ಅಮ್ಮನಿಗೆ ಕರೆ ಮಾಡಿ', target: 'CALL MOM', targetKn: 'ಅಮ್ಮನಿಗೆ ಕರೆ ಮಾಡಿ', keywords: ['call mom', 'call family', 'mom', 'ಅಮ್ಮ', 'ಕರೆ ಮಾಡಿ'], hint: 'Say "CALL MOM"', hintKn: '"ಅಮ್ಮನಿಗೆ ಕರೆ ಮಾಡಿ" ಎಂದು ಹೇಳಿ', icon: Phone, color: '#DB2777' },
+        { id: 'need_medicine', label: 'NEED MEDICINE', labelKn: 'ಮಾತ್ರೆ ಬೇಕು', target: 'NEED MEDICINE', targetKn: 'ಮಾತ್ರೆ ಬೇಕು', keywords: ['need medicine', 'medicine', 'ಮಾತ್ರೆ ಬೇಕು', 'ಮಾತ್ರೆ', 'ಔಷಧಿ'], hint: 'Say "NEED MEDICINE"', hintKn: '"ಮಾತ್ರೆ ಬೇಕು" ಎಂದು ಹೇಳಿ', icon: Sparkles, color: '#9333EA' },
       ]
     },
     {
       level: 3,
       typeTitle: 'Speak & Build — Level 3: Simple Sentences',
+      typeTitleKn: 'ಮಾತನಾಡಿ ಮತ್ತು ನಿರ್ಮಿಸಿ — ಹಂತ 3: ಸರಳ ವಾಕ್ಯಗಳು',
       keyTitle: 'level3Name',
       keyDesc: 'level3Desc',
       validationMode: 'sentence',
       items: [
-        { id: 's_need_water', label: 'I NEED WATER', target: 'I NEED WATER', keywords: ['i', 'need', 'water'], hint: 'Say "I NEED WATER"', icon: Droplet, color: '#0284C7' },
-        { id: 's_want_food', label: 'I WANT FOOD', target: 'I WANT FOOD', keywords: ['i', 'want', 'food'], hint: 'Say "I WANT FOOD"', icon: Utensils, color: '#EAB308' },
-        { id: 's_need_medicine', label: 'I NEED MEDICINE', target: 'I NEED MEDICINE', keywords: ['i', 'need', 'medicine'], hint: 'Say "I NEED MEDICINE"', icon: Sparkles, color: '#9333EA' },
-        { id: 's_call_mom', label: 'PLEASE CALL MOM', target: 'PLEASE CALL MOM', keywords: ['please', 'call', 'mom'], hint: 'Say "PLEASE CALL MOM"', icon: Phone, color: '#DB2777' },
+        { id: 's_need_water', label: 'I NEED WATER', labelKn: 'ನನಗೆ ನೀರು ಬೇಕು', target: 'I NEED WATER', targetKn: 'ನನಗೆ ನೀರು ಬೇಕು', keywords: ['i', 'need', 'water', 'ನನಗೆ', 'ನೀರು', 'ಬೇಕು'], hint: 'Say "I NEED WATER"', hintKn: '"ನನಗೆ ನೀರು ಬೇಕು" ಎಂದು ಹೇಳಿ', icon: Droplet, color: '#0284C7' },
+        { id: 's_want_food', label: 'I WANT FOOD', labelKn: 'ನನಗೆ ಊಟ ಬೇಕು', target: 'I WANT FOOD', targetKn: 'ನನಗೆ ಊಟ ಬೇಕು', keywords: ['i', 'want', 'food', 'ನನಗೆ', 'ಊಟ', 'ಬೇಕು'], hint: 'Say "I WANT FOOD"', hintKn: '"ನನಗೆ ಊಟ ಬೇಕು" ಎಂದು ಹೇಳಿ', icon: Utensils, color: '#EAB308' },
+        { id: 's_need_medicine', label: 'I NEED MEDICINE', labelKn: 'ನನಗೆ ಮಾತ್ರೆ ಬೇಕು', target: 'I NEED MEDICINE', targetKn: 'ನನಗೆ ಮಾತ್ರೆ ಬೇಕು', keywords: ['i', 'need', 'medicine', 'ನನಗೆ', 'ಮಾತ್ರೆ', 'ಬೇಕು'], hint: 'Say "I NEED MEDICINE"', hintKn: '"ನನಗೆ ಮಾತ್ರೆ ಬೇಕು" ಎಂದು ಹೇಳಿ', icon: Sparkles, color: '#9333EA' },
+        { id: 's_call_mom', label: 'PLEASE CALL MOM', labelKn: 'ದಯವಿಟ್ಟು ಅಮ್ಮನಿಗೆ ಕರೆ ಮಾಡಿ', target: 'PLEASE CALL MOM', targetKn: 'ದಯವಿಟ್ಟು ಅಮ್ಮನಿಗೆ ಕರೆ ಮಾಡಿ', keywords: ['please', 'call', 'mom', 'ದಯವಿಟ್ಟು', 'ಅಮ್ಮನಿಗೆ', 'ಕರೆ'], hint: 'Say "PLEASE CALL MOM"', hintKn: '"ದಯವಿಟ್ಟು ಅಮ್ಮನಿಗೆ ಕರೆ ಮಾಡಿ" ಎಂದು ಹೇಳಿ', icon: Phone, color: '#DB2777' },
       ]
     },
     {
       level: 4,
       typeTitle: 'Speak & Build — Level 4: Visual Sentences',
+      typeTitleKn: 'ಮಾತನಾಡಿ ಮತ್ತು ನಿರ್ಮಿಸಿ — ಹಂತ 4: ದೃಶ್ಯ ವಾಕ್ಯಗಳು',
       keyTitle: 'level4Name',
       keyDesc: 'level4Desc',
       validationMode: 'sentence',
       items: [
-        { id: 'v_water', label: 'I NEED WATER', target: 'I NEED WATER', keywords: ['i', 'need', 'water'], hint: 'Look at empty glass. Say "I NEED WATER"', icon: Droplet, color: '#0284C7' },
-        { id: 'v_food', label: 'I WANT FOOD', target: 'I WANT FOOD', keywords: ['i', 'want', 'food'], hint: 'Look at empty plate. Say "I WANT FOOD"', icon: Utensils, color: '#EAB308' },
-        { id: 'v_tired', label: 'I AM TIRED', target: 'I AM TIRED', keywords: ['i', 'am', 'tired'], hint: 'Say "I AM TIRED"', icon: HelpCircle, color: '#6366F1' },
+        { id: 'v_water', label: 'I NEED WATER', labelKn: 'ನನಗೆ ನೀರು ಬೇಕು', target: 'I NEED WATER', targetKn: 'ನನಗೆ ನೀರು ಬೇಕು', keywords: ['i', 'need', 'water', 'ನನಗೆ', 'ನೀರು', 'ಬೇಕು'], hint: 'Look at empty glass. Say "I NEED WATER"', hintKn: 'ಖಾಲಿ ಲೋಟ ನೋಡಿ. "ನನಗೆ ನೀರು ಬೇಕು" ಎಂದು ಹೇಳಿ', icon: Droplet, color: '#0284C7' },
+        { id: 'v_food', label: 'I WANT FOOD', labelKn: 'ನನಗೆ ಊಟ ಬೇಕು', target: 'I WANT FOOD', targetKn: 'ನನಗೆ ಊಟ ಬೇಕು', keywords: ['i', 'want', 'food', 'ನನಗೆ', 'ಊಟ', 'ಬೇಕು'], hint: 'Look at empty plate. Say "I WANT FOOD"', hintKn: 'ಖಾಲಿ ತಟ್ಟೆ ನೋಡಿ. "ನನಗೆ ಊಟ ಬೇಕು" ಎಂದು ಹೇಳಿ', icon: Utensils, color: '#EAB308' },
+        { id: 'v_tired', label: 'I AM TIRED', labelKn: 'ನನಗೆ ಆಯಾಸವಾಗಿದೆ', target: 'I AM TIRED', targetKn: 'ನನಗೆ ಆಯಾಸವಾಗಿದೆ', keywords: ['i', 'am', 'tired', 'ನನಗೆ', 'ಆಯಾಸವಾಗಿದೆ', 'ಆಯಾಸ'], hint: 'Say "I AM TIRED"', hintKn: '"ನನಗೆ ಆಯಾಸವಾಗಿದೆ" ಎಂದು ಹೇಳಿ', icon: HelpCircle, color: '#6366F1' },
       ]
     },
     {
       level: 5,
       typeTitle: 'LOOK & RESPOND — 12 Visual Scenarios',
+      typeTitleKn: 'ನೋಡಿ ಮತ್ತು ಉತ್ತರಿಸಿ — 12 ದೃಶ್ಯ ಸನ್ನಿವೇಶಗಳು',
       keyTitle: 'level5Name',
       keyDesc: 'level5Desc',
       validationMode: 'scenario',
       items: [
-        { id: 'scen_1', promptKey: 'scen1EmptyGlass', category: 'water', target: 'WATER', hint: 'The glass is empty. They need water.', icon: Droplet, color: '#0284C7' },
-        { id: 'scen_2', promptKey: 'scen2EmptyPlate', category: 'food', target: 'FOOD', hint: 'The plate is empty. They need food.', icon: Utensils, color: '#EAB308' },
-        { id: 'scen_3', promptKey: 'scen3Discomfort', category: 'pain', target: 'PAIN', hint: 'Holding head in pain. They are in pain.', icon: AlertTriangle, color: '#DC2626' },
-        { id: 'scen_4', promptKey: 'scen4MedicineBottle', category: 'medicine', target: 'MEDICINE', hint: 'Holding medicine bottle. They need medicine.', icon: Sparkles, color: '#9333EA' },
-        { id: 'scen_5', promptKey: 'scen5CaregiverLeaving', category: 'caregiver', target: 'PLEASE CALL MY CAREGIVER', hint: 'Say "Please call my caregiver."', icon: Heart, color: '#DB2777' },
-        { id: 'scen_6', promptKey: 'scen6ToiletSign', category: 'toilet', target: 'TOILET', hint: 'Restroom sign. They need toilet.', icon: Info, color: '#16A34A' },
-        { id: 'scen_7', promptKey: 'scen7FeelingTiredInBed', category: 'tired', target: 'I AM TIRED', hint: 'In bed tired. Say "I am tired."', icon: HelpCircle, color: '#6366F1' },
-        { id: 'scen_8', promptKey: 'scen8WaitingDoctor', category: 'doctor', target: 'PLEASE CALL DOCTOR', hint: 'Waiting for doctor. Say "Call doctor."', icon: UserCheck, color: '#059669' },
-        { id: 'scen_9', promptKey: 'scen9HotDay', category: 'hot', target: 'COLD WATER', hint: 'Sweating in sun. Say "I need cold water."', icon: Thermometer, color: '#EAB308' },
-        { id: 'scen_10', promptKey: 'scen10ColdDay', category: 'cold', target: 'I AM COLD', hint: 'Shivering in cold. Say "I am cold."', icon: CloudSnow, color: '#0284C7' },
-        { id: 'scen_11', promptKey: 'scen11FamilyPhoto', category: 'family', target: 'I WANT MY FAMILY', hint: 'Looking at photo. Say "I want my family."', icon: Heart, color: '#DB2777' },
-        { id: 'scen_12', promptKey: 'scen12FruitBowl', category: 'apple', target: 'I WANT AN APPLE', hint: 'Fruit bowl. Say "I want an apple."', icon: Apple, color: '#DC2626' },
+        { id: 'scen_1', promptKey: 'scen1EmptyGlass', category: 'water', label: 'WATER', labelKn: 'ನೀರು', target: 'WATER', targetKn: 'ನೀರು', hint: 'The glass is empty. They need water.', hintKn: 'ಲೋಟ ಖಾಲಿಯಾಗಿದೆ. ಅವರಿಗೆ ನೀರು ಬೇಕು.', icon: Droplet, color: '#0284C7' },
+        { id: 'scen_2', promptKey: 'scen2EmptyPlate', category: 'food', label: 'FOOD', labelKn: 'ಊಟ', target: 'FOOD', targetKn: 'ಊಟ', hint: 'The plate is empty. They need food.', hintKn: 'ತಟ್ಟೆ ಖಾಲಿಯಾಗಿದೆ. ಅವರಿಗೆ ಊಟ ಬೇಕು.', icon: Utensils, color: '#EAB308' },
+        { id: 'scen_3', promptKey: 'scen3Discomfort', category: 'pain', label: 'PAIN', labelKn: 'ನೋವು', target: 'PAIN', targetKn: 'ನೋವು', hint: 'Holding head in pain. They are in pain.', hintKn: 'ತಲೆನೋವಿನಿಂದ ಬಳಲುತ್ತಿದ್ದಾರೆ. ಅವರಿಗೆ ನೋವಾಗುತ್ತಿದೆ.', icon: AlertTriangle, color: '#DC2626' },
+        { id: 'scen_4', promptKey: 'scen4MedicineBottle', category: 'medicine', label: 'MEDICINE', labelKn: 'ಔಷಧಿ', target: 'MEDICINE', targetKn: 'ಔಷಧಿ', hint: 'Holding medicine bottle. They need medicine.', hintKn: 'ಔಷಧದ ಬಾಟಲಿ ಹಿಡಿದಿದ್ದಾರೆ. ಅವರಿಗೆ ಔಷಧಿ ಬೇಕು.', icon: Sparkles, color: '#9333EA' },
+        { id: 'scen_5', promptKey: 'scen5CaregiverLeaving', category: 'caregiver', label: 'PLEASE CALL MY CAREGIVER', labelKn: 'ದಯವಿಟ್ಟು ಪಾಲನೆದಾರರನ್ನು ಕರೆಯಿರಿ', target: 'PLEASE CALL MY CAREGIVER', targetKn: 'ದಯವಿಟ್ಟು ಪಾಲನೆದಾರರನ್ನು ಕರೆಯಿರಿ', hint: 'Say "Please call my caregiver."', hintKn: '"ದಯವಿಟ್ಟು ಪಾಲನೆದಾರರನ್ನು ಕರೆಯಿರಿ" ಎಂದು ಹೇಳಿ.', icon: Heart, color: '#DB2777' },
+        { id: 'scen_6', promptKey: 'scen6ToiletSign', category: 'toilet', label: 'TOILET', labelKn: 'ಶೌಚಾಲಯ', target: 'TOILET', targetKn: 'ಶೌಚಾಲಯ', hint: 'Restroom sign. They need toilet.', hintKn: 'ಶೌಚಾಲಯದ ಚಿಹ್ನೆ. ಅವರಿಗೆ ಶೌಚಾಲಯ ಬೇಕು.', icon: Info, color: '#16A34A' },
+        { id: 'scen_7', promptKey: 'scen7FeelingTiredInBed', category: 'tired', label: 'I AM TIRED', labelKn: 'ನನಗೆ ಆಯಾಸವಾಗಿದೆ', target: 'I AM TIRED', targetKn: 'ನನಗೆ ಆಯಾಸವಾಗಿದೆ', hint: 'In bed tired. Say "I am tired."', hintKn: 'ಹಾಸಿಗೆಯಲ್ಲಿ ಆಯಾಸಗೊಂಡಿದ್ದಾರೆ. "ನನಗೆ ಆಯಾಸವಾಗಿದೆ" ಎಂದು ಹೇಳಿ.', icon: HelpCircle, color: '#6366F1' },
+        { id: 'scen_8', promptKey: 'scen8WaitingDoctor', category: 'doctor', label: 'PLEASE CALL DOCTOR', labelKn: 'ದಯವಿಟ್ಟು ವೈದ್ಯರನ್ನು ಕರೆಯಿರಿ', target: 'PLEASE CALL DOCTOR', targetKn: 'ದಯವಿಟ್ಟು ವೈದ್ಯರನ್ನು ಕರೆಯಿರಿ', hint: 'Waiting for doctor. Say "Call doctor."', hintKn: 'ವೈದ್ಯರಿಗಾಗಿ ಕಾಯುತ್ತಿದ್ದಾರೆ. "ವೈದ್ಯರನ್ನು ಕರೆಯಿರಿ" ಎಂದು ಹೇಳಿ.', icon: UserCheck, color: '#059669' },
+        { id: 'scen_9', promptKey: 'scen9HotDay', category: 'hot', label: 'COLD WATER', labelKn: 'ತಣ್ಣೀರು', target: 'COLD WATER', targetKn: 'ತಣ್ಣೀರು', hint: 'Sweating in sun. Say "I need cold water."', hintKn: 'ಬಿಸಿಲಿನಲ್ಲಿ ಬೆವರುತ್ತಿದ್ದಾರೆ. "ತಣ್ಣೀರು ಬೇಕು" ಎಂದು ಹೇಳಿ.', icon: Thermometer, color: '#EAB308' },
+        { id: 'scen_10', promptKey: 'scen10ColdDay', category: 'cold', label: 'I AM COLD', labelKn: 'ನನಗೆ ಚಳಿಯಾಗುತ್ತಿದೆ', target: 'I AM COLD', targetKn: 'ನನಗೆ ಚಳಿಯಾಗುತ್ತಿದೆ', hint: 'Shivering in cold. Say "I am cold."', hintKn: 'ಚಳಿಯಲ್ಲಿ ನಡುಗುತ್ತಿದ್ದಾರೆ. "ನನಗೆ ಚಳಿಯಾಗುತ್ತಿದೆ" ಎಂದು ಹೇಳಿ.', icon: CloudSnow, color: '#0284C7' },
+        { id: 'scen_11', promptKey: 'scen11FamilyPhoto', category: 'family', label: 'I WANT MY FAMILY', labelKn: 'ನನ್ನ ಕುಟುಂಬ ಬೇಕು', target: 'I WANT MY FAMILY', targetKn: 'ನನ್ನ ಕುಟುಂಬ ಬೇಕು', hint: 'Looking at photo. Say "I want my family."', hintKn: 'ಫೋಟೋ ನೋಡುತ್ತಿದ್ದಾರೆ. "ನನ್ನ ಕುಟುಂಬ ಬೇಕು" ಎಂದು ಹೇಳಿ.', icon: Heart, color: '#DB2777' },
+        { id: 'scen_12', promptKey: 'scen12FruitBowl', category: 'apple', label: 'I WANT AN APPLE', labelKn: 'ನನಗೆ ಸೇಬು ಬೇಕು', target: 'I WANT AN APPLE', targetKn: 'ನನಗೆ ಸೇಬು ಬೇಕು', hint: 'Fruit bowl. Say "I want an apple."', hintKn: 'ಹಣ್ಣಿನ ಬೌಲ್. "ನನಗೆ ಸೇಬು ಬೇಕು" ಎಂದು ಹೇಳಿ.', icon: Apple, color: '#DC2626' },
       ]
     },
     {
       level: 6,
       typeTitle: 'Conversational Dialogues',
+      typeTitleKn: 'ಸಂಭಾಷಣೆ ಭಾಷಣ',
       keyTitle: 'level6Name',
       keyDesc: 'level6Desc',
       validationMode: 'scenario',
       items: [
-        { id: 'c_doctor', promptKey: 'scen8DoctorConsult', category: 'doctor', target: 'I FEEL BETTER', hint: 'Respond to doctor: "I feel better."', icon: UserCheck, color: '#16A34A' },
+        { id: 'c_doctor', promptKey: 'scen8DoctorConsult', category: 'doctor', label: 'I FEEL BETTER', labelKn: 'ನನಗೆ ಗುಣಮುಖವೆನಿಸುತ್ತಿದೆ', target: 'I FEEL BETTER', targetKn: 'ನನಗೆ ಗುಣಮುಖವೆನಿಸುತ್ತಿದೆ', hint: 'Respond to doctor: "I feel better."', hintKn: 'ವೈದ್ಯರಿಗೆ ಉತ್ತರಿಸಿ: "ನನಗೆ ಗುಣಮುಖವೆನಿಸುತ್ತಿದೆ."', icon: UserCheck, color: '#16A34A' },
       ]
     }
   ];
@@ -181,6 +187,13 @@ export const TherapyExercisesModule = ({
   // Profile metadata
   const profileName = session.user?.name || session.email?.split('@')[0] || 'Patient';
   const firstLetter = profileName.charAt(0).toUpperCase();
+
+  // Localization helper functions
+  const isKn = language === 'kn' || language === 'Kannada';
+  const getItemLabel = (item) => (isKn && item?.labelKn ? item.labelKn : (t(item?.label) || item?.label || ''));
+  const getItemTarget = (item) => (isKn && item?.targetKn ? item.targetKn : item?.target || '');
+  const getItemHint = (item) => (isKn && item?.hintKn ? item.hintKn : item?.hint || '');
+  const getLevelTypeTitle = (lvl) => (isKn && lvl?.typeTitleKn ? lvl.typeTitleKn : lvl?.typeTitle || '');
 
   // Voice Assistant Guidance
   useEffect(() => {
@@ -217,10 +230,11 @@ export const TherapyExercisesModule = ({
   const handleTranscriptReceived = (rawTranscript) => {
     const activeLevelObj = levelDefinitions.find((l) => l.level === activeLevelNum);
     const item = activeLevelObj.items[actIndex % activeLevelObj.items.length];
+    const currentTarget = getItemTarget(item);
 
     const res = validationService.validateAnswer(rawTranscript, {
-      target: item.target || item.label,
-      keywords: item.keywords,
+      target: currentTarget || getItemLabel(item),
+      keywords: item.keywords ? [...item.keywords, currentTarget, item.targetKn].filter(Boolean) : [currentTarget],
       category: item.category,
       mode: activeLevelObj.validationMode,
     });
@@ -243,14 +257,16 @@ export const TherapyExercisesModule = ({
         setActFeedback({
           success: false,
           text: `❌ ${res.reason || t('didNotUnderstand')} (${t('attemptsUsed')} ${attemptCount}/3)`,
-          hint: item.hint,
+          hint: getItemHint(item),
         });
         if (speak) speak(t('didNotUnderstand'));
       } else {
         setActFeedback({
           success: false,
-          text: `❌ 0 Points. Expected: "${item.target}". ${t('movingToNext')}`,
-          hint: item.hint,
+          text: isKn
+            ? `❌ ೦ ಅಂಕಗಳು. ನಿರೀಕ್ಷಿತ: "${currentTarget}". ${t('movingToNext')}`
+            : `❌ 0 Points. Expected: "${currentTarget}". ${t('movingToNext')}`,
+          hint: getItemHint(item),
         });
         if (speak) speak(t('movingToNext'));
         setActPhase('feedback');
@@ -386,7 +402,7 @@ export const TherapyExercisesModule = ({
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: isUnlocked ? 'var(--color-blue-primary)' : 'var(--color-brand-tagline)' }}>
-                          {lvl.typeTitle}
+                          {getLevelTypeTitle(lvl)}
                         </span>
                         {isCompleted ? (
                           <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#16A34A' }}>✅ {t('statusCompleted')}</span>
@@ -419,7 +435,7 @@ export const TherapyExercisesModule = ({
                 <ArrowLeft size={20} />
               </button>
               <h1 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                {levelDefinitions.find((l) => l.level === activeLevelNum)?.typeTitle}
+                {getLevelTypeTitle(levelDefinitions.find((l) => l.level === activeLevelNum))}
               </h1>
               <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#EAB308', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
                 <Star size={16} fill="#EAB308" /> {totalPoints} Pts
@@ -449,7 +465,7 @@ export const TherapyExercisesModule = ({
                       </div>
 
                       <h2 style={{ fontSize: '1.85rem', fontWeight: 900, color: 'var(--color-brand-title)', margin: 0 }}>
-                        {t(item.label) || item.label}
+                        {getItemLabel(item)}
                       </h2>
                     </div>
 
@@ -457,14 +473,14 @@ export const TherapyExercisesModule = ({
                     {attemptCount === 2 && (
                       <div style={{ width: '100%', padding: '0.85rem', borderRadius: 14, background: 'rgba(234, 179, 8, 0.12)', border: '1.5px solid #EAB308', color: '#B45309', fontWeight: 700, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Lightbulb size={20} />
-                        <div><strong>{t('attemptHintTitle')}:</strong> {item.hint}</div>
+                        <div><strong>{t('attemptHintTitle')}:</strong> {getItemHint(item)}</div>
                       </div>
                     )}
 
                     {attemptCount === 3 && (
                       <div style={{ width: '100%', padding: '0.85rem', borderRadius: 14, background: 'rgba(2, 132, 199, 0.12)', border: '1.5px solid var(--color-blue-primary)', color: 'var(--color-blue-primary)', fontWeight: 700, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Info size={20} />
-                        <div><strong>{t('attemptHelpTitle')}:</strong> Speak target "{item.target}"</div>
+                        <div><strong>{t('attemptHelpTitle')}:</strong> {isKn ? `ಗುರಿಯನ್ನು ಮಾತನಾಡಿ "${getItemTarget(item)}"` : `Speak target "${getItemTarget(item)}"`}</div>
                       </div>
                     )}
 
@@ -491,8 +507,9 @@ export const TherapyExercisesModule = ({
 
                         <SpeechInputTrigger
                           onTranscriptReceived={handleTranscriptReceived}
-                          targetIntent={item.target || item.label}
+                          targetIntent={getItemTarget(item) || getItemLabel(item)}
                           buttonLabel={`🎙️ ${t('tapToSpeak')}`}
+                          language={isKn ? 'kn' : 'en'}
                         />
 
                         {actFeedback && !actFeedback.success && (
@@ -561,7 +578,7 @@ export const TherapyExercisesModule = ({
                     {t('congratulations')}
                   </h2>
                   <p style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-blue-primary)', marginTop: '0.3rem' }}>
-                    {lastCompletedSummary?.title || `Level ${lastCompletedSummary?.levelNum}`}
+                    {lastCompletedSummary?.title ? (t(lastCompletedSummary.title) || lastCompletedSummary.title) : (isKn ? `ಹಂತ ${lastCompletedSummary?.levelNum}` : `Level ${lastCompletedSummary?.levelNum}`)}
                   </p>
                 </div>
 

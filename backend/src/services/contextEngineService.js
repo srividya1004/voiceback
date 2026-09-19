@@ -1487,11 +1487,14 @@ Return ONLY a valid JSON object matching this schema:
 
             // Unclear speech handling from Gemini: Preserve inferred best candidate so patient is not forced to press CHANGE
             if (parsed.isUnclear) {
-              const bestCandidate = (parsed.reconstructedText && parsed.reconstructedText.trim() !== text)
+              let bestCandidate = (parsed.reconstructedText && parsed.reconstructedText.trim() !== text)
                 ? parsed.reconstructedText.trim()
                 : null;
 
               if (bestCandidate) {
+                if (!/[.!?]$/.test(bestCandidate)) {
+                  bestCandidate += (rawWasQuestion ? '?' : '.');
+                }
                 return {
                   rawText: text,
                   rawTranscript: text,

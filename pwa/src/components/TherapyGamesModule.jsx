@@ -188,12 +188,12 @@ export const TherapyGamesModule = ({
 
   // Game 1 State (Picture Match)
   const allMatchDefs = [
-    { id: 'apple', label: 'APPLE', icon: Sun, color: '#DC2626' },
-    { id: 'book', label: 'BOOK', icon: Book, color: '#9333EA' },
-    { id: 'cup', label: 'CUP', icon: Coffee, color: '#EAB308' },
-    { id: 'phone', label: 'PHONE', icon: Smartphone, color: '#0284C7' },
-    { id: 'bus', label: 'BUS', icon: Bus, color: '#16A34A' },
-    { id: 'flower', label: 'FLOWER', icon: Heart, color: '#DB2777' },
+    { id: 'apple', label: 'APPLE', labelKn: 'ಸೇಬು', icon: Sun, color: '#DC2626' },
+    { id: 'book', label: 'BOOK', labelKn: 'ಪುಸ್ತಕ', icon: Book, color: '#9333EA' },
+    { id: 'cup', label: 'CUP', labelKn: 'ಕಪ್', icon: Coffee, color: '#EAB308' },
+    { id: 'phone', label: 'PHONE', labelKn: 'ದೂರವಾಣಿ', icon: Smartphone, color: '#0284C7' },
+    { id: 'bus', label: 'BUS', labelKn: 'ಬಸ್', icon: Bus, color: '#16A34A' },
+    { id: 'flower', label: 'FLOWER', labelKn: 'ಹೂವು', icon: Heart, color: '#DB2777' },
   ];
   const [g1Cards, setG1Cards] = useState([]);
   const [g1Flipped, setG1Flipped] = useState([]);
@@ -474,7 +474,8 @@ export const TherapyGamesModule = ({
     },
   ];
   const [g4ScenarioIndex, setG4ScenarioIndex] = useState(0);
-  const [g4Language, setG4Language] = useState('en');
+  const [g4Language, setG4Language] = useState(language === 'kn' || language === 'Kannada' ? 'kn' : 'en');
+  useEffect(() => { setG4Language(language === 'kn' || language === 'Kannada' ? 'kn' : 'en'); }, [language]);
   const [g4Feedback, setG4Feedback] = useState(null);
   const [g4Completed, setG4Completed] = useState(false);
   const g4VideoRef = useRef(null);
@@ -991,7 +992,7 @@ export const TherapyGamesModule = ({
                                 <CardIcon size={20} />
                               </div>
                               <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-brand-title)' }}>
-                                {card.label}
+                                {language === 'kn' || language === 'Kannada' ? (card.labelKn || card.label) : card.label}
                               </span>
                             </>
                           ) : (
@@ -1015,7 +1016,7 @@ export const TherapyGamesModule = ({
                       <>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '0 0.25rem' }}>
                           <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#9333EA' }}>
-                            Target {g2TargetIndex + 1} of 5
+                            {language === 'kn' || language === 'Kannada' ? `ಗುರಿ ${g2TargetIndex + 1} / 5` : `Target ${g2TargetIndex + 1} of 5`}
                           </span>
                           <span style={{ fontSize: '0.75rem', fontWeight: 700, background: 'rgba(147, 51, 234, 0.1)', color: '#9333EA', padding: '0.2rem 0.6rem', borderRadius: 12 }}>
                             English & ಕನ್ನಡ
@@ -1065,7 +1066,7 @@ export const TherapyGamesModule = ({
                               </span>
                             </div>
                             <span style={{ fontSize: '0.82rem', color: '#64748B', fontWeight: 600 }}>
-                              Say the name in English or Kannada to pop!
+                              {language === 'kn' || language === 'Kannada' ? 'ಪಾಪ್ ಮಾಡಲು ಇಂಗ್ಲಿಷ್ ಅಥವಾ ಕನ್ನಡದಲ್ಲಿ ಹೆಸರನ್ನು ಹೇಳಿ!' : 'Say the name in English or Kannada to pop!'}
                             </span>
                           </div>
                         )}

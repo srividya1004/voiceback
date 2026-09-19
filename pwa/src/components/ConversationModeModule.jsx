@@ -69,29 +69,29 @@ export const analyzeCompanionSpeechNLP = (rawText, currentLanguage = 'English') 
   let normalizedQuestion = clean;
 
   // Movie / Cinema Invitation
-  if (lower.includes('movie') || lower.includes('cinema') || lower.includes('film') || lower.includes('ಸಿನಿಮಾ') || lower.includes('ಚಿತ್ರ') || lower.includes('hogona') || lower.includes('nodona') || lower.includes('ಹೋಗೋಣ')) {
+  if (lower.includes('movie') || lower.includes('cinema') || lower.includes('film') || lower.includes('ಸಿನಿಮಾ') || lower.includes('ಚಿತ್ರ') || lower.includes('chalanachitra') || lower.includes('nodona')) {
     detectedIntent = 'MOVIE_INVITATION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಸಿನಿಮಾ ಆಹ್ವಾನ (Movie Invitation)' : effectiveLanguage === 'Hindi' ? 'फिल्म आमंत्रण (Movie Invitation)' : 'Movie / Cinema Invitation';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ನಾವು ಸಿನಿಮಾ ನೋಡಲು ಹೋಗೋಣವೇ?';
+  }
+  // Outing / Activity / Walk / Hotel Invitation ("Shall we go...")
+  else if (lower.includes('hogona') || lower.includes('ಹೋಗೋಣ') || lower.includes('shall we') || lower.includes('hotel') || lower.includes('park') || lower.includes('walk') || lower.includes('ಹೊರಗೆ')) {
+    detectedIntent = 'OUTING_INVITATION';
+    intentLabel = effectiveLanguage === 'Kannada' ? 'ಆಹ್ವಾನ (Outing / Invitation)' : effectiveLanguage === 'Hindi' ? 'बाहर जाने का आमंत्रण (Outing)' : 'Outing / Activity Invitation';
   }
   // Assistance Offer
   else if (lower.includes('sahaya') || lower.includes('help') || lower.includes('ಸಹಾಯ') || lower.includes('madla')) {
     detectedIntent = 'ASSISTANCE_OFFER';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಸಹಾಯ ನೀಡಿಕೆ (Assistance Offer)' : effectiveLanguage === 'Hindi' ? 'मदद की पेशकश (Assistance Offer)' : 'Assistance Offer';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ನಾನು ನಿಮಗೆ ಸಹಾಯ ಮಾಡಲಾ?';
   }
   // Reason / Concern
   else if (lower.includes('yake') || lower.includes('chintha') || lower.includes('chinte') || lower.includes('ಯಾಕೆ') || lower.includes('ಚಿಂತೆ') || lower.includes('why')) {
     detectedIntent = 'REASON_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಕಾರಣ ವಿಚಾರಣೆ (Reason Inquiry)' : effectiveLanguage === 'Hindi' ? 'कारण पूछताछ (Reason Inquiry)' : 'Reason Inquiry';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ಯಾಕೆ ಇಷ್ಟು ಚಿಂತೆ ಮಾಡ್ತಿದ್ದೀರಿ?';
   }
   // Water / Hydration check
   else if (lower.includes('water') || lower.includes('drink') || lower.includes('thirst') || lower.includes('ನೀರು') || lower.includes('ಕುಡಿ') || lower.includes('ದಾಹ') || lower.includes('niru') || lower.includes('neer') || lower.includes('pani') || lower.includes('प्यास') || lower.includes('peena')) {
     detectedIntent = 'WATER_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ನೀರಿನ ವಿಚಾರಣೆ (Water)' : effectiveLanguage === 'Hindi' ? 'पानी की आवश्यकता (Water)' : 'Hydration Check (Water)';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ನಿಮಗೆ ನೀರು ಬೇಕೇ?';
-    if (isRomanHi && !hasHiScript) normalizedQuestion = 'क्या आपको पानी चाहिए?';
   }
   // Meal completion / status check (Did you eat? / ಊಟ ಆಯ್ತಾ?)
   else if (
@@ -101,62 +101,46 @@ export const analyzeCompanionSpeechNLP = (rawText, currentLanguage = 'English') 
   ) {
     detectedIntent = 'MEAL_STATUS_CHECK';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಊಟದ ವಿಚಾರಣೆ (Meal Status)' : effectiveLanguage === 'Hindi' ? 'भोजन की स्थिति (Meal Status)' : 'Meal Status Check';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ಊಟ ಆಯ್ತಾ?';
-    if (isRomanHi && !hasHiScript) normalizedQuestion = 'क्या आपने खाना खा लिया?';
   }
   // General Meal / Food / Hungry
   else if (lower.includes('eat') || lower.includes('food') || lower.includes('lunch') || lower.includes('dinner') || lower.includes('hungry') || lower.includes('ಊಟ') || lower.includes('ತಿಂಡಿ') || lower.includes('ಹಸಿವು') || lower.includes('oota') || lower.includes('thindi') || lower.includes('thinnabeku') || lower.includes('ಖಾನಾ') || lower.includes('खाना') || lower.includes('भूख')) {
     detectedIntent = 'MEAL_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಆಹಾರ ವಿಚಾರಣೆ (Food)' : effectiveLanguage === 'Hindi' ? 'भोजन आवश्यकता (Food)' : 'Food Request (Meal)';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ನಿಮಗೆ ಏನು ತಿನ್ನಬೇಕು?';
-    if (isRomanHi && !hasHiScript) normalizedQuestion = 'क्या आपको खाना चाहिए?';
   }
   // Medicine check
-  else if (lower.includes('matre') || lower.includes('tablet') || lower.includes('medicine') || lower.includes('pill') || lower.includes('ಮಾತ್ರೆ') || lower.includes('ಔಷಧಿ') || lower.includes('दवा') || lower.includes('गोली')) {
+  else if (lower.includes('matre') || lower.includes('tablet') || lower.includes('medicine') || lower.includes('pill') || lower.includes('ಮಾತ್ರೆ') || lower.includes('ಔಷಧಿ') || lower.includes('ದವಾ') || lower.includes('गोली')) {
     detectedIntent = 'MEDICINE_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಔಷಧಿ ವಿಚಾರಣೆ (Medicine)' : effectiveLanguage === 'Hindi' ? 'दवा की स्थिति (Medicine)' : 'Medicine Schedule';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ಮಾತ್ರೆ ತೆಗೆದುಕೊಂಡಿರಾ?';
-    if (isRomanHi && !hasHiScript) normalizedQuestion = 'क्या आपने दवा ली?';
   }
   // Pain check
   else if (lower.includes('pain') || lower.includes('hurt') || lower.includes('ache') || lower.includes('sore') || lower.includes('ನೋವು') || lower.includes('ನೋವಾಗ್ತಿದೆ') || lower.includes('nov') || lower.includes('dard') || lower.includes('दर्द')) {
     detectedIntent = 'PAIN_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ನೋವಿನ ವಿಚಾರಣೆ (Pain Check)' : effectiveLanguage === 'Hindi' ? 'दर्द की जांच (Pain Check)' : 'Pain Assessment';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ನಿಮಗೆ ಎಲ್ಲಾದರೂ ನೋವಾಗುತ್ತಿದೆಯೇ?';
-    if (isRomanHi && !hasHiScript) normalizedQuestion = 'क्या आपको कहीं दर्द हो रहा है?';
   }
   // Sleep / Rest check
   else if (lower.includes('sleep') || lower.includes('rest') || lower.includes('tired') || lower.includes('bed') || lower.includes('ಮಲಗ್') || lower.includes('ನಿದ್ರೆ') || lower.includes('malag') || lower.includes('nidre') || lower.includes('सोना') || lower.includes('आराम')) {
     detectedIntent = 'REST_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ವಿಶ್ರಾಂತಿ ವಿಚಾರಣೆ (Rest)' : effectiveLanguage === 'Hindi' ? 'आराम की आवश्यकता (Rest)' : 'Rest & Sleep Check';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ವಿಶ್ರಾಂತಿ ಪಡೆಯಲು ಬಯಸುತ್ತೀರಾ?';
-    if (isRomanHi && !hasHiScript) normalizedQuestion = 'क्या आप आराम करना चाहते हैं?';
   }
   // Tea / Coffee / Beverage
   else if (lower.includes('tea') || lower.includes('coffee') || lower.includes('chai') || lower.includes('chaha') || lower.includes('kafi') || lower.includes('ಚಹಾ') || lower.includes('ಕಾಫಿ') || lower.includes('चाय')) {
     detectedIntent = 'BEVERAGE_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಚಹಾ/ಕಾಫಿ (Tea & Coffee)' : effectiveLanguage === 'Hindi' ? 'चाय/कॉफ़ी (Beverage)' : 'Beverage Check';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ಚಹಾ ಬೇಕಾ ಅಥವಾ ಕಾಫಿ ಬೇಕಾ?';
-    if (isRomanHi && !hasHiScript) normalizedQuestion = 'क्या आप चाय या कॉफ़ी लेंगे?';
   }
   // Travel / Destination (Mandya)
   else if (lower.includes('mandya') || lower.includes('travel') || lower.includes('yavaga') || lower.includes('ಮಂಡ್ಯ') || lower.includes('ಯಾವಾಗ') || lower.includes('ಪ್ರಯಾಣ')) {
     detectedIntent = 'TRAVEL_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಪ್ರಯಾಣ ವಿಚಾರಣೆ (Travel)' : effectiveLanguage === 'Hindi' ? 'यात्रा की जानकारी (Travel)' : 'Travel Inquiries';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ಮಂಡ್ಯಗೆ ಯಾವಾಗ ಹೋಗೋಣ?';
-    if (isRomanHi && !hasHiScript) normalizedQuestion = 'मंड्या कब चलेंगे?';
   }
   // Washroom / Toilet
   else if (lower.includes('toilet') || lower.includes('bathroom') || lower.includes('washroom') || lower.includes('ಶೌಚಾಲಯ') || lower.includes('शौचालय')) {
     detectedIntent = 'WASHROOM_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಶೌಚಾಲಯ (Washroom)' : effectiveLanguage === 'Hindi' ? 'शौचालय (Washroom)' : 'Washroom Need';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ವಾಶ್‌ರೂಮ್‌ಗೆ ಹೋಗಬೇಕೇ?';
   }
   // Wellbeing / How are you
   else if (lower.includes('how are you') || lower.includes('hegidira') || lower.includes('hegiddira') || lower.includes('hegiddiya') || lower.includes('chennagiddira') || lower.includes('chennagidya') || lower.includes('heganistide') || lower.includes('ಹೇಗಿದ್ದೀರಾ') || lower.includes('ಚೆನ್ನಾಗಿದ್ದೀರಾ') || lower.includes('ಹೇಗನಿಸುತ್ತಿದೆ') || lower.includes('कैसे')) {
     detectedIntent = 'WELLBEING_QUESTION';
     intentLabel = effectiveLanguage === 'Kannada' ? 'ಆರೋಗ್ಯ ವಿಚಾರಣೆ (Wellbeing)' : effectiveLanguage === 'Hindi' ? 'हालचाल पूछना (Wellbeing)' : 'General Wellbeing';
-    if (isRomanKn && !hasKnScript && !isMixedKn) normalizedQuestion = 'ನಿಮಗೆ ಈಗ ಹೇಗನಿಸುತ್ತಿದೆ?';
   }
 
   return {

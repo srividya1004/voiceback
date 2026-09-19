@@ -13,10 +13,11 @@ export const SpeechInputTrigger = ({
   targetIntent = '',
   buttonLabel = '',
   resetKey = '',
+  language: propLanguage,
   className = '',
   style = {}
 }) => {
-  const { t } = useSettings();
+  const { t, language: contextLanguage } = useSettings();
   const [speechState, setSpeechState] = useState('idle'); // 'idle' | 'listening' | 'processing' | 'result'
   const [transcriptResult, setTranscriptResult] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -80,8 +81,12 @@ export const SpeechInputTrigger = ({
 
         try {
           const audioBlob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+          const activeLang = propLanguage || contextLanguage || 'en';
+          const effectiveLangCode = (activeLang === 'kn' || activeLang === 'Kannada') ? 'kn' : (activeLang === 'hi' || activeLang === 'Hindi') ? 'hi' : 'en';
+
           const formData = new FormData();
           formData.append('audioSample', audioBlob, 'patient_speech.webm');
+          formData.append('language', effectiveLangCode);
 
           const response = await voiceService.transcribeSpeech(formData);
           const rawTranscript = response?.data?.text || response?.text || '';

@@ -782,6 +782,217 @@ async function runTests() {
     `Received: "${userTest10.reconstructedText}"`
   );
 
+  // ========================================================================
+  // UNANTICIPATED / NOVEL UTTERANCE TESTS
+  // Verifies dynamic linguistic token, grammar, language, and context derivation
+  // without predefined sentence mappings or dictionaries.
+  // ========================================================================
+  console.log('\n========================================================================');
+  console.log('🧪 UNANTICIPATED / NOVEL UTTERANCE TESTS (NO HARDCODED MAPPINGS)');
+  console.log('========================================================================');
+
+  // Novel Test 1: "read book" -> "I want to read book."
+  console.log('\n--- NOVEL TEST 1: "read book" ---');
+  const novel1 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'read book',
+    language: 'en'
+  });
+  assert(
+    novel1.reconstructedText === 'I want to read book.',
+    'Novel Test 1: Derived from tokens "read" and "book" with grammatical repair ("I want to read book.")',
+    `Received: "${novel1.reconstructedText}"`
+  );
+  assert(
+    !novel1.reconstructedText.toLowerCase().includes('water') && !novel1.reconstructedText.toLowerCase().includes('food'),
+    'Novel Test 1: No predefined sentence mapping selected (neither water nor food)',
+    `Text: "${novel1.reconstructedText}"`
+  );
+  assert(
+    novel1.requiresConfirmation === true,
+    'Novel Test 1: Reconstructed candidate requires confirmation',
+    `requiresConfirmation: ${novel1.requiresConfirmation}`
+  );
+
+  // Novel Test 2: "turn fan on" -> "Please turn on the fan."
+  console.log('\n--- NOVEL TEST 2: "turn fan on" ---');
+  const novel2 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'turn fan on',
+    language: 'en'
+  });
+  assert(
+    novel2.reconstructedText === 'Please turn on the fan.',
+    'Novel Test 2: Derived from input with polite imperative repair ("Please turn on the fan.")',
+    `Received: "${novel2.reconstructedText}"`
+  );
+  assert(
+    novel2.reconstructedText.toLowerCase().includes('fan'),
+    'Novel Test 2: Meaning strictly preserved from input token "fan"',
+    `Received: "${novel2.reconstructedText}"`
+  );
+  assert(
+    novel2.requiresConfirmation === true,
+    'Novel Test 2: Reconstructed candidate requires confirmation',
+    `requiresConfirmation: ${novel2.requiresConfirmation}`
+  );
+
+  // Novel Test 3: "where my glasses" -> "Where are my glasses?"
+  console.log('\n--- NOVEL TEST 3: "where my glasses" ---');
+  const novel3 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'where my glasses',
+    language: 'en'
+  });
+  assert(
+    novel3.reconstructedText === 'Where are my glasses?',
+    'Novel Test 3: Derived from tokens with copula repair ("Where are my glasses?")',
+    `Received: "${novel3.reconstructedText}"`
+  );
+  assert(
+    /[?]$/.test(novel3.reconstructedText),
+    'Novel Test 3: Question remains a question (ends with ?)',
+    `Received: "${novel3.reconstructedText}"`
+  );
+  assert(
+    novel3.requiresConfirmation === true,
+    'Novel Test 3: Reconstructed candidate requires confirmation',
+    `requiresConfirmation: ${novel3.requiresConfirmation}`
+  );
+
+  // Novel Test 4: "pain knee" -> "I have knee pain."
+  console.log('\n--- NOVEL TEST 4: "pain knee" ---');
+  const novel4 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'pain knee',
+    language: 'en'
+  });
+  assert(
+    novel4.reconstructedText === 'I have knee pain.',
+    'Novel Test 4: Generalized body part pain rule applied dynamically ("I have knee pain.")',
+    `Received: "${novel4.reconstructedText}"`
+  );
+  assert(
+    novel4.reconstructedText.toLowerCase().includes('knee'),
+    'Novel Test 4: Meaning preserved (knee pain, not stomach or head)',
+    `Received: "${novel4.reconstructedText}"`
+  );
+  assert(
+    novel4.requiresConfirmation === true,
+    'Novel Test 4: Reconstructed candidate requires confirmation',
+    `requiresConfirmation: ${novel4.requiresConfirmation}`
+  );
+
+  // Novel Test 5: "knee hurt" -> "My knee hurts."
+  console.log('\n--- NOVEL TEST 5: "knee hurt" ---');
+  const novel5 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'knee hurt',
+    language: 'en'
+  });
+  assert(
+    novel5.reconstructedText === 'My knee hurts.',
+    'Novel Test 5: Generalized discomfort rule applied ("My knee hurts.")',
+    `Received: "${novel5.reconstructedText}"`
+  );
+  assert(
+    novel5.requiresConfirmation === true,
+    'Novel Test 5: Reconstructed candidate requires confirmation',
+    `requiresConfirmation: ${novel5.requiresConfirmation}`
+  );
+
+  // Novel Test 6: "I blanket" -> "I want blanket."
+  console.log('\n--- NOVEL TEST 6: "I blanket" ---');
+  const novel6 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'I blanket',
+    language: 'en'
+  });
+  assert(
+    novel6.reconstructedText === 'I want blanket.',
+    'Novel Test 6: Generalized noun desire applied to "blanket" without predetermined sentence',
+    `Received: "${novel6.reconstructedText}"`
+  );
+  assert(
+    novel6.requiresConfirmation === true,
+    'Novel Test 6: Reconstructed candidate requires confirmation',
+    `requiresConfirmation: ${novel6.requiresConfirmation}`
+  );
+
+  // Novel Test 7: "help walk" -> "Please help me walk."
+  console.log('\n--- NOVEL TEST 7: "help walk" ---');
+  const novel7 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'help walk',
+    language: 'en'
+  });
+  assert(
+    novel7.reconstructedText === 'Please help me walk.',
+    'Novel Test 7: Generalized assistance request repair ("Please help me walk.")',
+    `Received: "${novel7.reconstructedText}"`
+  );
+  assert(
+    novel7.requiresConfirmation === true,
+    'Novel Test 7: Reconstructed candidate requires confirmation',
+    `requiresConfirmation: ${novel7.requiresConfirmation}`
+  );
+
+  // Novel Test 8: "ba ba ba ba" -> "Ba."
+  console.log('\n--- NOVEL TEST 8: Repeated Syllables "ba ba ba ba" ---');
+  const novel8 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'ba ba ba ba',
+    language: 'en'
+  });
+  assert(
+    novel8.reconstructedText === 'Ba.',
+    'Novel Test 8: Stuttered syllables collapsed conservatively to "Ba." without inventing unsupported words',
+    `Received: "${novel8.reconstructedText}"`
+  );
+  assert(
+    !novel8.reconstructedText.toLowerCase().includes('water') && !novel8.reconstructedText.toLowerCase().includes('help'),
+    'Novel Test 8: Unsupported words NOT invented for syllable stutter',
+    `Received: "${novel8.reconstructedText}"`
+  );
+
+  // Novel Test 9: Clear question "Can I sit?" -> Preserved
+  console.log('\n--- NOVEL TEST 9: Clear question "Can I sit?" ---');
+  const novel9 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'Can I sit?',
+    language: 'en'
+  });
+  assert(
+    novel9.reconstructedText === 'Can I sit?',
+    'Novel Test 9: Clear question preserved identically as question',
+    `Received: "${novel9.reconstructedText}"`
+  );
+  assert(
+    /[?]$/.test(novel9.reconstructedText),
+    'Novel Test 9: Question remains question',
+    `Received: "${novel9.reconstructedText}"`
+  );
+
+  // Novel Test 10: Kannada novel utterance "ಪುಸ್ತಕ ಓದಬೇಕು" -> Preserved in Kannada
+  console.log('\n--- NOVEL TEST 10: Kannada novel utterance "ಪುಸ್ತಕ ಓದಬೇಕು" ---');
+  const novel10 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'ಪುಸ್ತಕ ಓದಬೇಕು',
+    language: 'kn'
+  });
+  assert(
+    /[\u0C80-\u0CFF]/.test(novel10.reconstructedText) && novel10.reconstructedText.includes('ಪುಸ್ತಕ'),
+    'Novel Test 10: Output language matches spoken Kannada in native script',
+    `Received: "${novel10.reconstructedText}"`
+  );
+
+  // Novel Test 11: Ambiguous input "bring that" -> Clarification requested, ambiguous remains ambiguous
+  console.log('\n--- NOVEL TEST 11: Ambiguous input "bring that" ---');
+  const novel11 = await contextEngineService.correctAphasicSpeech({
+    rawTranscript: 'bring that',
+    language: 'en'
+  });
+  assert(
+    novel11.isAmbiguous === true || novel11.status === 'AMBIGUOUS',
+    'Novel Test 11: Ambiguous input remains ambiguous without guessing item',
+    `isAmbiguous: ${novel11.isAmbiguous}, status: ${novel11.status}`
+  );
+  assert(
+    novel11.clarificationPrompt && novel11.clarificationPrompt.length > 0,
+    'Novel Test 11: Prompts for clarification ("What would you like me to bring for you?")',
+    `clarificationPrompt: "${novel11.clarificationPrompt}"`
+  );
+
   console.log('\n========================================================================');
   console.log(`SUMMARY: ${passed} PASSED, ${failed} FAILED`);
   console.log('========================================================================');

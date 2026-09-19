@@ -1018,7 +1018,10 @@ class NLPProcessorService {
     const isQuestion = /[?]$/.test(cleaned.trim()) ||
       /^(ಹಲೋ,?\s*)?(ಹೇಗಿದ್ದೀರಾ|ಚೆನ್ನಾಗಿದ್ದೀರಾ|ಏನು|ಎಲ್ಲಿ|ಯಾವಾಗ|ಯಾರು|ಹೇಗೆ|ಏಕೆ|how|what|where|when|who|why|can\s+you|could\s+you|are\s+you|is\s+there|do\s+you)\b/iu.test(cleaned.trim());
 
-    if (isQuestion) {
+    // Incomplete questions (e.g. "where my glasses") must proceed to grammatical repair rather than raw return
+    const isIncompleteQuestion = /^where\s+my\b/i.test(cleaned.trim());
+
+    if (isQuestion && !isIncompleteQuestion) {
       // Preserve the patient's question
       let questionResult = cleaned.trim();
       if (!/[?]$/.test(questionResult)) questionResult += '?';
@@ -1154,7 +1157,10 @@ class NLPProcessorService {
     }
 
     // English Language Conservative Reconstruction
-    // 1. Remove consecutive word repetitions e.g. "I I want want" -> "I want"
+    const rawWasQuestion = /[?]$/.test(text) ||
+      /^(who|what|where|when|why|how|can|could|would|will|may|shall|should|is|are|am|do|does|did)\b/i.test(cleaned.trim());
+
+    // 1. Remove consecutive word repetitions e.g. "I I want want" -> "I want", "ba ba ba" -> "ba"
     cleaned = cleaned.replace(/\b([a-zA-Z]+)(?:\s+\1\b)+/gi, '$1');
 
     // Strip trailing punctuation temporarily for clean pattern matching
@@ -1192,69 +1198,69 @@ class NLPProcessorService {
       .replace(/^me\s+in\s+pain\b/i, 'I am in pain')
       .replace(/^me\s+pain\b/i, 'I am in pain');
 
-    // 4. Missing verbs, subjects, & infinitive particles (Compositional)
-    // Missing verb for water, help, food, medicine
+    // 4. Generalized Subject & Volitional Verb Restoration
+    // e.g. "want water" -> "I want water", "need help" -> "I need help"
+    cleanNoPunct = cleanNoPunct.replace(/^(want|need|wish|hope|like|feel|have)\s+/i, 'I $1 ');
+
+    // 5. Generalized Infinitive Insertion ("to")
+    // When volitional verb is immediately followed by a bare verb (go, sleep, rest, eat, drink, walk, read, etc.)
+    cleanNoPunct = cleanNoPunct.replace(
+      /\b(want|need|like|hope|love|wish)\s+(go|sleep|rest|eat|drink|walk|sit|stand|read|see|talk|come|open|close|use|take|call|wash|lie|leave)\b/gi,
+      '$1 to $2'
+    );
+
+    // 6. Generalized Action Desire without subject (e.g. "read book" -> "I want to read book")
+    cleanNoPunct = cleanNoPunct.replace(/^(read|eat|drink|see|watch)\s+(the\s+|a\s+)?([a-zA-Z]+)$/i, 'I want to $1 $2$3');
+
+    // 7. Generalized Incomplete Desire / Needs (Subject "I" + bare object noun)
+    // e.g. "I water" -> "I want water", "I blanket" -> "I want blanket", "I food" -> "I want food"
     cleanNoPunct = cleanNoPunct
-      .replace(/^i\s+water$/i, 'I want water')
-      .replace(/^want\s+water$/i, 'I want water')
-      .replace(/^need\s+water$/i, 'I need water')
+      .replace(/^i\s+(water|food|tea|coffee|milk|juice|blanket|pillow|jacket|book|phone|towel)$/i, 'I want $1')
+      .replace(/^i\s+(medicine|meds|pills?)$/i, 'I need my medicine')
+      .replace(/^i\s+(glasses)$/i, 'I want my glasses')
       .replace(/^i\s+help$/i, 'I want help')
-      .replace(/^want\s+help$/i, 'I want help')
-      .replace(/^need\s+help$/i, 'I need help')
-      .replace(/^i\s+food$/i, 'I want food')
-      .replace(/^want\s+food$/i, 'I want food')
-      .replace(/^i\s+medicine$/i, 'I need my medicine')
-      .replace(/^want\s+medicine$/i, 'I need my medicine')
-      .replace(/^need\s+medicine$/i, 'I need my medicine');
+      .replace(/^i\s+(?:go\s+)?home$/i, 'I want to go home');
 
-    // Missing infinitive "to": "want go" -> "I want to go", "I want go home" -> "I want to go home"
+    // 8. Generalized Symptom / Pain Reconstruction (Never infer medical diagnoses)
+    // ANY body part: "pain [bodypart]" or "[bodypart] pain" -> "I have [bodypart] pain"
+    // ANY body part: "[bodypart] hurt/hurts" -> "My [bodypart] hurts"
     cleanNoPunct = cleanNoPunct
-      .replace(/^want\s+go\s+home$/i, 'I want to go home')
-      .replace(/^i\s+want\s+go\s+home$/i, 'I want to go home')
-      .replace(/^want\s+go$/i, 'I want to go')
-      .replace(/^i\s+want\s+go$/i, 'I want to go')
-      .replace(/^need\s+go$/i, 'I need to go')
-      .replace(/^i\s+need\s+go$/i, 'I need to go')
-      .replace(/^i\s+go\s+home$/i, 'I want to go home')
-      .replace(/^i\s+home$/i, 'I want to go home')
-      .replace(/\bwant\s+go\s+home\b/gi, 'want to go home')
-      .replace(/\bwant\s+go\b/gi, 'want to go')
-      .replace(/\bneed\s+go\b/gi, 'need to go')
-      .replace(/\blike\s+go\b/gi, 'like to go')
-      .replace(/\bwant\s+sleep\b/gi, 'want to sleep')
-      .replace(/\bneed\s+sleep\b/gi, 'need to sleep')
-      .replace(/\bwant\s+rest\b/gi, 'want to rest')
-      .replace(/\bneed\s+rest\b/gi, 'need to rest');
-
-    // 5. Symptom / Pain Reconstruction (Never infer diagnoses, keep conservative)
-    cleanNoPunct = cleanNoPunct
-      .replace(/^(?:pain\s+stomach|stomach\s+pain)$/i, 'I have stomach pain')
       .replace(/^(?:pain\s+head|head\s+pain)$/i, 'My head hurts')
-      .replace(/^(?:pain\s+chest|chest\s+pain)$/i, 'I have chest pain')
-      .replace(/^(?:pain\s+back|back\s+pain)$/i, 'I have back pain')
-      .replace(/^(?:pain\s+leg|leg\s+pain)$/i, 'I have leg pain')
-      .replace(/^(?:head|my\s+head)\s+(?:hurt|hurts|hurting)$/i, 'My head hurts')
-      .replace(/^(?:stomach|my\s+stomach)\s+(?:hurt|hurts|hurting)$/i, 'My stomach hurts')
-      .replace(/^(?:chest|my\s+chest)\s+(?:hurt|hurts|hurting)$/i, 'My chest hurts')
-      .replace(/^(?:back|my\s+back)\s+(?:hurt|hurts|hurting)$/i, 'My back hurts')
-      .replace(/^(?:leg|my\s+leg)\s+(?:hurt|hurts|hurting)$/i, 'My leg hurts')
-      .replace(/^(?:want|need)\s+(?:toilet|bathroom|pee)$/i, 'I need to use the bathroom')
-      .replace(/^call\s+doctor$/i, 'Please call the doctor')
-      .replace(/^call\s+nurse$/i, 'Please call the nurse')
-      .replace(/^call\s+family$/i, 'Please call my family');
+      .replace(/^(?:pain\s+([a-zA-Z]+)|([a-zA-Z]+)\s+pain)$/i, (m, p1, p2) => 'I have ' + (p1 || p2) + ' pain')
+      .replace(/^(?:my\s+)?([a-zA-Z]+)\s+(?:hurt|hurts|hurting)$/i, (m, part) => 'My ' + part + ' hurts');
 
-    // 6. Capitalize "I" when used as isolated pronoun
+    // 9. Generalized Imperative & Polite Request Repairs
+    cleanNoPunct = cleanNoPunct
+      .replace(/^(call|contact|phone)\s+(the\s+|my\s+)?(doctor|nurse|caregiver|family|mom|dad|son|daughter)\b/i, (m, v, det, pers) => {
+        const article = det ? det : (['doctor', 'nurse', 'caregiver'].includes(pers.toLowerCase()) ? 'the ' : 'my ');
+        return `Please call ${article}${pers}`;
+      })
+      .replace(/^(open|close|turn\s+on|turn\s+off|switch\s+on|switch\s+off)\s+(the\s+)?(door|window|fan|light|lights|tv|curtain|curtains)\b/i, (m, action, det, obj) => {
+        return `Please ${action} the ${obj}`;
+      })
+      .replace(/^turn\s+(the\s+)?(fan|light|lights|tv)\s+(on|off)$/i, (m, det, obj, state) => {
+        return `Please turn ${state} the ${obj}`;
+      })
+      .replace(/^help\s+(me\s+)?(walk|stand|sit|move|up|down)\b/i, (m, me, act) => {
+        return `Please help me ${act}`;
+      })
+      .replace(/^(?:want|need)\s+(?:toilet|bathroom|pee)$/i, 'I need to use the bathroom');
+
+    // 10. Interrogative Questions Copula Repair (e.g. "where my glasses" -> "where are my glasses")
+    cleanNoPunct = cleanNoPunct.replace(/^where\s+(my\s+[a-zA-Z]+)$/i, 'where are $1');
+
+    // 11. Capitalize "I" when used as isolated pronoun
     cleanNoPunct = cleanNoPunct.replace(/\bi\b/g, 'I');
 
-    // 7. Ensure first character capitalized
+    // 12. Ensure first character capitalized
     let result = cleanNoPunct.trim();
     if (result.length > 0) {
       result = result.charAt(0).toUpperCase() + result.slice(1);
     }
 
-    // 8. Ensure terminal period (preserve existing ? or !)
+    // 13. Ensure terminal punctuation (preserves ? for questions, adds . otherwise)
     if (result.length > 0 && !/[.!?]$/.test(result)) {
-      result += '.';
+      result += (rawWasQuestion ? '?' : '.');
     }
 
     return result;
@@ -1294,9 +1300,9 @@ class NLPProcessorService {
     const romanizedSlips = /\b(niru|neeru|neelu|nillu|oota|ootha|uta|ouda|sahaya|saaya|pani|paani|chahiye|chahye|madad|sahayata)\b/i;
     if (romanizedSlips.test(trimmed)) return false;
 
-    // 4. Incomplete phrases needing grammar expansion (e.g. "i water", "want water", "want go", "pain stomach")
+    // 4. Incomplete phrases needing grammar expansion (e.g. "i water", "want water", "want go", "pain stomach", "pain knee", "where my glasses")
     const cleanNoPunct = trimmed.replace(/[.,!?]+$/, '').trim();
-    const incompletePatterns = /^(i\s+water|want\s+water|i\s+help|want\s+help|i\s+food|want\s+food|i\s+medicine|want\s+medicine|want\s+go|i\s+want\s+go|need\s+go|i\s+need\s+go|i\s+go\s+home|i\s+home|pain\s+stomach|stomach\s+pain|pain\s+head|head\s+pain|pain\s+chest|chest\s+pain|pain\s+back|back\s+pain|pain\s+leg|leg\s+pain|call\s+doctor|call\s+nurse|call\s+family|me\s+want|me\s+need|me\s+hungry|me\s+thirsty|me\s+cold|me\s+hot|me\s+tired|me\s+in\s+pain|me\s+pain)$/i;
+    const incompletePatterns = /^(i\s+[a-zA-Z]+|want\s+[a-zA-Z]+|need\s+[a-zA-Z]+|pain\s+[a-zA-Z]+|[a-zA-Z]+\s+pain|[a-zA-Z]+\s+(?:hurt|hurts|hurting)|call\s+[a-zA-Z]+|turn\s+[a-zA-Z]+\s+(?:on|off)|help\s+[a-zA-Z]+|where\s+my\b|read\s+[a-zA-Z]+|me\s+[a-zA-Z]+|want\s+go|need\s+go|want\s+go\s+home)$/i;
     if (incompletePatterns.test(cleanNoPunct)) return false;
 
     // 5. Positive recognition of clear speech:
