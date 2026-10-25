@@ -5,6 +5,7 @@
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
+const { corsOptions } = require('./config/cors');
 const requestLogger = require('./middleware/logger');
 const errorHandler = require('./middleware/errorHandler');
 const healthRoutes = require('./routes/healthRoutes');
@@ -13,11 +14,8 @@ const { sendSuccess, sendError } = require('./utils/responseFormatter');
 
 const app = express();
 
-// Middleware: Enable CORS with configurable origin
-app.use(cors({
-  origin: config.clientOrigin,
-  credentials: true
-}));
+// Middleware: Enable CORS with production-grade configurable origin
+app.use(cors(corsOptions));
 
 // Middleware: Parse JSON and URL-encoded request bodies
 app.use(express.json());

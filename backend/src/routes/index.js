@@ -17,8 +17,10 @@ const appointmentRoutes = require('./appointmentRoutes');
 const emergencySOSRoutes = require('./emergencySOSRoutes');
 const contextRoutes = require('./contextRoutes');
 const personalScriptRoutes = require('./personalScriptRoutes');
+const healthRoutes = require('./healthRoutes');
 
 // Mount entity routes
+router.use('/health', healthRoutes);
 router.use('/patients', patientRoutes);
 router.use('/doctors', doctorRoutes);
 router.use('/caregivers', caregiverRoutes);

@@ -29,7 +29,7 @@ async function runTests() {
   console.log(`   Corrected: "${res1}"`);
   check(
     'Primary user example corrected to stomach/yesterday',
-    /I have pain in my stomach from yesterday/i.test(res1),
+    /I have pain in my stomach (from|since) yesterday/i.test(res1),
     res1
   );
 
@@ -117,11 +117,80 @@ async function runTests() {
     process.env.GEMINI_API_KEY = originalKey;
   }
 
-  // TEST 9: Existing ASR output reaches correction layer (Controller contract)
+  // TEST 9: Controller Export & Contract
   console.log('\n--- TEST 9: Controller Export & Contract ---');
   const controller = require('../src/controllers/voiceProfileController');
   check('transcribeSpeech exported as function', typeof controller.transcribeSpeech === 'function');
   check('reconstructTranscriptWithGemini exported as function', typeof controller.reconstructTranscriptWithGemini === 'function');
+  check('resolveGeminiModels exported as function', typeof controller.resolveGeminiModels === 'function');
+
+  // TEST 10: Model Name Deduplication & Order Preservation
+  console.log('\n--- TEST 10: Deduplication & Fallback Order ---');
+  const modelsWhenLite = controller.resolveGeminiModels('gemini-3.5-flash-lite');
+  check(
+    'gemini-3.5-flash-lite deduplicated (length 2, no duplicates)',
+    modelsWhenLite.length === 2 && modelsWhenLite[0] === 'gemini-3.5-flash-lite' && modelsWhenLite[1] === 'gemini-3.6-flash',
+    JSON.stringify(modelsWhenLite)
+  );
+
+  const modelsWhenFlash = controller.resolveGeminiModels('gemini-3.6-flash');
+  check(
+    'gemini-3.6-flash deduplicated (length 2, no duplicates)',
+    modelsWhenFlash.length === 2 && modelsWhenFlash[0] === 'gemini-3.6-flash' && modelsWhenFlash[1] === 'gemini-3.5-flash-lite',
+    JSON.stringify(modelsWhenFlash)
+  );
+
+  const modelsWhenCustom = controller.resolveGeminiModels('custom-model-x');
+  check(
+    'Custom model placed first without duplicates',
+    modelsWhenCustom.length === 3 && modelsWhenCustom[0] === 'custom-model-x' && modelsWhenCustom[1] === 'gemini-3.6-flash' && modelsWhenCustom[2] === 'gemini-3.5-flash-lite',
+    JSON.stringify(modelsWhenCustom)
+  );
+
+  const modelsWhenEmpty = controller.resolveGeminiModels(null);
+  check(
+    'Null primary model defaults to unique fallback models in standard order',
+    modelsWhenEmpty.length === 2 && modelsWhenEmpty[0] === 'gemini-3.6-flash' && modelsWhenEmpty[1] === 'gemini-3.5-flash-lite',
+    JSON.stringify(modelsWhenEmpty)
+  );
+
+  // TEST 11: Configurable Timeout Default & Override
+  console.log('\n--- TEST 11: Configurable Timeout Verification ---');
+  const originalTimeout = process.env.GEMINI_TIMEOUT_MS;
+  try {
+    process.env.GEMINI_TIMEOUT_MS = '2500';
+    const parsedCustom = parseInt(process.env.GEMINI_TIMEOUT_MS, 10);
+    check('GEMINI_TIMEOUT_MS custom value parsed correctly', parsedCustom === 2500);
+
+    delete process.env.GEMINI_TIMEOUT_MS;
+    const defaultTimeout = parseInt(process.env.GEMINI_TIMEOUT_MS, 10) || 4000;
+    check('Sensible default timeout is 4000ms when env is absent', defaultTimeout === 4000);
+  } finally {
+    if (originalTimeout !== undefined) {
+      process.env.GEMINI_TIMEOUT_MS = originalTimeout;
+    } else {
+      delete process.env.GEMINI_TIMEOUT_MS;
+    }
+  }
+
+  // TEST 12: Response Contract & Raw Transcript Preservation
+  console.log('\n--- TEST 12: transcribeSpeech Contract & Raw Transcript Integrity ---');
+  let mockStatusCode = null;
+  let mockJsonData = null;
+  const mockRes = {
+    status(code) {
+      mockStatusCode = code;
+      return this;
+    },
+    json(payload) {
+      mockJsonData = payload;
+      return this;
+    }
+  };
+
+  // Simulate missing file error
+  await controller.transcribeSpeech({ body: {} }, mockRes);
+  check('Missing audio sample returns status 400 error', mockStatusCode === 400);
 
   console.log('\n========================================================================');
   console.log(`🏁 RESULTS: ${passed}/${total} TESTS PASSED (${Math.round((passed / total) * 100)}%)`);

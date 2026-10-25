@@ -413,7 +413,20 @@ const synthesizeSpeech = async (req, res) => {
 };
 
 /**
- * Contextual speech reconstruction layer using Gemini 2.5 Flash
+ * Resolve candidate Gemini models in priority order with duplicates removed
+ * @param {string} [primaryModel] - Primary model identifier
+ * @returns {string[]} Deduplicated list of models in fallback order
+ */
+const resolveGeminiModels = (primaryModel = process.env.GEMINI_MODEL) => {
+  return [...new Set([
+    primaryModel,
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite'
+  ].filter(Boolean))];
+};
+
+/**
+ * Contextual speech reconstruction layer using Gemini
  * Corrects broken, unclear, or misspelled words from raw ASR transcripts while preserving patient meaning.
  * Falls back safely to raw transcript if Gemini fails, times out, or returns invalid data.
  * @param {string} rawTranscript - Raw transcript from speech recognition
@@ -474,11 +487,11 @@ Target language: "${normalizedLang}"
 Output format:
 {"correctedText": "..."}`;
 
-  const models = [
-    process.env.GEMINI_MODEL,
-    'gemini-3.6-flash',
-    'gemini-3.5-flash-lite'
-  ].filter(Boolean);
+  const parsedTimeout = parseInt(process.env.GEMINI_TIMEOUT_MS, 10);
+  const timeoutMs = !isNaN(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 4000;
+
+  // Deduplicate candidate models while preserving exact intended fallback order
+  const models = resolveGeminiModels(process.env.GEMINI_MODEL);
 
   for (const model of models) {
     try {
@@ -490,10 +503,10 @@ Output format:
           generationConfig: {
             temperature: 0.1,
             responseMimeType: 'application/json',
-            maxOutputTokens: 250
+            maxOutputTokens: 1000
           }
         },
-        { timeout: 4000 }
+        { timeout: timeoutMs }
       );
 
       const rawJson = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -572,5 +585,6 @@ module.exports = {
   synthesizeSpeech,
   transcribeSpeech,
   reconstructTranscriptWithGemini,
+  resolveGeminiModels,
 };
 

@@ -11,6 +11,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const app = require('./app');
 const config = require('./config');
+const { corsOptions } = require('./config/cors');
 const connectDB = require('./config/database');
 
 let httpServer;
@@ -24,11 +25,7 @@ const startServer = async () => {
     // 1. Create HTTP Server & Attach Socket.io
     httpServer = http.createServer(app);
     io = new Server(httpServer, {
-      cors: {
-        origin: config.clientOrigin || '*',
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        credentials: true,
-      },
+      cors: corsOptions,
     });
 
     // Handle Socket.io Connections
@@ -42,15 +39,19 @@ const startServer = async () => {
     // Make io accessible across Express app routes
     app.set('io', io);
 
-    // 2. Start HTTP & Socket.io Server
-    httpServer.listen(config.port, () => {
-      console.log(`🚀 Server Running on Port ${config.port}`);
+    const port = Number(process.env.PORT) || config.port || 5000;
+    const host = process.env.HOST || '0.0.0.0';
+
+    // 2. Start HTTP & Socket.io Server (bound to 0.0.0.0 for cloud hosting compatibility)
+    httpServer.listen(port, host, () => {
+      console.log(`🚀 Server Running on ${host}:${port}`);
       console.log(`=======================================================`);
       console.log(`  VoiceBack Backend API & Socket.io Server Running`);
       console.log(`  Environment:  ${config.env}`);
-      console.log(`  Server URL:   http://localhost:${config.port}`);
-      console.log(`  Health Check: http://localhost:${config.port}/health`);
-      console.log(`  Socket.io:    ws://localhost:${config.port}/socket.io/`);
+      console.log(`  Server URL:   http://${host}:${port}`);
+      console.log(`  Health Check: http://${host}:${port}/health`);
+      console.log(`  API Health:   http://${host}:${port}/api/health`);
+      console.log(`  Socket.io:    ws://${host}:${port}/socket.io/`);
       console.log(`=======================================================`);
     });
 
