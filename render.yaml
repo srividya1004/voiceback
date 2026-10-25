@@ -3,6 +3,7 @@ services:
   - type: web
     name: voiceback-backend
     runtime: node
+    plan: free
     rootDir: backend
     buildCommand: npm install
     startCommand: npm start
@@ -37,11 +38,12 @@ services:
         value: eleven_multilingual_v2
 
   # VoiceBack Progressive Web App (React 19 / Vite Static Site)
-  - type: static
+  - type: web
     name: voiceback-pwa
+    runtime: static
     rootDir: pwa
     buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    staticPublishPath: ./dist
     autoDeploy: true
     routes:
       - type: rewrite
